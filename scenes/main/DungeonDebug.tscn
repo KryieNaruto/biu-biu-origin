@@ -1,0 +1,17 @@
+[gd_scene load_steps=2 format=3 uid="uid://bq3v1mdungeon"]
+
+[ext_resource type="Script" uid="uid://co2okq14n5sei" path="res://scripts/host/DungeonDebugScene.cs" id="1_debug"]
+
+[node name="DungeonDebug" type="Node3D"]
+script = ExtResource("1_debug")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, 0, 40, 0)
+shadow_enabled = true
+
+[node name="MainCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.5, 0.866025, 0, -0.866025, 0.5, 0, 60, 60)
+current = true
+far = 500.0

@@ -1,0 +1,44 @@
+{
+  "$schema": "biu-biu-arch-rules/1",
+  "version": 1,
+  "description": "架构守卫配置。被 tools/check_architecture.ps1 读取；本文件是唯一放行渠道，任何放行都必须同步登记到 AGENTS.md 与 docs/rules/。",
+
+  "allowGDScript": [
+    "scripts/ui/**",
+    "addons/**",
+    "tools/probes/**"
+  ],
+
+  "forbidGDScript": [],
+
+  "ignore": [
+    ".godot/**",
+    "addons/**",
+    "obj/**",
+    "bin/**",
+    "native/build/**",
+    "native/gdextension/libgodot-cpp/**",
+    "data/generated/**",
+    "tools/probes/**",
+    "tools/asset_viewer/**",
+    "tools/dungeon_check/**",
+    "tmp/**",
+    ".worktrees/**",
+    "out/**"
+  ],
+
+  "numericLiterals": {
+    "enabled": true,
+    "scope": ["scripts/**/*.cs"],
+    "exclude": ["scripts/ui/**", "scripts/core/**"],
+    "allowValues": [0, 1, -1, 0.0, 1.0, 0.5],
+    "escapeComment": "// arch-ok:",
+    "maxReported": 50
+  },
+
+  "layers": {
+    "logicRoots": ["scripts/"],
+    "nativeRoot": "native/",
+    "uiRoot": "scripts/ui/"
+  }
+}

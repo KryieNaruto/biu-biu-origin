@@ -1,0 +1,5171 @@
+{
+  "schemaVersion": 2,
+  "generatedBy": "tools/decor_catalog/build_catalog.py",
+  "generatorNote": "由 tools/decor_catalog/build_catalog.py + rules.py 生成；手改会被下次重跑覆盖。",
+  "assetRoot": "res://素材",
+  "targetMaxHorizontalMeters": 6.0,
+  "targetMaxHorizontalRange": [
+    3.0,
+    6.0
+  ],
+  "assetLibraryScale": 1.5,
+  "scaleBasis": "logical-horizontal",
+  "scaleBasisDoc": "sizeMeters = sizeRaw * assetLibraryScale；宿主最终缩放 = placement.Scale * targetMaxHorizontalMeters / max(sizeMeters.x, sizeMeters.z) * GodotImportScale（GodotImportScale 从 .import 实测，原始 glb → 场景节点）",
+  "lengthUnit": "meter",
+  "sourceFileCount": 301,
+  "itemCount": 101,
+  "roomCategories": [
+    "Start",
+    "Combat",
+    "Special",
+    "Hidden",
+    "Prototype",
+    "Boss",
+    "Safe"
+  ],
+  "items": [
+    {
+      "id": 1,
+      "name": "Archery Building",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Archery Building.glb",
+      "path": "res://素材/RTS建筑/Archery Building.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.89,
+        2.257,
+        2.483
+      ],
+      "sizeRaw": [
+        1.9268,
+        1.5049,
+        1.6553
+      ],
+      "meshHeightMeters": 2.257,
+      "fitScaleToTarget": 2.07612,
+      "horizontalMeters": 2.89,
+      "triangleCount": 7152,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9268,
+        1.5049,
+        1.6553
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Archery Towers",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Archery Towers.glb",
+      "path": "res://素材/RTS建筑/Archery Towers.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.814,
+        2.257,
+        1.905
+      ],
+      "sizeRaw": [
+        1.8759,
+        1.505,
+        1.2698
+      ],
+      "meshHeightMeters": 2.257,
+      "fitScaleToTarget": 2.1322,
+      "horizontalMeters": 2.814,
+      "triangleCount": 5632,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8759,
+        1.505,
+        1.2698
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Archery Training Grounds",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Archery Training Grounds.glb",
+      "path": "res://素材/RTS建筑/Archery Training Grounds.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.839,
+        1.714,
+        1.5
+      ],
+      "sizeRaw": [
+        1.2259,
+        1.1428,
+        0.9999
+      ],
+      "meshHeightMeters": 1.714,
+      "fitScaleToTarget": 3.26264,
+      "horizontalMeters": 1.839,
+      "triangleCount": 3740,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.2259,
+        1.1428,
+        0.9999
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Barracks",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Barracks.glb",
+      "path": "res://素材/RTS建筑/Barracks.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.514,
+        1.079,
+        1.617
+      ],
+      "sizeRaw": [
+        1.0096,
+        0.7192,
+        1.0781
+      ],
+      "meshHeightMeters": 1.079,
+      "fitScaleToTarget": 3.71058,
+      "horizontalMeters": 1.617,
+      "triangleCount": 1466,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.0096,
+        0.7192,
+        1.0781
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Business Building",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Business Building.glb",
+      "path": "res://素材/RTS建筑/Business Building.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Special",
+        "Start"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.718,
+        1.349,
+        2.152
+      ],
+      "sizeRaw": [
+        1.8119,
+        0.8991,
+        1.4345
+      ],
+      "meshHeightMeters": 1.349,
+      "fitScaleToTarget": 2.20751,
+      "horizontalMeters": 2.718,
+      "triangleCount": 8556,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8119,
+        0.8991,
+        1.4345
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Castle Fortress",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Castle Fortress.glb",
+      "path": "res://素材/RTS建筑/Castle Fortress.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Boss"
+      ],
+      "clearance": 1.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.189,
+        2.029,
+        2.935
+      ],
+      "sizeRaw": [
+        2.1259,
+        1.3524,
+        1.9569
+      ],
+      "meshHeightMeters": 2.029,
+      "fitScaleToTarget": 1.88147,
+      "horizontalMeters": 3.189,
+      "triangleCount": 9750,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1259,
+        1.3524,
+        1.9569
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Castle Gate",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Castle Gate.glb",
+      "path": "res://素材/RTS建筑/Castle Gate.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Boss",
+        "Combat"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.963,
+        1.106,
+        0.5
+      ],
+      "sizeRaw": [
+        1.9756,
+        0.7372,
+        0.3334
+      ],
+      "meshHeightMeters": 1.106,
+      "fitScaleToTarget": 2.02497,
+      "horizontalMeters": 2.963,
+      "triangleCount": 2064,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9756,
+        0.7372,
+        0.3334
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Castle",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Castle.glb",
+      "path": "res://素材/RTS建筑/Castle.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Boss"
+      ],
+      "clearance": 1.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.155,
+        1.405,
+        2.935
+      ],
+      "sizeRaw": [
+        2.1034,
+        0.9369,
+        1.9569
+      ],
+      "meshHeightMeters": 1.405,
+      "fitScaleToTarget": 1.90174,
+      "horizontalMeters": 3.155,
+      "triangleCount": 7050,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1034,
+        0.9369,
+        1.9569
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Crops",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Crops.glb",
+      "path": "res://素材/RTS建筑/Crops.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Special",
+        "Combat"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.684,
+        0.484,
+        2.334
+      ],
+      "sizeRaw": [
+        1.7892,
+        0.3227,
+        1.5558
+      ],
+      "meshHeightMeters": 0.484,
+      "fitScaleToTarget": 2.23547,
+      "horizontalMeters": 2.684,
+      "triangleCount": 35076,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.7892,
+        0.3227,
+        1.5558
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Dock",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Dock.glb",
+      "path": "res://素材/RTS建筑/Dock.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Special",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.015,
+        0.861,
+        0.977
+      ],
+      "sizeRaw": [
+        0.6765,
+        0.5741,
+        0.6513
+      ],
+      "meshHeightMeters": 0.861,
+      "fitScaleToTarget": 5.91133,
+      "horizontalMeters": 1.015,
+      "triangleCount": 296,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.6765,
+        0.5741,
+        0.6513
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Docks",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Docks.glb",
+      "path": "res://素材/RTS建筑/Docks.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.451,
+        1.876,
+        4.316
+      ],
+      "sizeRaw": [
+        2.3007,
+        1.2508,
+        2.8775
+      ],
+      "meshHeightMeters": 1.876,
+      "fitScaleToTarget": 1.39018,
+      "horizontalMeters": 4.316,
+      "triangleCount": 7438,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.3007,
+        1.2508,
+        2.8775
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Farm-91wMLb9kKo",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Farm-91wMLb9kKo.glb",
+      "path": "res://素材/RTS建筑/Farm-91wMLb9kKo.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.867,
+        2.755,
+        2.965
+      ],
+      "sizeRaw": [
+        1.9116,
+        1.8366,
+        1.9767
+      ],
+      "meshHeightMeters": 2.755,
+      "fitScaleToTarget": 2.02361,
+      "horizontalMeters": 2.965,
+      "triangleCount": 4162,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9116,
+        1.8366,
+        1.9767
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Farm-O4wpTLSfIn",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Farm-O4wpTLSfIn.glb",
+      "path": "res://素材/RTS建筑/Farm-O4wpTLSfIn.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.684,
+        0.331,
+        2.16
+      ],
+      "sizeRaw": [
+        1.7892,
+        0.2209,
+        1.4401
+      ],
+      "meshHeightMeters": 0.331,
+      "fitScaleToTarget": 2.23547,
+      "horizontalMeters": 2.684,
+      "triangleCount": 6376,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.7892,
+        0.2209,
+        1.4401
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Fortress",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Fortress.glb",
+      "path": "res://素材/RTS建筑/Fortress.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Boss",
+        "Special"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.183,
+        1.547,
+        1.865
+      ],
+      "sizeRaw": [
+        1.4555,
+        1.0311,
+        1.243
+      ],
+      "meshHeightMeters": 1.547,
+      "fitScaleToTarget": 2.74851,
+      "horizontalMeters": 2.183,
+      "triangleCount": 970,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.4555,
+        1.0311,
+        1.243
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Gold rocks",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Gold rocks.glb",
+      "path": "res://素材/RTS建筑/Gold rocks.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Special",
+        "Hidden",
+        "Boss"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.11,
+        0.633,
+        1.141
+      ],
+      "sizeRaw": [
+        0.7402,
+        0.4217,
+        0.7609
+      ],
+      "meshHeightMeters": 0.633,
+      "fitScaleToTarget": 5.25855,
+      "horizontalMeters": 1.141,
+      "triangleCount": 988,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7402,
+        0.4217,
+        0.7609
+      ]
+    },
+    {
+      "id": 16,
+      "name": "House",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "House.glb",
+      "path": "res://素材/RTS建筑/House.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Combat",
+        "Special"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.304,
+        1.147,
+        1.759
+      ],
+      "sizeRaw": [
+        0.8693,
+        0.7645,
+        1.1724
+      ],
+      "meshHeightMeters": 1.147,
+      "fitScaleToTarget": 3.41103,
+      "horizontalMeters": 1.759,
+      "triangleCount": 1028,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.8693,
+        0.7645,
+        1.1724
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Houses-gEjAC1UvVU",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Houses-gEjAC1UvVU.glb",
+      "path": "res://素材/RTS建筑/Houses-gEjAC1UvVU.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Special"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.881,
+        1.43,
+        2.826
+      ],
+      "sizeRaw": [
+        1.9206,
+        0.9536,
+        1.8839
+      ],
+      "meshHeightMeters": 1.43,
+      "fitScaleToTarget": 2.08261,
+      "horizontalMeters": 2.881,
+      "triangleCount": 5948,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9206,
+        0.9536,
+        1.8839
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Hut",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Hut.glb",
+      "path": "res://素材/RTS建筑/Hut.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Combat"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.304,
+        1.147,
+        1.142
+      ],
+      "sizeRaw": [
+        0.8693,
+        0.7645,
+        0.7614
+      ],
+      "meshHeightMeters": 1.147,
+      "fitScaleToTarget": 4.60123,
+      "horizontalMeters": 1.304,
+      "triangleCount": 404,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.8693,
+        0.7645,
+        0.7614
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Huts",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Huts.glb",
+      "path": "res://素材/RTS建筑/Huts.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Combat"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.982,
+        0.861,
+        2.158
+      ],
+      "sizeRaw": [
+        1.3213,
+        0.5741,
+        1.4387
+      ],
+      "meshHeightMeters": 0.861,
+      "fitScaleToTarget": 2.78035,
+      "horizontalMeters": 2.158,
+      "triangleCount": 1734,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3213,
+        0.5741,
+        1.4387
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Logs",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Logs.glb",
+      "path": "res://素材/RTS建筑/Logs.glb",
+      "layer": "Ground",
+      "weight": 7,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.742,
+        0.369,
+        1.253
+      ],
+      "sizeRaw": [
+        1.1616,
+        0.2457,
+        0.8352
+      ],
+      "meshHeightMeters": 0.369,
+      "fitScaleToTarget": 3.44432,
+      "horizontalMeters": 1.742,
+      "triangleCount": 940,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.1616,
+        0.2457,
+        0.8352
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Market Stalls",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Market Stalls.glb",
+      "path": "res://素材/RTS建筑/Market Stalls.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Special",
+        "Start",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.432,
+        0.827,
+        1.827
+      ],
+      "sizeRaw": [
+        1.6212,
+        0.5515,
+        1.2182
+      ],
+      "meshHeightMeters": 0.827,
+      "fitScaleToTarget": 2.46711,
+      "horizontalMeters": 2.432,
+      "triangleCount": 3896,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.6212,
+        0.5515,
+        1.2182
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Mine",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Mine.glb",
+      "path": "res://素材/RTS建筑/Mine.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Special"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.926,
+        1.754,
+        2.042
+      ],
+      "sizeRaw": [
+        1.2843,
+        1.1693,
+        1.3612
+      ],
+      "meshHeightMeters": 1.754,
+      "fitScaleToTarget": 2.9383,
+      "horizontalMeters": 2.042,
+      "triangleCount": 2294,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.2843,
+        1.1693,
+        1.3612
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Mountain Group",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Mountain Group.glb",
+      "path": "res://素材/RTS建筑/Mountain Group.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        5.363,
+        3.667,
+        3.694
+      ],
+      "sizeRaw": [
+        3.5754,
+        2.4448,
+        2.4629
+      ],
+      "meshHeightMeters": 3.667,
+      "fitScaleToTarget": 1.11878,
+      "horizontalMeters": 5.363,
+      "triangleCount": 717,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.5754,
+        2.4448,
+        2.4629
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Mountain",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Mountain.glb",
+      "path": "res://素材/RTS建筑/Mountain.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.245,
+        2.055,
+        1.676
+      ],
+      "sizeRaw": [
+        1.4965,
+        1.3697,
+        1.1173
+      ],
+      "meshHeightMeters": 2.055,
+      "fitScaleToTarget": 2.67261,
+      "horizontalMeters": 2.245,
+      "triangleCount": 194,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.4965,
+        1.3697,
+        1.1173
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Pine Trees",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Pine Trees.glb",
+      "path": "res://素材/RTS建筑/Pine Trees.glb",
+      "layer": "Ground",
+      "weight": 7,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.67,
+        1.182,
+        2.589
+      ],
+      "sizeRaw": [
+        1.7797,
+        0.7882,
+        1.7257
+      ],
+      "meshHeightMeters": 1.182,
+      "fitScaleToTarget": 2.24719,
+      "horizontalMeters": 2.67,
+      "triangleCount": 3666,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.7797,
+        0.7882,
+        1.7257
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Port",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Port.glb",
+      "path": "res://素材/RTS建筑/Port.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.766,
+        1.457,
+        2.972
+      ],
+      "sizeRaw": [
+        1.8439,
+        0.9712,
+        1.9815
+      ],
+      "meshHeightMeters": 1.457,
+      "fitScaleToTarget": 2.01884,
+      "horizontalMeters": 2.972,
+      "triangleCount": 4676,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8439,
+        0.9712,
+        1.9815
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Resource Gold",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Resource Gold.glb",
+      "path": "res://素材/RTS建筑/Resource Gold.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Special",
+        "Hidden"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.047,
+        0.451,
+        1.073
+      ],
+      "sizeRaw": [
+        0.6982,
+        0.3006,
+        0.7151
+      ],
+      "meshHeightMeters": 0.451,
+      "fitScaleToTarget": 5.5918,
+      "horizontalMeters": 1.073,
+      "triangleCount": 1016,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.6982,
+        0.3006,
+        0.7151
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Rock-JmFMh7ztL9",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Rock-JmFMh7ztL9.glb",
+      "path": "res://素材/RTS建筑/Rock-JmFMh7ztL9.glb",
+      "layer": "Ground",
+      "weight": 8,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.895,
+        0.583,
+        0.988
+      ],
+      "sizeRaw": [
+        0.5969,
+        0.3885,
+        0.6584
+      ],
+      "meshHeightMeters": 0.583,
+      "fitScaleToTarget": 6.07287,
+      "horizontalMeters": 0.988,
+      "triangleCount": 588,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.5969,
+        0.3885,
+        0.6584
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Rock-RtLRqYjfMs",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Rock-RtLRqYjfMs.glb",
+      "path": "res://素材/RTS建筑/Rock-RtLRqYjfMs.glb",
+      "layer": "Ground",
+      "weight": 8,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.928,
+        0.849,
+        1.047
+      ],
+      "sizeRaw": [
+        0.6189,
+        0.5663,
+        0.6978
+      ],
+      "meshHeightMeters": 0.849,
+      "fitScaleToTarget": 5.73066,
+      "horizontalMeters": 1.047,
+      "triangleCount": 632,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.6189,
+        0.5663,
+        0.6978
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Shack",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Shack.glb",
+      "path": "res://素材/RTS建筑/Shack.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Combat",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.366,
+        1.153,
+        1.762
+      ],
+      "sizeRaw": [
+        0.9108,
+        0.7685,
+        1.1748
+      ],
+      "meshHeightMeters": 1.153,
+      "fitScaleToTarget": 3.40522,
+      "horizontalMeters": 1.762,
+      "triangleCount": 804,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.9108,
+        0.7685,
+        1.1748
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Shipping Port",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Shipping Port.glb",
+      "path": "res://素材/RTS建筑/Shipping Port.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.962,
+        1.457,
+        1.086
+      ],
+      "sizeRaw": [
+        1.3079,
+        0.9712,
+        0.7242
+      ],
+      "meshHeightMeters": 1.457,
+      "fitScaleToTarget": 3.0581,
+      "horizontalMeters": 1.962,
+      "triangleCount": 3364,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3079,
+        0.9712,
+        0.7242
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Small Farm",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Small Farm.glb",
+      "path": "res://素材/RTS建筑/Small Farm.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Special"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.719,
+        1.606,
+        1.665
+      ],
+      "sizeRaw": [
+        1.8124,
+        1.0705,
+        1.1098
+      ],
+      "meshHeightMeters": 1.606,
+      "fitScaleToTarget": 2.20669,
+      "horizontalMeters": 2.719,
+      "triangleCount": 2232,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8124,
+        1.0705,
+        1.1098
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Small Watch Tower",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Small Watch Tower.glb",
+      "path": "res://素材/RTS建筑/Small Watch Tower.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.71,
+        1.256,
+        0.779
+      ],
+      "sizeRaw": [
+        0.473,
+        0.8373,
+        0.5193
+      ],
+      "meshHeightMeters": 1.256,
+      "fitScaleToTarget": 7.70218,
+      "horizontalMeters": 0.779,
+      "triangleCount": 588,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.473,
+        0.8373,
+        0.5193
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Stone Tower",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Stone Tower.glb",
+      "path": "res://素材/RTS建筑/Stone Tower.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.258,
+        2.036,
+        0.921
+      ],
+      "sizeRaw": [
+        0.8384,
+        1.3571,
+        0.6139
+      ],
+      "meshHeightMeters": 2.036,
+      "fitScaleToTarget": 4.76948,
+      "horizontalMeters": 1.258,
+      "triangleCount": 3216,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.8384,
+        1.3571,
+        0.6139
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Stone Wall Towers",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Stone Wall Towers.glb",
+      "path": "res://素材/RTS建筑/Stone Wall Towers.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Boss",
+        "Combat"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.963,
+        1.103,
+        0.5
+      ],
+      "sizeRaw": [
+        1.9756,
+        0.7353,
+        0.3334
+      ],
+      "meshHeightMeters": 1.103,
+      "fitScaleToTarget": 2.02497,
+      "horizontalMeters": 2.963,
+      "triangleCount": 1792,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9756,
+        0.7353,
+        0.3334
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Stone Wall",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Stone Wall.glb",
+      "path": "res://素材/RTS建筑/Stone Wall.glb",
+      "layer": "Wall",
+      "weight": 6,
+      "categoryMask": [
+        "Boss",
+        "Combat",
+        "Special"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.341,
+        0.669,
+        0.37
+      ],
+      "sizeRaw": [
+        1.5604,
+        0.4459,
+        0.2467
+      ],
+      "meshHeightMeters": 0.669,
+      "fitScaleToTarget": 2.56301,
+      "horizontalMeters": 2.341,
+      "triangleCount": 216,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.5604,
+        0.4459,
+        0.2467
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Storage House",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Storage House.glb",
+      "path": "res://素材/RTS建筑/Storage House.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Special",
+        "Combat",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.474,
+        1.337,
+        1.878
+      ],
+      "sizeRaw": [
+        1.6494,
+        0.891,
+        1.252
+      ],
+      "meshHeightMeters": 1.337,
+      "fitScaleToTarget": 2.42522,
+      "horizontalMeters": 2.474,
+      "triangleCount": 8744,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.6494,
+        0.891,
+        1.252
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Storage Hut",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Storage Hut.glb",
+      "path": "res://素材/RTS建筑/Storage Hut.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Combat",
+        "Safe",
+        "Start"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.116,
+        1.142,
+        2.199
+      ],
+      "sizeRaw": [
+        1.4105,
+        0.7613,
+        1.4661
+      ],
+      "meshHeightMeters": 1.142,
+      "fitScaleToTarget": 2.72851,
+      "horizontalMeters": 2.199,
+      "triangleCount": 4088,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.4105,
+        0.7613,
+        1.4661
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Storage shed-fkTsDdpQAA",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Storage shed-fkTsDdpQAA.glb",
+      "path": "res://素材/RTS建筑/Storage shed-fkTsDdpQAA.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Combat",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.585,
+        0.752,
+        2.07
+      ],
+      "sizeRaw": [
+        1.7231,
+        0.5016,
+        1.3797
+      ],
+      "meshHeightMeters": 0.752,
+      "fitScaleToTarget": 2.32108,
+      "horizontalMeters": 2.585,
+      "triangleCount": 8160,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.7231,
+        0.5016,
+        1.3797
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Temple First Age Leve",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Temple First Age Leve.glb",
+      "path": "res://素材/RTS建筑/Temple First Age Leve.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Special",
+        "Safe"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.715,
+        4.618,
+        2.715
+      ],
+      "sizeRaw": [
+        1.8103,
+        3.0785,
+        1.8103
+      ],
+      "meshHeightMeters": 4.618,
+      "fitScaleToTarget": 2.20994,
+      "horizontalMeters": 2.715,
+      "triangleCount": 11076,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8103,
+        3.0785,
+        1.8103
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Temple-CE2Mn7lh6A",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Temple-CE2Mn7lh6A.glb",
+      "path": "res://素材/RTS建筑/Temple-CE2Mn7lh6A.glb",
+      "layer": "Ground",
+      "weight": 2,
+      "categoryMask": [
+        "Special",
+        "Safe"
+      ],
+      "clearance": 1.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.287,
+        6.494,
+        3.287
+      ],
+      "sizeRaw": [
+        2.1913,
+        4.3291,
+        2.1913
+      ],
+      "meshHeightMeters": 6.494,
+      "fitScaleToTarget": 1.82537,
+      "horizontalMeters": 3.287,
+      "triangleCount": 5412,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1913,
+        4.3291,
+        2.1913
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Temple",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Temple.glb",
+      "path": "res://素材/RTS建筑/Temple.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Special",
+        "Safe",
+        "Start"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.618,
+        4.196,
+        2.952
+      ],
+      "sizeRaw": [
+        1.7451,
+        2.7972,
+        1.9682
+      ],
+      "meshHeightMeters": 4.196,
+      "fitScaleToTarget": 2.03252,
+      "horizontalMeters": 2.952,
+      "triangleCount": 443,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.7451,
+        2.7972,
+        1.9682
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Tower House",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Tower House.glb",
+      "path": "res://素材/RTS建筑/Tower House.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.056,
+        2.256,
+        1.755
+      ],
+      "sizeRaw": [
+        1.3706,
+        1.5041,
+        1.17
+      ],
+      "meshHeightMeters": 2.256,
+      "fitScaleToTarget": 2.91829,
+      "horizontalMeters": 2.056,
+      "triangleCount": 3824,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3706,
+        1.5041,
+        1.17
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Town Center-76GTkSh4KM",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Town Center-76GTkSh4KM.glb",
+      "path": "res://素材/RTS建筑/Town Center-76GTkSh4KM.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Special"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.896,
+        1.881,
+        1.861
+      ],
+      "sizeRaw": [
+        1.2638,
+        1.2538,
+        1.2406
+      ],
+      "meshHeightMeters": 1.881,
+      "fitScaleToTarget": 3.16456,
+      "horizontalMeters": 1.896,
+      "triangleCount": 5408,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.2638,
+        1.2538,
+        1.2406
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Town Center-cuQuFJEIfH",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Town Center-cuQuFJEIfH.glb",
+      "path": "res://素材/RTS建筑/Town Center-cuQuFJEIfH.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Start",
+        "Special"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.784,
+        1.916,
+        2.784
+      ],
+      "sizeRaw": [
+        1.8559,
+        1.2771,
+        1.8559
+      ],
+      "meshHeightMeters": 1.916,
+      "fitScaleToTarget": 2.15517,
+      "horizontalMeters": 2.784,
+      "triangleCount": 4604,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8559,
+        1.2771,
+        1.8559
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Trees",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Trees.glb",
+      "path": "res://素材/RTS建筑/Trees.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.955,
+        1.39,
+        2.795
+      ],
+      "sizeRaw": [
+        1.9699,
+        0.9265,
+        1.8636
+      ],
+      "meshHeightMeters": 1.39,
+      "fitScaleToTarget": 2.03046,
+      "horizontalMeters": 2.955,
+      "triangleCount": 4776,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9699,
+        0.9265,
+        1.8636
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Village Market",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Village Market.glb",
+      "path": "res://素材/RTS建筑/Village Market.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Special",
+        "Start"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.836,
+        0.829,
+        3.163
+      ],
+      "sizeRaw": [
+        1.8908,
+        0.5526,
+        2.1084
+      ],
+      "meshHeightMeters": 0.829,
+      "fitScaleToTarget": 1.89693,
+      "horizontalMeters": 3.163,
+      "triangleCount": 6986,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8908,
+        0.5526,
+        2.1084
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Wall Towers",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wall Towers.glb",
+      "path": "res://素材/RTS建筑/Wall Towers.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Boss",
+        "Combat"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.913,
+        1.009,
+        0.47
+      ],
+      "sizeRaw": [
+        1.9421,
+        0.6725,
+        0.3135
+      ],
+      "meshHeightMeters": 1.009,
+      "fitScaleToTarget": 2.05973,
+      "horizontalMeters": 2.913,
+      "triangleCount": 1420,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9421,
+        0.6725,
+        0.3135
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Watch Tower",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Watch Tower.glb",
+      "path": "res://素材/RTS建筑/Watch Tower.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.758,
+        2.194,
+        0.779
+      ],
+      "sizeRaw": [
+        0.505,
+        1.4625,
+        0.5193
+      ],
+      "meshHeightMeters": 2.194,
+      "fitScaleToTarget": 7.70218,
+      "horizontalMeters": 0.779,
+      "triangleCount": 700,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.505,
+        1.4625,
+        0.5193
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Wonder First Age Leve",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wonder First Age Leve.glb",
+      "path": "res://素材/RTS建筑/Wonder First Age Leve.glb",
+      "layer": "Ground",
+      "weight": 2,
+      "categoryMask": [
+        "Special"
+      ],
+      "clearance": 1.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.296,
+        2.402,
+        2.926
+      ],
+      "sizeRaw": [
+        2.1975,
+        1.6016,
+        1.9504
+      ],
+      "meshHeightMeters": 2.402,
+      "fitScaleToTarget": 1.82039,
+      "horizontalMeters": 3.296,
+      "triangleCount": 11364,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1975,
+        1.6016,
+        1.9504
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Wooden Encampment",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wooden Encampment.glb",
+      "path": "res://素材/RTS建筑/Wooden Encampment.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Combat"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.296,
+        1.602,
+        2.926
+      ],
+      "sizeRaw": [
+        2.1975,
+        1.0682,
+        1.9504
+      ],
+      "meshHeightMeters": 1.602,
+      "fitScaleToTarget": 1.82039,
+      "horizontalMeters": 3.296,
+      "triangleCount": 4100,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1975,
+        1.0682,
+        1.9504
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Wooden Fortress Gate",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wooden Fortress Gate.glb",
+      "path": "res://素材/RTS建筑/Wooden Fortress Gate.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Boss",
+        "Combat"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.913,
+        1.009,
+        0.47
+      ],
+      "sizeRaw": [
+        1.9421,
+        0.6725,
+        0.3135
+      ],
+      "meshHeightMeters": 1.009,
+      "fitScaleToTarget": 2.05973,
+      "horizontalMeters": 2.913,
+      "triangleCount": 1528,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.9421,
+        0.6725,
+        0.3135
+      ]
+    },
+    {
+      "id": 53,
+      "name": "Wooden Fortress",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wooden Fortress.glb",
+      "path": "res://素材/RTS建筑/Wooden Fortress.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Boss",
+        "Combat"
+      ],
+      "clearance": 1.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.296,
+        2.046,
+        2.926
+      ],
+      "sizeRaw": [
+        2.1975,
+        1.3638,
+        1.9504
+      ],
+      "meshHeightMeters": 2.046,
+      "fitScaleToTarget": 1.82039,
+      "horizontalMeters": 3.296,
+      "triangleCount": 8372,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1975,
+        1.3638,
+        1.9504
+      ]
+    },
+    {
+      "id": 54,
+      "name": "Wooden Monument",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wooden Monument.glb",
+      "path": "res://素材/RTS建筑/Wooden Monument.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Special",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.886,
+        2.024,
+        1.886
+      ],
+      "sizeRaw": [
+        1.2573,
+        1.3491,
+        1.2573
+      ],
+      "meshHeightMeters": 2.024,
+      "fitScaleToTarget": 3.18134,
+      "horizontalMeters": 1.886,
+      "triangleCount": 4272,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.2573,
+        1.3491,
+        1.2573
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Wooden Wall",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wooden Wall.glb",
+      "path": "res://素材/RTS建筑/Wooden Wall.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Boss",
+        "Combat",
+        "Special"
+      ],
+      "clearance": 0.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.028,
+        0.789,
+        0.088
+      ],
+      "sizeRaw": [
+        1.3519,
+        0.526,
+        0.0589
+      ],
+      "meshHeightMeters": 0.789,
+      "fitScaleToTarget": 2.95858,
+      "horizontalMeters": 2.028,
+      "triangleCount": 404,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3519,
+        0.526,
+        0.0589
+      ]
+    },
+    {
+      "id": 56,
+      "name": "Wooden house tower",
+      "sourceFolder": "RTS建筑",
+      "sourceFile": "Wooden house tower.glb",
+      "path": "res://素材/RTS建筑/Wooden house tower.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.079,
+        2.208,
+        1.755
+      ],
+      "sizeRaw": [
+        1.3857,
+        1.4722,
+        1.17
+      ],
+      "meshHeightMeters": 2.208,
+      "fitScaleToTarget": 2.886,
+      "horizontalMeters": 2.079,
+      "triangleCount": 1848,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3857,
+        1.4722,
+        1.17
+      ]
+    },
+    {
+      "id": 57,
+      "name": "House",
+      "sourceFolder": "小房子",
+      "sourceFile": "House.glb",
+      "path": "res://素材/小房子/House.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Special"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.95,
+        1.106,
+        1.374
+      ],
+      "sizeRaw": [
+        1.3,
+        0.7375,
+        0.916
+      ],
+      "meshHeightMeters": 1.106,
+      "fitScaleToTarget": 3.07692,
+      "horizontalMeters": 1.95,
+      "triangleCount": 298,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3,
+        0.7375,
+        0.916
+      ]
+    },
+    {
+      "id": 58,
+      "name": "Two story house",
+      "sourceFolder": "小房子",
+      "sourceFile": "Two story house.glb",
+      "path": "res://素材/小房子/Two story house.glb",
+      "layer": "Ground",
+      "weight": 5,
+      "categoryMask": [
+        "Start",
+        "Safe",
+        "Special"
+      ],
+      "clearance": 0.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.95,
+        1.706,
+        1.974
+      ],
+      "sizeRaw": [
+        1.3,
+        1.1375,
+        1.3163
+      ],
+      "meshHeightMeters": 1.706,
+      "fitScaleToTarget": 3.03951,
+      "horizontalMeters": 1.974,
+      "triangleCount": 776,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3,
+        1.1375,
+        1.3163
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Anchor",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Anchor.glb",
+      "path": "res://素材/海盗场景带动画/Anchor.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.171,
+        0.14,
+        1.426
+      ],
+      "sizeRaw": [
+        0.7807,
+        0.0932,
+        0.9507
+      ],
+      "meshHeightMeters": 0.14,
+      "fitScaleToTarget": 4.20757,
+      "horizontalMeters": 1.426,
+      "triangleCount": 544,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7807,
+        0.0932,
+        0.9507
+      ]
+    },
+    {
+      "id": 60,
+      "name": "Barrel",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Barrel.glb",
+      "path": "res://素材/海盗场景带动画/Barrel.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.072,
+        0.99,
+        1.072
+      ],
+      "sizeRaw": [
+        0.7147,
+        0.6599,
+        0.7147
+      ],
+      "meshHeightMeters": 0.99,
+      "fitScaleToTarget": 5.59701,
+      "horizontalMeters": 1.072,
+      "triangleCount": 640,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7147,
+        0.6599,
+        0.7147
+      ]
+    },
+    {
+      "id": 61,
+      "name": "Bucket of Fish",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Bucket of Fish.glb",
+      "path": "res://素材/海盗场景带动画/Bucket of Fish.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.29,
+        1.021,
+        1.73
+      ],
+      "sizeRaw": [
+        0.8598,
+        0.6808,
+        1.153
+      ],
+      "meshHeightMeters": 1.021,
+      "fitScaleToTarget": 3.46821,
+      "horizontalMeters": 1.73,
+      "triangleCount": 3860,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.8598,
+        0.6808,
+        1.153
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Bucket",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Bucket.glb",
+      "path": "res://素材/海盗场景带动画/Bucket.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.139,
+        1.019,
+        1.072
+      ],
+      "sizeRaw": [
+        0.7596,
+        0.6795,
+        0.7147
+      ],
+      "meshHeightMeters": 1.019,
+      "fitScaleToTarget": 5.26778,
+      "horizontalMeters": 1.139,
+      "triangleCount": 532,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7596,
+        0.6795,
+        0.7147
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Cannon",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Cannon.glb",
+      "path": "res://素材/海盗场景带动画/Cannon.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.558,
+        1.695,
+        2.224
+      ],
+      "sizeRaw": [
+        1.039,
+        1.1297,
+        1.4827
+      ],
+      "meshHeightMeters": 1.695,
+      "fitScaleToTarget": 2.69784,
+      "horizontalMeters": 2.224,
+      "triangleCount": 2362,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.039,
+        1.1297,
+        1.4827
+      ]
+    },
+    {
+      "id": 64,
+      "name": "Chest Closed",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Chest Closed.glb",
+      "path": "res://素材/海盗场景带动画/Chest Closed.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Special",
+        "Hidden",
+        "Boss"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.092,
+        1.322,
+        1.331
+      ],
+      "sizeRaw": [
+        1.3948,
+        0.8812,
+        0.8874
+      ],
+      "meshHeightMeters": 1.322,
+      "fitScaleToTarget": 2.86807,
+      "horizontalMeters": 2.092,
+      "triangleCount": 1636,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.3948,
+        0.8813,
+        0.8874
+      ]
+    },
+    {
+      "id": 65,
+      "name": "Chest Gold",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Chest Gold.glb",
+      "path": "res://素材/海盗场景带动画/Chest Gold.glb",
+      "layer": "Ground",
+      "weight": 3,
+      "categoryMask": [
+        "Special",
+        "Hidden",
+        "Boss"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.725,
+        1.927,
+        2.382
+      ],
+      "sizeRaw": [
+        1.817,
+        1.285,
+        1.5883
+      ],
+      "meshHeightMeters": 1.927,
+      "fitScaleToTarget": 2.20183,
+      "horizontalMeters": 2.725,
+      "triangleCount": 7368,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.817,
+        1.285,
+        1.5883
+      ]
+    },
+    {
+      "id": 66,
+      "name": "Dock Broken",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Dock Broken.glb",
+      "path": "res://素材/海盗场景带动画/Dock Broken.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.577,
+        4.519,
+        3.985
+      ],
+      "sizeRaw": [
+        2.3846,
+        3.0127,
+        2.6568
+      ],
+      "meshHeightMeters": 4.519,
+      "fitScaleToTarget": 1.50565,
+      "horizontalMeters": 3.985,
+      "triangleCount": 2052,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.3846,
+        3.0127,
+        2.6568
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Dock",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Dock.glb",
+      "path": "res://素材/海盗场景带动画/Dock.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.276,
+        4.519,
+        3.985
+      ],
+      "sizeRaw": [
+        2.1842,
+        3.0127,
+        2.6568
+      ],
+      "meshHeightMeters": 4.519,
+      "fitScaleToTarget": 1.50565,
+      "horizontalMeters": 3.985,
+      "triangleCount": 1912,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.1842,
+        3.0127,
+        2.6568
+      ]
+    },
+    {
+      "id": 68,
+      "name": "Palm Tree-A6cKJYFsIb",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Palm Tree-A6cKJYFsIb.glb",
+      "path": "res://素材/海盗场景带动画/Palm Tree-A6cKJYFsIb.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        4.294,
+        4.033,
+        4.13
+      ],
+      "sizeRaw": [
+        2.8628,
+        2.6887,
+        2.7534
+      ],
+      "meshHeightMeters": 4.033,
+      "fitScaleToTarget": 1.3973,
+      "horizontalMeters": 4.294,
+      "triangleCount": 3134,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.8628,
+        2.6887,
+        2.7534
+      ]
+    },
+    {
+      "id": 69,
+      "name": "Palm Tree-P0tgwyXBgr",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Palm Tree-P0tgwyXBgr.glb",
+      "path": "res://素材/海盗场景带动画/Palm Tree-P0tgwyXBgr.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.954,
+        4.028,
+        3.867
+      ],
+      "sizeRaw": [
+        2.6363,
+        2.6853,
+        2.5777
+      ],
+      "meshHeightMeters": 4.028,
+      "fitScaleToTarget": 1.51745,
+      "horizontalMeters": 3.954,
+      "triangleCount": 2924,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.6363,
+        2.6853,
+        2.5777
+      ]
+    },
+    {
+      "id": 70,
+      "name": "Palm Tree",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Palm Tree.glb",
+      "path": "res://素材/海盗场景带动画/Palm Tree.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.915,
+        5.381,
+        3.777
+      ],
+      "sizeRaw": [
+        2.6097,
+        3.5874,
+        2.5182
+      ],
+      "meshHeightMeters": 5.381,
+      "fitScaleToTarget": 1.53257,
+      "horizontalMeters": 3.915,
+      "triangleCount": 3208,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.6097,
+        3.5874,
+        2.5182
+      ]
+    },
+    {
+      "id": 71,
+      "name": "Rock-4vHWF8XUBn",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Rock-4vHWF8XUBn.glb",
+      "path": "res://素材/海盗场景带动画/Rock-4vHWF8XUBn.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.155,
+        0.918,
+        0.876
+      ],
+      "sizeRaw": [
+        0.77,
+        0.6117,
+        0.5839
+      ],
+      "meshHeightMeters": 0.918,
+      "fitScaleToTarget": 5.19481,
+      "horizontalMeters": 1.155,
+      "triangleCount": 709,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.77,
+        0.6117,
+        0.5839
+      ]
+    },
+    {
+      "id": 72,
+      "name": "Rock-6cytS1cPiL",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Rock-6cytS1cPiL.glb",
+      "path": "res://素材/海盗场景带动画/Rock-6cytS1cPiL.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.144,
+        1.067,
+        1.119
+      ],
+      "sizeRaw": [
+        0.7628,
+        0.7114,
+        0.746
+      ],
+      "meshHeightMeters": 1.067,
+      "fitScaleToTarget": 5.24476,
+      "horizontalMeters": 1.144,
+      "triangleCount": 709,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7628,
+        0.7114,
+        0.746
+      ]
+    },
+    {
+      "id": 73,
+      "name": "Rock-BvlfuHFAuI",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Rock-BvlfuHFAuI.glb",
+      "path": "res://素材/海盗场景带动画/Rock-BvlfuHFAuI.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.175,
+        1.574,
+        1.138
+      ],
+      "sizeRaw": [
+        0.7832,
+        1.0496,
+        0.7585
+      ],
+      "meshHeightMeters": 1.574,
+      "fitScaleToTarget": 5.10638,
+      "horizontalMeters": 1.175,
+      "triangleCount": 3072,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7832,
+        1.0496,
+        0.7585
+      ]
+    },
+    {
+      "id": 74,
+      "name": "Rock-KvXSMwoftt",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Rock-KvXSMwoftt.glb",
+      "path": "res://素材/海盗场景带动画/Rock-KvXSMwoftt.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.606,
+        0.609,
+        0.585
+      ],
+      "sizeRaw": [
+        0.4043,
+        0.4062,
+        0.3903
+      ],
+      "meshHeightMeters": 0.609,
+      "fitScaleToTarget": 9.90099,
+      "horizontalMeters": 0.606,
+      "triangleCount": 716,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.4043,
+        0.4062,
+        0.3903
+      ]
+    },
+    {
+      "id": 75,
+      "name": "Rock-cg6yBEddtZ",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Rock-cg6yBEddtZ.glb",
+      "path": "res://素材/海盗场景带动画/Rock-cg6yBEddtZ.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.908,
+        0.907,
+        0.878
+      ],
+      "sizeRaw": [
+        0.6053,
+        0.6046,
+        0.5856
+      ],
+      "meshHeightMeters": 0.907,
+      "fitScaleToTarget": 6.60793,
+      "horizontalMeters": 0.908,
+      "triangleCount": 713,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.6053,
+        0.6046,
+        0.5856
+      ]
+    },
+    {
+      "id": 76,
+      "name": "Rock",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Rock.glb",
+      "path": "res://素材/海盗场景带动画/Rock.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.032,
+        0.881,
+        0.986
+      ],
+      "sizeRaw": [
+        0.6881,
+        0.5872,
+        0.6574
+      ],
+      "meshHeightMeters": 0.881,
+      "fitScaleToTarget": 5.81395,
+      "horizontalMeters": 1.032,
+      "triangleCount": 763,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.6881,
+        0.5872,
+        0.6574
+      ]
+    },
+    {
+      "id": 77,
+      "name": "Sawmill",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Sawmill.glb",
+      "path": "res://素材/海盗场景带动画/Sawmill.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.102,
+        0.89,
+        3.097
+      ],
+      "sizeRaw": [
+        2.0678,
+        0.5934,
+        2.0648
+      ],
+      "meshHeightMeters": 0.89,
+      "fitScaleToTarget": 1.93424,
+      "horizontalMeters": 3.102,
+      "triangleCount": 830,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.0678,
+        0.5934,
+        2.0648
+      ]
+    },
+    {
+      "id": 78,
+      "name": "Wood",
+      "sourceFolder": "海盗场景带动画",
+      "sourceFile": "Wood.glb",
+      "path": "res://素材/海盗场景带动画/Wood.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.4,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.837,
+        0.702,
+        0.801
+      ],
+      "sizeRaw": [
+        0.5581,
+        0.4678,
+        0.5338
+      ],
+      "meshHeightMeters": 0.702,
+      "fitScaleToTarget": 7.16846,
+      "horizontalMeters": 0.837,
+      "triangleCount": 420,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.5581,
+        0.4678,
+        0.5338
+      ]
+    },
+    {
+      "id": 79,
+      "name": "Emp Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Emp Turret.glb",
+      "path": "res://素材/炮台/Emp Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        5.326,
+        4.431,
+        5.326
+      ],
+      "sizeRaw": [
+        3.5506,
+        2.954,
+        3.5506
+      ],
+      "meshHeightMeters": 4.431,
+      "fitScaleToTarget": 1.12655,
+      "horizontalMeters": 5.326,
+      "triangleCount": 514,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.5506,
+        2.954,
+        3.5506
+      ]
+    },
+    {
+      "id": 80,
+      "name": "Flamethrower Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Flamethrower Turret.glb",
+      "path": "res://素材/炮台/Flamethrower Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        6.627,
+        4.214,
+        7.374
+      ],
+      "sizeRaw": [
+        4.4183,
+        2.8093,
+        4.9158
+      ],
+      "meshHeightMeters": 4.214,
+      "fitScaleToTarget": 0.81367,
+      "horizontalMeters": 7.374,
+      "triangleCount": 1744,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        4.4183,
+        2.8093,
+        4.9158
+      ]
+    },
+    {
+      "id": 81,
+      "name": "Gatelng Gun Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Gatelng Gun Turret.glb",
+      "path": "res://素材/炮台/Gatelng Gun Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        4.882,
+        3.694,
+        5.486
+      ],
+      "sizeRaw": [
+        3.2547,
+        2.4627,
+        3.6576
+      ],
+      "meshHeightMeters": 3.694,
+      "fitScaleToTarget": 1.09369,
+      "horizontalMeters": 5.486,
+      "triangleCount": 5788,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.2547,
+        2.4627,
+        3.6576
+      ]
+    },
+    {
+      "id": 82,
+      "name": "Gun Cannon Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Gun Cannon Turret.glb",
+      "path": "res://素材/炮台/Gun Cannon Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.994,
+        5.246,
+        7.21
+      ],
+      "sizeRaw": [
+        2.6624,
+        3.4972,
+        4.8069
+      ],
+      "meshHeightMeters": 5.246,
+      "fitScaleToTarget": 0.83218,
+      "horizontalMeters": 7.21,
+      "triangleCount": 828,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.6624,
+        3.4972,
+        4.8069
+      ]
+    },
+    {
+      "id": 83,
+      "name": "Hive Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Hive Turret.glb",
+      "path": "res://素材/炮台/Hive Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.397,
+        6.487,
+        3.397
+      ],
+      "sizeRaw": [
+        2.2645,
+        4.3244,
+        2.2645
+      ],
+      "meshHeightMeters": 6.487,
+      "fitScaleToTarget": 1.76626,
+      "horizontalMeters": 3.397,
+      "triangleCount": 664,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.2645,
+        4.3244,
+        2.2645
+      ]
+    },
+    {
+      "id": 84,
+      "name": "Lighting Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Lighting Turret.glb",
+      "path": "res://素材/炮台/Lighting Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        5.293,
+        7.389,
+        5.293
+      ],
+      "sizeRaw": [
+        3.5284,
+        4.926,
+        3.5284
+      ],
+      "meshHeightMeters": 7.389,
+      "fitScaleToTarget": 1.13357,
+      "horizontalMeters": 5.293,
+      "triangleCount": 564,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.5284,
+        4.926,
+        3.5284
+      ]
+    },
+    {
+      "id": 85,
+      "name": "Missile Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Missile Turret.glb",
+      "path": "res://素材/炮台/Missile Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        5.4,
+        4.251,
+        4.439
+      ],
+      "sizeRaw": [
+        3.5998,
+        2.834,
+        2.9593
+      ],
+      "meshHeightMeters": 4.251,
+      "fitScaleToTarget": 1.11111,
+      "horizontalMeters": 5.4,
+      "triangleCount": 1504,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.5998,
+        2.834,
+        2.9593
+      ]
+    },
+    {
+      "id": 86,
+      "name": "Plasma Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Plasma Turret.glb",
+      "path": "res://素材/炮台/Plasma Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        4.867,
+        4.26,
+        5.605
+      ],
+      "sizeRaw": [
+        3.2448,
+        2.8399,
+        3.7365
+      ],
+      "meshHeightMeters": 4.26,
+      "fitScaleToTarget": 1.07047,
+      "horizontalMeters": 5.605,
+      "triangleCount": 2248,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.2448,
+        2.8399,
+        3.7365
+      ]
+    },
+    {
+      "id": 87,
+      "name": "Rail Gun Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Rail Gun Turret.glb",
+      "path": "res://素材/炮台/Rail Gun Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        4.194,
+        4.352,
+        6.825
+      ],
+      "sizeRaw": [
+        2.7959,
+        2.9015,
+        4.55
+      ],
+      "meshHeightMeters": 4.352,
+      "fitScaleToTarget": 0.87912,
+      "horizontalMeters": 6.825,
+      "triangleCount": 802,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.7959,
+        2.9015,
+        4.55
+      ]
+    },
+    {
+      "id": 88,
+      "name": "Shield Turret",
+      "sourceFolder": "炮台",
+      "sourceFile": "Shield Turret.glb",
+      "path": "res://素材/炮台/Shield Turret.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Boss",
+        "Prototype"
+      ],
+      "clearance": 1.6,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        5.542,
+        5.677,
+        5.542
+      ],
+      "sizeRaw": [
+        3.6947,
+        3.7848,
+        3.6947
+      ],
+      "meshHeightMeters": 5.677,
+      "fitScaleToTarget": 1.08264,
+      "horizontalMeters": 5.542,
+      "triangleCount": 648,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.6947,
+        3.7848,
+        3.6947
+      ]
+    },
+    {
+      "id": 89,
+      "name": "Bear Trap",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Bear Trap.glb",
+      "path": "res://素材/马里奥风格平台/Bear Trap.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.712,
+        0.765,
+        2.97
+      ],
+      "sizeRaw": [
+        2.4748,
+        0.5102,
+        1.9801
+      ],
+      "meshHeightMeters": 0.765,
+      "fitScaleToTarget": 1.61638,
+      "horizontalMeters": 3.712,
+      "triangleCount": 294,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.4748,
+        0.5102,
+        1.9801
+      ]
+    },
+    {
+      "id": 90,
+      "name": "Cloud-F6DzCxDz6I",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Cloud-F6DzCxDz6I.glb",
+      "path": "res://素材/马里奥风格平台/Cloud-F6DzCxDz6I.glb",
+      "layer": "Ceiling",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        12.146,
+        1.959,
+        2.774
+      ],
+      "sizeRaw": [
+        8.0972,
+        1.3059,
+        1.8495
+      ],
+      "meshHeightMeters": 1.959,
+      "fitScaleToTarget": 0.49399,
+      "horizontalMeters": 12.146,
+      "triangleCount": 480,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        8.0972,
+        1.3059,
+        1.8495
+      ]
+    },
+    {
+      "id": 91,
+      "name": "Cloud",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Cloud.glb",
+      "path": "res://素材/马里奥风格平台/Cloud.glb",
+      "layer": "Ceiling",
+      "weight": 5,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.0,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        6.396,
+        3.101,
+        2.621
+      ],
+      "sizeRaw": [
+        4.2641,
+        2.067,
+        1.747
+      ],
+      "meshHeightMeters": 3.101,
+      "fitScaleToTarget": 0.93809,
+      "horizontalMeters": 6.396,
+      "triangleCount": 480,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        4.2641,
+        2.067,
+        1.747
+      ]
+    },
+    {
+      "id": 92,
+      "name": "Crate",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Crate.glb",
+      "path": "res://素材/马里奥风格平台/Crate.glb",
+      "layer": "Ground",
+      "weight": 12,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "sizeRaw": [
+        1.0,
+        1.0,
+        1.0003
+      ],
+      "meshHeightMeters": 1.5,
+      "fitScaleToTarget": 4.0,
+      "horizontalMeters": 1.5,
+      "triangleCount": 732,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.0,
+        1.0,
+        1.0003
+      ]
+    },
+    {
+      "id": 93,
+      "name": "Fence",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Fence.glb",
+      "path": "res://素材/马里奥风格平台/Fence.glb",
+      "layer": "Wall",
+      "weight": 8,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        4.916,
+        1.646,
+        0.214
+      ],
+      "sizeRaw": [
+        3.2771,
+        1.0971,
+        0.1428
+      ],
+      "meshHeightMeters": 1.646,
+      "fitScaleToTarget": 1.2205,
+      "horizontalMeters": 4.916,
+      "triangleCount": 212,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.2771,
+        1.0971,
+        0.1428
+      ]
+    },
+    {
+      "id": 94,
+      "name": "Flag",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Flag.glb",
+      "path": "res://素材/马里奥风格平台/Flag.glb",
+      "layer": "Wall",
+      "weight": 5,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        3.079,
+        6.097,
+        0.417
+      ],
+      "sizeRaw": [
+        2.0524,
+        4.0648,
+        0.2778
+      ],
+      "meshHeightMeters": 6.097,
+      "fitScaleToTarget": 1.94868,
+      "horizontalMeters": 3.079,
+      "triangleCount": 216,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        2.0524,
+        4.0648,
+        0.2778
+      ]
+    },
+    {
+      "id": 95,
+      "name": "Ladder",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Ladder.glb",
+      "path": "res://素材/马里奥风格平台/Ladder.glb",
+      "layer": "Wall",
+      "weight": 4,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        0.95,
+        6.744,
+        0.27
+      ],
+      "sizeRaw": [
+        0.6331,
+        4.4962,
+        0.1798
+      ],
+      "meshHeightMeters": 6.744,
+      "fitScaleToTarget": 6.31579,
+      "horizontalMeters": 0.95,
+      "triangleCount": 356,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.6331,
+        4.4962,
+        0.1798
+      ]
+    },
+    {
+      "id": 96,
+      "name": "Mushroom",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Mushroom.glb",
+      "path": "res://素材/马里奥风格平台/Mushroom.glb",
+      "layer": "Ground",
+      "weight": 8,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.059,
+        1.051,
+        1.032
+      ],
+      "sizeRaw": [
+        0.7057,
+        0.7008,
+        0.688
+      ],
+      "meshHeightMeters": 1.051,
+      "fitScaleToTarget": 5.66572,
+      "horizontalMeters": 1.059,
+      "triangleCount": 138,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        0.7057,
+        0.7008,
+        0.688
+      ]
+    },
+    {
+      "id": 97,
+      "name": "Pipe",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Pipe.glb",
+      "path": "res://素材/马里奥风格平台/Pipe.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.76,
+        2.978,
+        2.763
+      ],
+      "sizeRaw": [
+        1.8398,
+        1.9852,
+        1.8421
+      ],
+      "meshHeightMeters": 2.978,
+      "fitScaleToTarget": 2.17155,
+      "horizontalMeters": 2.763,
+      "triangleCount": 556,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.8398,
+        1.9852,
+        1.8421
+      ]
+    },
+    {
+      "id": 98,
+      "name": "Sign",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Sign.glb",
+      "path": "res://素材/马里奥风格平台/Sign.glb",
+      "layer": "Wall",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.2,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.651,
+        1.95,
+        0.412
+      ],
+      "sizeRaw": [
+        1.1006,
+        1.3,
+        0.2746
+      ],
+      "meshHeightMeters": 1.95,
+      "fitScaleToTarget": 3.63416,
+      "horizontalMeters": 1.651,
+      "triangleCount": 116,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.1006,
+        1.3,
+        0.2746
+      ]
+    },
+    {
+      "id": 99,
+      "name": "Spike Platform",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Spike Platform.glb",
+      "path": "res://素材/马里奥风格平台/Spike Platform.glb",
+      "layer": "Ground",
+      "weight": 4,
+      "categoryMask": [
+        "Combat",
+        "Prototype"
+      ],
+      "clearance": 0.5,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        2.554,
+        1.907,
+        2.554
+      ],
+      "sizeRaw": [
+        1.7024,
+        1.2713,
+        1.7024
+      ],
+      "meshHeightMeters": 1.907,
+      "fitScaleToTarget": 2.34926,
+      "horizontalMeters": 2.554,
+      "triangleCount": 502,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.7024,
+        1.2713,
+        1.7024
+      ]
+    },
+    {
+      "id": 100,
+      "name": "Tree",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Tree.glb",
+      "path": "res://素材/马里奥风格平台/Tree.glb",
+      "layer": "Ground",
+      "weight": 6,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.8,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        5.591,
+        8.352,
+        3.396
+      ],
+      "sizeRaw": [
+        3.7276,
+        5.5681,
+        2.264
+      ],
+      "meshHeightMeters": 8.352,
+      "fitScaleToTarget": 1.07315,
+      "horizontalMeters": 5.591,
+      "triangleCount": 1810,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        3.7276,
+        5.5681,
+        2.264
+      ]
+    },
+    {
+      "id": 101,
+      "name": "Yellow Box",
+      "sourceFolder": "马里奥风格平台",
+      "sourceFile": "Yellow Box.glb",
+      "path": "res://素材/马里奥风格平台/Yellow Box.glb",
+      "layer": "Ground",
+      "weight": 10,
+      "categoryMask": [
+        "Start",
+        "Combat",
+        "Special",
+        "Hidden",
+        "Boss",
+        "Safe"
+      ],
+      "clearance": 0.3,
+      "scaleMin": 0.9,
+      "scaleMax": 1.1,
+      "sizeMeters": [
+        1.553,
+        1.553,
+        1.553
+      ],
+      "sizeRaw": [
+        1.0356,
+        1.0356,
+        1.0356
+      ],
+      "meshHeightMeters": 1.553,
+      "fitScaleToTarget": 3.86349,
+      "horizontalMeters": 1.553,
+      "triangleCount": 718,
+      "hasSkin": false,
+      "animationCount": 0,
+      "needsAssetImport": true,
+      "engineChecked": true,
+      "engineSizeRaw": [
+        1.0356,
+        1.0356,
+        1.0356
+      ]
+    }
+  ],
+  "skipped": [
+    {
+      "path": "res://素材/RPG武器/Armor Golden.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Armor Leather.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Armor Metal.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Arrow.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Axe Double.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Axe Small.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Backpack.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Bag.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Bone.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Book Open.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Book-LC0w7VI75u.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Book-h3Wh4fxSQX.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Book.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Chalice.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Chest.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Claymore.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Coin Pouch.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Coin.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Crown.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Dagger.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Doublesided Hammer.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Fish Bone.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Glove.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Gold Ingots.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Key-MUl40QpEvv.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Key-bg6e1lfNsO.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Key-h5nke04hRD.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Key.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Knife.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Mineral.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Necklace-Jvhs8DCNDZ.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Necklace.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Open Book-1A07aI9j2d.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Open Book-JEDMpG0UIR.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Open Book.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Padlock.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Parchment.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Potion Bottle-WJxYta4Z96.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Potion Bottle.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Scroll.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Scythe.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Shield Celtic Golden.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Shield Heater-xoHSnOjsBG.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Shield Heater.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Shield Round-lWajrVXcnA.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Shield Round.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Skull Coin.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Skull-ExZmhOIjka.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Skull.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Snowflake.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Spear.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Star Coin.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Sword-9lLmH8Et4K.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Sword.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RPG武器/Wooden Bow.glb",
+      "folder": "RPG武器",
+      "reason": "武器/护甲/珠宝/书卷类：属于拾取物或装备外观，不是房间静态装饰。个别可用作货架摆件（Shield/Book/Chalice）已作为**货架陈列**在 docs 里登记，未进 v1 目录。"
+    },
+    {
+      "path": "res://素材/RTS建筑/Archery Second Age Le.glb",
+      "folder": "RTS建筑",
+      "reason": "Archery Building 的第二时代变体，二选一"
+    },
+    {
+      "path": "res://素材/RTS建筑/Archery Towers-IA5qOjIAiT.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Archery Towers.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Archery Training Grounds-5dWpau7C3k.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Archery Training Grounds.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Barracks-UXCOwRBSxx.glb",
+      "folder": "RTS建筑",
+      "reason": "兵营变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Barracks-a1C1L8gJTX.glb",
+      "folder": "RTS建筑",
+      "reason": "兵营变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Barracks-dvlksXgxWc.glb",
+      "folder": "RTS建筑",
+      "reason": "兵营变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Barracks-lnyADheSvA.glb",
+      "folder": "RTS建筑",
+      "reason": "兵营变体，与 Barracks.glb 二选一"
+    },
+    {
+      "path": "res://素材/RTS建筑/Barracks-puD1kbV4kf.glb",
+      "folder": "RTS建筑",
+      "reason": "兵营变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Castle-y15yE6kWLY.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Castle.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Dock-XViKoBh2UN.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Dock.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Farm Dirt.glb",
+      "folder": "RTS建筑",
+      "reason": "地面贴地块（0.06 米厚），没有立体轮廓"
+    },
+    {
+      "path": "res://素材/RTS建筑/Farm.glb",
+      "folder": "RTS建筑",
+      "reason": "Farm-91wMLb9kKo / Farm-O4wpTLSfIn 已覆盖，三选二"
+    },
+    {
+      "path": "res://素材/RTS建筑/House-RSwoYSLblu.glb",
+      "folder": "RTS建筑",
+      "reason": "House 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/House-YlADpCJU8U.glb",
+      "folder": "RTS建筑",
+      "reason": "House 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/House-k6tP5nFUd2.glb",
+      "folder": "RTS建筑",
+      "reason": "House 变体，与 House.glb 二选一"
+    },
+    {
+      "path": "res://素材/RTS建筑/House-nihGGju7DW.glb",
+      "folder": "RTS建筑",
+      "reason": "House 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/House-oJJIRwv6Bo.glb",
+      "folder": "RTS建筑",
+      "reason": "House 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/House-vZ1CLbWmSx.glb",
+      "folder": "RTS建筑",
+      "reason": "House 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Houses-vCoDG5hFyI.glb",
+      "folder": "RTS建筑",
+      "reason": "Houses 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Houses.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Houses-gEjAC1UvVU / Houses-vCoDG5hFyI 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Hut-4MJWbyd6vw.glb",
+      "folder": "RTS建筑",
+      "reason": "Hut 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Hut-wxi3kAu5ey.glb",
+      "folder": "RTS建筑",
+      "reason": "Hut 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Market Stalls Compact.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Market Stalls.glb 重复的紧凑变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Market Stalls-4ZAhRv2tLG.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Market Stalls.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Market Stalls-OLd8vu6lPL.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Market Stalls.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Market Stalls-PUZZ5F91OE.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Market Stalls.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Mountain-XY4ej3Zg3I.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Mountain.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Mountains.glb",
+      "folder": "RTS建筑",
+      "reason": "山脉群 4.6×3.8 米，超出房间装饰尺度"
+    },
+    {
+      "path": "res://素材/RTS建筑/Port-4sE6lmhGPF.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Port.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Rock.glb",
+      "folder": "RTS建筑",
+      "reason": "碎石 0.15 米级，俯视不可辨"
+    },
+    {
+      "path": "res://素材/RTS建筑/Rocks.glb",
+      "folder": "RTS建筑",
+      "reason": "碎石 0.4 米级，用 Rocks-* 组或 Rock-*.glb 单体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Shack-HuzLJcbUd2.glb",
+      "folder": "RTS建筑",
+      "reason": "Shack 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Shipping Port-rDX8W8uqip.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Shipping Port.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Stone Tower-dJLAD6p90F.glb",
+      "folder": "RTS建筑",
+      "reason": "Stone Tower 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Storage shed.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Storage shed-fkTsDdpQAA 重复的变体，二选一"
+    },
+    {
+      "path": "res://素材/RTS建筑/Temple-nR264crTSr.glb",
+      "folder": "RTS建筑",
+      "reason": "方形神庙变体，与 Temple 重复"
+    },
+    {
+      "path": "res://素材/RTS建筑/Temple-v36uJiErXS.glb",
+      "folder": "RTS建筑",
+      "reason": "塔庙变体，与 Temple-CE2Mn7lh6A 重复"
+    },
+    {
+      "path": "res://素材/RTS建筑/Town Center Second Age.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Town Center-cuQuFJEIfH 同几何的第二时代变体，二选一"
+    },
+    {
+      "path": "res://素材/RTS建筑/Town Center-CoERW5nFdE.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Town Center-76GTkSh4KM 重复的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Town Center.glb",
+      "folder": "RTS建筑",
+      "reason": "只有地基（0.3 米高），不是完整建筑"
+    },
+    {
+      "path": "res://素材/RTS建筑/Trees cut-zhm3D5KKRh.glb",
+      "folder": "RTS建筑",
+      "reason": "同 Trees cut.glb 的变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Trees cut.glb",
+      "folder": "RTS建筑",
+      "reason": "被砍倒的树，低矮地面件，俯视辨识度低"
+    },
+    {
+      "path": "res://素材/RTS建筑/Wall Towers Door Seco.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Stone Wall Towers 重复的门楼变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Watch Tower-VJZZW37Vsk.glb",
+      "folder": "RTS建筑",
+      "reason": "Watch Tower 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Watch Tower-cMxuj2gt7D.glb",
+      "folder": "RTS建筑",
+      "reason": "Watch Tower 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Windmill-jpHoi9xDLG.glb",
+      "folder": "RTS建筑",
+      "reason": "Windmill.glb 变体"
+    },
+    {
+      "path": "res://素材/RTS建筑/Windmill.glb",
+      "folder": "RTS建筑",
+      "reason": "风车旋翼外扩，Boss 房全景视角会穿模"
+    },
+    {
+      "path": "res://素材/RTS建筑/Wodden Temple.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Temple First Age Leve 同几何的木质变体，二选一"
+    },
+    {
+      "path": "res://素材/RTS建筑/Wooden Wall-L0TxLurnES.glb",
+      "folder": "RTS建筑",
+      "reason": "与 Wooden Wall.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/卡通人物带全套动画/史蒂夫.glb",
+      "folder": "卡通人物带全套动画",
+      "reason": "带骨骼动画的人物（4 个）：属于角色，不是装饰；将来走角色/怪物素材管线。"
+    },
+    {
+      "path": "res://素材/卡通人物带全套动画/商人无动画.glb",
+      "folder": "卡通人物带全套动画",
+      "reason": "带骨骼动画的人物（4 个）：属于角色，不是装饰；将来走角色/怪物素材管线。"
+    },
+    {
+      "path": "res://素材/卡通人物带全套动画/金发白男.glb",
+      "folder": "卡通人物带全套动画",
+      "reason": "带骨骼动画的人物（4 个）：属于角色，不是装饰；将来走角色/怪物素材管线。"
+    },
+    {
+      "path": "res://素材/卡通人物带全套动画/黑发黑女.glb",
+      "folder": "卡通人物带全套动画",
+      "reason": "带骨骼动画的人物（4 个）：属于角色，不是装饰；将来走角色/怪物素材管线。"
+    },
+    {
+      "path": "res://素材/小房子/House-7VSVwAg2T3.glb",
+      "folder": "小房子",
+      "reason": "House.glb 变体"
+    },
+    {
+      "path": "res://素材/小房子/Two story house-9N6ROCbmO1.glb",
+      "folder": "小房子",
+      "reason": "Two story house 变体"
+    },
+    {
+      "path": "res://素材/小房子/Two story house-QsF9E0PqyN.glb",
+      "folder": "小房子",
+      "reason": "Two story house 变体"
+    },
+    {
+      "path": "res://素材/小房子/Two story house-hmXhiLDf8D.glb",
+      "folder": "小房子",
+      "reason": "Two story house 变体"
+    },
+    {
+      "path": "res://素材/小房子/Two story house-htvFgnVP4d.glb",
+      "folder": "小房子",
+      "reason": "Two story house 变体"
+    },
+    {
+      "path": "res://素材/小房子/Two story house-sGgL4Nt7I7.glb",
+      "folder": "小房子",
+      "reason": "Two story house 变体"
+    },
+    {
+      "path": "res://素材/枪械/Assault Rifle-Bgvuu4CUMV.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Assault Rifle-fpLucho45C.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Assault Rifle.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Bayonet.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Bipod.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Bullpup.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Pistol-52kQzphmeF.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Pistol-J3i9KDQ3kt.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Pistol-Z7aOjJu583.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Pistol.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Revolver-9C26wSpMS0.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Revolver-XrnLUz6kQj.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Revolver.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Scope.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Shotgun Sawed Off.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Shotgun Short Stock.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Shotgun-ZmPTnh7njL.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Shotgun.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Sniper Rifle-ASOMZIErq3.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Sniper Rifle-TKaBjAEofL.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Sniper Rifle-i65hEldsw6.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Sniper Rifle.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Submachine Gun-nsP3JukU73.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Submachine Gun.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/枪械/Tripod.glb",
+      "folder": "枪械",
+      "reason": "枪械与瞄具：拾取物/装备外观，不是房间静态装饰。"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Anne.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的人物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Axe Rifle.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Axe-FkzZ6I1zjT.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Axe.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Bird.glb",
+      "folder": "海盗场景带动画",
+      "reason": "动物（非场景装饰）"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Bomb.glb",
+      "folder": "海盗场景带动画",
+      "reason": "炸弹：属于玩法道具，不是装饰"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Chicken Leg.glb",
+      "folder": "海盗场景带动画",
+      "reason": "食物小件，俯视看不清"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Coins.glb",
+      "folder": "海盗场景带动画",
+      "reason": "金币小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Cutlass.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Dagger.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Fish Mackerel.glb",
+      "folder": "海盗场景带动画",
+      "reason": "拾取物级小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Fish Tuna.glb",
+      "folder": "海盗场景带动画",
+      "reason": "拾取物级小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Gem Blue.glb",
+      "folder": "海盗场景带动画",
+      "reason": "宝石小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Gem Green.glb",
+      "folder": "海盗场景带动画",
+      "reason": "宝石小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Gem Pink.glb",
+      "folder": "海盗场景带动画",
+      "reason": "宝石小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Gold Bag.glb",
+      "folder": "海盗场景带动画",
+      "reason": "金币袋小件（奖励物）"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Gold ore.glb",
+      "folder": "海盗场景带动画",
+      "reason": "矿石小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Henry.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的人物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/House-2kytqGs4rH.glb",
+      "folder": "海盗场景带动画",
+      "reason": "8.5×10.6 米级大宅，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/House-g7eSJLFi4V.glb",
+      "folder": "海盗场景带动画",
+      "reason": "13.5 米级超宽宅邸，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/House.glb",
+      "folder": "海盗场景带动画",
+      "reason": "9.4 米高的塔楼式房子，与 RTS 建筑重复且过高"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Large Bone.glb",
+      "folder": "海盗场景带动画",
+      "reason": "巨型骨架，6 米级超宽，遮挡视野"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Lute.glb",
+      "folder": "海盗场景带动画",
+      "reason": "乐器小件，俯视看不清"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Mako.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的人物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Paper.glb",
+      "folder": "海盗场景带动画",
+      "reason": "纸张小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Pirate Captain.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的人物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Pistol.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Post.glb",
+      "folder": "海盗场景带动画",
+      "reason": "3 米细杆，作为装饰太单薄"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Prop Bottle-uRzqB8lopZ.glb",
+      "folder": "海盗场景带动画",
+      "reason": "酒瓶小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Prop Bottle.glb",
+      "folder": "海盗场景带动画",
+      "reason": "酒瓶小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Red X.glb",
+      "folder": "海盗场景带动画",
+      "reason": "地面记号（贴花），不是立体装饰"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Rifle.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Rocks-38eDa0gjwZ.glb",
+      "folder": "海盗场景带动画",
+      "reason": "10×9 米级岩群，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Rocks-IFU6cm2Xow.glb",
+      "folder": "海盗场景带动画",
+      "reason": "12×10 米级岩群，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Rocks-e1rgb5i2kF.glb",
+      "folder": "海盗场景带动画",
+      "reason": "8.4×8.1 米级岩群，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Rocks-fy3szRMvuE.glb",
+      "folder": "海盗场景带动画",
+      "reason": "11×10 米级岩群，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Rocks.glb",
+      "folder": "海盗场景带动画",
+      "reason": "岩石小件（0.4 米），单独摆放看不见"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Shark.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的动物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Sharky.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的动物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Ship.glb",
+      "folder": "海盗场景带动画",
+      "reason": "15 米级大船，房间放不下"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Shotgun.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Skeleton-yq5ATpujSt.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的人物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Skeleton.glb",
+      "folder": "海盗场景带动画",
+      "reason": "带骨骼动画的人物"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Skull-VGtSTNRf2O.glb",
+      "folder": "海盗场景带动画",
+      "reason": "头骨小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Skull.glb",
+      "folder": "海盗场景带动画",
+      "reason": "头骨小件"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Small Ship.glb",
+      "folder": "海盗场景带动画",
+      "reason": "5 米级船，属于载具玩法，不是装饰"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Sword-Ds2bJiNI5w.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Sword.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Swords.glb",
+      "folder": "海盗场景带动画",
+      "reason": "手持武器"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Tentacle.glb",
+      "folder": "海盗场景带动画",
+      "reason": "动画触手，尺寸 19 米级、不属于房间静态装饰"
+    },
+    {
+      "path": "res://素材/海盗场景带动画/Wheat Icon.glb",
+      "folder": "海盗场景带动画",
+      "reason": "图标"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Bomb.glb",
+      "folder": "马里奥风格平台",
+      "reason": "炸弹：玩法道具"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Cloud-KdFNOVn1Gf.glb",
+      "folder": "马里奥风格平台",
+      "reason": "与 Cloud.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Cloud-jTIsWRQd7T.glb",
+      "folder": "马里奥风格平台",
+      "reason": "与 Cloud.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Coin.glb",
+      "folder": "马里奥风格平台",
+      "reason": "金币小件"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Heart.glb",
+      "folder": "马里奥风格平台",
+      "reason": "生命值图标"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Key.glb",
+      "folder": "马里奥风格平台",
+      "reason": "钥匙小件"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Platform.glb",
+      "folder": "马里奥风格平台",
+      "reason": "7.3 米超宽平台，与房间地面重复"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Sign-lGC5MHYT85.glb",
+      "folder": "马里奥风格平台",
+      "reason": "与 Sign.glb 重复的变体"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Star.glb",
+      "folder": "马里奥风格平台",
+      "reason": "星星小件"
+    },
+    {
+      "path": "res://素材/马里奥风格平台/Tree-8qABc2Nslz.glb",
+      "folder": "马里奥风格平台",
+      "reason": "与 Tree.glb 重复的变体"
+    }
+  ],
+  "measureErrors": [],
+  "engineVerification": {
+    "how": "Godot 4.7.2 headless 加载每个 glb（res://），取 MeshInstance3D 的 Mesh AABB 世界并集",
+    "source": "tmp/decor_catalog/godot_measured.json（tools/decor_catalog/measure_with_godot.gd 生成，不入库）",
+    "checkedItems": 101,
+    "maxAbsErrorRaw": 0.0001,
+    "okCount": 101,
+    "failCount": 0
+  }
+}

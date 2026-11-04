@@ -1,0 +1,96 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    BiuBiuOrigin test project - docs/architecture/ECS.md section 10.
+
+    WHY THIS IS NOT A ProjectReference TO BiuBiuOrigin.csproj
+    =========================================================
+    The layering guard below asserts that Game.Core sources contain ZERO "using Godot".
+    A ProjectReference to the main project (Sdk=Godot.NET.Sdk/4.7.2) drags the whole
+    GodotSharp reference closure into this assembly and the test host would need the
+    engine marshalling layer - i.e. the suite could no longer prove "Game.Core is
+    engine-free and testable without Godot" (the hard constraint in ECS.md section 10).
+    Instead this project compiles the exact same engine-free Game.Core sources
+    (scripts/core/**) as source files. They are stamped with the same AssemblyName as
+    the main assembly, so namespaces, types and InternalsVisibleTo behave identically.
+
+    The Godot-coupled layers (scripts/core/** excluded: host, actor, combat, ...) are
+    verified by `dotnet build` of the main project, which check_all.ps1 runs for both
+    the default and the "Host" configuration.
+
+    The tests project must ONLY reference scripts/core/**. Adding anything else here
+    would silently let Godot types in; Game_Core_Layering.cs guards against that.
+
+    Packages come from the local NuGet cache through the repo-root nuget.config, which
+    clears every remote source. Restore therefore works offline on this machine:
+      Microsoft.NET.Test.Sdk 18.4.0 / MSTest.TestAdapter 4.2.1 / MSTest.TestFramework 4.2.1
+    -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Game.Tests</RootNamespace>
+    <AssemblyName>BiuBiuOrigin.Tests</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!--
+      Same assembly identity as the main project: the Game.Core sources are shared, not
+      duplicated, and they are internal-friendly (InternalsVisibleTo declarations inside
+      scripts/core must keep resolving when the sources are recompiled here).
+      EnableDynamicLoading is deliberately FALSE: no runtimeconfig for a Godot assembly.
+    -->
+    <EnableDynamicLoading>false</EnableDynamicLoading>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);MSTEST0037</NoWarn>
+
+    <!--
+      Single source of truth for "which files belong to Game.Core". The main project
+      uses the same glob (see the ARCH-OK block in BiuBiuOrigin.csproj). If one side
+      changes, the other must change with it; the layering guard cross-checks by
+      scanning the SOURCE TREE, not by comparing file lists, so a drift cannot hide.
+    -->
+    <CoreSourceGlob>..\scripts\core\**\*.cs</CoreSourceGlob>
+
+    <!--
+      ★ 2026-11-04 角色抽象任务：角色系统族（装配 / 意图 / 技能门控）与数值包仓库仅依赖
+      Game.Core.Ecs + Game.Core.Skills（零 Godot、零 Resource），因此可以和 core 一起在本工程里
+      直接编译并做单元测试 —— 这保证了「ECS 组合玩家/怪物」这套逻辑可以在没有引擎的进程里被证明。
+      若将来这些文件里出现 `using Godot` 或继承 Godot 类型，本工程会直接编译失败，
+      这本身就是一道额外守卫（比人工审查更硬）。
+    -->
+    <CharacterSourceGlob>..\scripts\actor\**\*.cs</CharacterSourceGlob>
+    <CharacterSourceGlob2>..\scripts\skill\SkillCastSystem.cs</CharacterSourceGlob2>
+    <CharacterSourceGlob3>..\scripts\data\StatPackageRepository.cs</CharacterSourceGlob3>
+    <CharacterSourceGlob4>..\scripts\data\CharacterContentSet.cs</CharacterSourceGlob4>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Engine-free Game.Core sources (the system under test). -->
+    <Compile Include="$(CoreSourceGlob)" Link="Game.Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="$(CharacterSourceGlob)" Link="Game.Character\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="$(CharacterSourceGlob2)" Link="Game.Skill\%(Filename)%(Extension)" />
+    <Compile Include="$(CharacterSourceGlob3)" Link="Game.Data\%(Filename)%(Extension)" />
+    <Compile Include="$(CharacterSourceGlob4)" Link="Game.Data\%(Filename)%(Extension)" />
+
+    <!--
+      No generated code is expected inside scripts/core yet. If a future change adds a
+      source generator output there, it must be reviewed for Godot types BEFORE being
+      added to this list.
+    -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.2.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.2.1" />
+  </ItemGroup>
+
+  <!--
+    Test outputs go to tests/bin + tests/obj on purpose: the architecture guard's ignore
+    list already excludes bin/** and obj/**, so the MSTest DLLs are never scanned.
+  -->
+</Project>

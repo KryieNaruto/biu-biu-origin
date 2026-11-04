@@ -1,0 +1,16 @@
+; =============================================================================
+;  biu_biu_native.gdextension
+;  由 native/CMakeLists.txt 构建产出，产物在 addons/biu_biu_native/bin/
+;  注意：必须是分段写法 [configuration] + entry_symbol 键，
+;        写成一整行 configuration/entry_symbol 会导致 --import 报错（02 §4.4 踩坑记录）
+; =============================================================================
+[configuration]
+
+entry_symbol = "biu_biu_library_init"
+compatibility_minimum = "4.7"
+reloadable = true
+
+[libraries]
+
+windows.debug.x86_64 = "res://addons/biu_biu_native/bin/biu_biu_native.windows.Debug.x86_64.dll"
+windows.release.x86_64 = "res://addons/biu_biu_native/bin/biu_biu_native.windows.Release.x86_64.dll"

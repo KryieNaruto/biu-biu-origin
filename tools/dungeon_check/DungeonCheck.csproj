@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    地牢规划器校验器（离线校验工具，不进游戏、不进 tests/）。
+
+    为什么单独一个工程：
+      tests/BiuBiuOrigin.Tests.csproj 只编译 scripts/core/**，这是「Game.Core 零引擎依赖」的
+      证明性约束（ECS.md §10）。而地牢规划器在 scripts/spawn/rooms/，一旦把 rooms 拉进测试程序集，
+      那条约束就失去意义。所以规划器的性质测试放在这里：独立控制台程序，编译 core + rooms 两份源码，
+      在**不依赖 Godot** 的进程里跑。
+
+    用法：
+      dotnet run (project tools/dungeon_check) 加参数 seeds 200，或直接看 README.md。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!--
+      命名空间刻意**不是** Game.*：GS007 把「Game.* 命名空间出现在 scripts/ 之外」判为
+      「游戏源跑出 scripts/」。本工程是 tools/ 下的离线校验工具，不是游戏程序集。
+    -->
+    <RootNamespace>DungeonCheck</RootNamespace>
+    <AssemblyName>DungeonCheck</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 与主工程同一份源码（不复制、不链接产物）。 -->
+    <Compile Include="..\..\scripts\core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\scripts\spawn\rooms\**\*.cs" Link="Rooms\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="Program.cs" />
+    <!-- 排除本工程自己的构建产物，避免 glob 回吞（主工程踩过这个坑）。 -->
+    <Compile Remove="bin\**\*.cs" />
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+</Project>
