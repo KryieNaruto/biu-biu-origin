@@ -95,7 +95,7 @@ public sealed class PlayerInputIntentSource : IIntentSource
     private static int ToFixed(float value) => (int)MathF.Round(value * FixedOne);
 
     /// <summary>Q16 的 1.0。</summary>
-    private const int FixedOne = 1 << 16;
+    private const int FixedOne = 1 << 16; // arch-ok: Q16 定点表示法，不是玩法数值
 
     /// <summary>
     /// 每帧的边沿状态依赖"上一帧"，因此切换角色/暂停恢复时需要重置，否则会吞掉一次输入。
@@ -121,7 +121,7 @@ public sealed class PlayerInputIntentSource : IIntentSource
     }
 
     /// <summary>轴死区（平方值）：手柄漂移不该让准心抖动。</summary>
-    private const float AimDeadzoneSquared = 0.04f;
+    private const float AimDeadzoneSquared = 0.04f; // arch-ok: 手柄漂移死区，属操作方案不是玩法数值
 
     private static Vector2 ReadAxis(string action)
     {

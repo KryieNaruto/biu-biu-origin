@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v3  最后更新: 2026-11-04  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v4  最后更新: 2026-11-05  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -37,7 +37,7 @@
 | 性能语言 | **C++ GDExtension**，位于 `native/`，仅用于热路径 / 渲染 / 引擎能力扩展 |
 | 脚本例外 | **GDScript 仅在 UI 层**（`scripts/ui/**`）允许，其余全项目禁止（规则1，守卫 GS001） |
 | 数值真源 | **Excel `.xlsx`** → `tools/data_pipeline/` → `data/generated/`（`.tres` + index JSON）；运行期只读生成物 |
-| 架构守卫 | `tools/check_architecture.ps1`（检查项 GS001~GS007）+ `tools/check_all.ps1`（build → 守卫 → 测试一键） |
+| 架构守卫 | `tools/check_architecture.ps1`（检查项 GS001~GS007）+ `tools/check_all.ps1`（四步一键：build ×2 → 守卫 → 测试 → 200-seed 地牢性质校验） |
 | 目录骨架 | `scripts/ scenes/ data/ shaders/ native/ addons/ tools/ tests/ docs/` |
 | 完成定义 | 6 步检查表见 `docs/rules/07-definition-of-done.md`，最后一步必是**覆盖更新本文件** |
 | 当前阶段 | **v3：ECS 骨架 + 房间/地牢系统已落地**（地牢四层抽象 + 200-seed 性质校验 + 可跑调试场景）；战斗/技能/数值由**并行任务**在填充，素材层当前为 Box 白模（用户已确认先白模后换资源），Excel 数据层未落地 |
@@ -1041,6 +1041,7 @@ user://saves/<slot>.json
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-05 | v4 | **角色抽象（Character）落地** | **新增 §15 角色抽象**：角色 = 「数值包组合 + 技能包 + 阵营/控制标签」的 ECS 实体，玩家与怪物**同一组件集合**，差异只在数据。① **数值**：`StatId` 追加 法力(1000 段)/护甲(1003 段)/力量·敏捷·幸运(1010 段)，五项基础资源 Hp/Mana/Armor + 三项属性 + 三项资源回复；`StatPackageRepository.Compose` 严格按规则6 折叠——Base 层**绝对值**、其余四层**差量叠加**，`GetLayerValue` 保留单层读取。② **技能**：`SkillSlot` 五个固定槽位（Dash=Shift / PrimaryAttack=左键 / WeaponSwap=Q / Signature=R / Interact=F），`SkillLoadout` 定长表按槽存技能并各自计冷却；`SkillCastSystem` 每帧只消费**一个**槽（意图优先级由 `IntentRules` 决定），门控顺序 `CanCast → Cast → 扣法力 → 起冷却`。③ **组合**：`ActorSpawnRequest(DefinitionSlot, Position, TeamOverride?, ControlOverride?)` 是唯一的造人入口——**夺舍 = 改 `ControlOverride`/`TeamOverride` 两个字段**，不需要任何新类型；`ActorIdentity` 只存槽位号（J2），不存引用。④ **策划可改**：`data/excel/characters.xlsx`（Characters / StatPacks / SkillLoads 三表，四行表头规范）为唯一真源；`CharacterContentSet` 提供与表逐项一致的运行时副本兜底，`CharacterContentRegressionTests` 用 9 条用例把「表 ↔ 运行时」钉死（每个角色都必须能真装配出来、玩家技能包五槽齐全、怪物与玩家同机制）。⑤ **引擎边界**：`PlayerInputIntentSource`（`scripts/host/control/`）把 InputMap action 翻成 `InputIntent`（Q16 定点方向），是唯一碰 `Input` 的地方；技能逻辑只认意图，故 AI/回放/玩家共用同一条代码路径。**测试 101 全绿**（新增 25 例） | `docs/architecture/ARCHITECTURE.md`、`scripts/core/{ActorKind,SkillSlot,StatId}.cs`、`scripts/core/{Actors,Skills}/**`、`scripts/actor/{ActorComponents,ActorRegistries,ActorIntentSystem,ActorAssemblySystem}.cs`、`scripts/skill/SkillCastSystem.cs`、`scripts/data/{StatPackageRepository,CharacterContentSet}.cs`、`scripts/host/control/**`、`scripts/host/DungeonDebugScene.cs`、`project.godot`、`data/excel/characters.xlsx`、`tools/data_pipeline/gen_characters_xlsx.py`、`tests/Characters/**` |
 | 2026-11-04 | v3 | **房间与地牢系统（场景抽象）**，另含 4 处基础设施修复 | **新增 §14 房间与地牢**：四层切分（L1 值词汇 / L2 规划 / L3 生成 / L4 表现）、`IDungeonPlanner.Plan(config,seed,generation) → DungeonLayout` 的「一次掷骰、全链只读」模型、`RoomCategory` 七类（Start/Combat/Special/Hidden/Prototype/Boss/Safe）、6 条可执行不变式、与 ECS 的边界（房间不产生实体、L3 只走 `CommandBuffer`、`World→Node` 单向）。**落地**：`scripts/spawn/rooms/`（契约 + `BranchDungeonPlanner` + `GridContentPlanner` + `DefaultRoomContentSpawner` + `DungeonValidation`）、`scripts/host/Dungeon*`（`DungeonOptions`/`DungeonSceneBuilder`/`DungeonRoomView`/`DungeonDecorCatalog`/`DungeonDebugScene`）、`scenes/main/DungeonDebug.tscn`、`tools/dungeon_check/`（200-seed 性质校验）、`tools/decor_catalog/`（素材→装饰目录）。**基础设施修复**：① `BiuBiuOrigin.csproj` 的 `DefaultItemExcludes` 新增 `**/obj/**;**/bin/**;tools/**;tmp/**;build/**;out/**`——修掉「Godot.NET.Sdk 默认 glob 把 `.godot/mono/temp/obj/**/*.AssemblyInfo.cs` 当源码编进来」导致的 CS0579 自举式重复（本轮最贵的坑）；② `LifetimeSystem` 与 `VisualBridge` 把 `Query<Entity, T>` 改为 `Query<T>`、实体号改从组件 `[Identity] Owner` 取——`Entity` 是句柄不是组件列（J1），旧写法会让 `Register<Entity>()` 抛异常且 `SystemBase` 留在「半死」状态；③ `config/architecture-rules.json` 移除无源头的 `tools/decor_catalog/**` 放行、`.gd` 探针统一收进 `tools/probes/`；④ `tools/probes/` 目录此前只存在于白名单、实际未创建，本次补建。**未改架构**：GS005 清理（39 条 → 0，做法是把真·表现数值收进 `DungeonOptions`、把几何常量改成语义推导，而非加注释糊过去） | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/**`、`scripts/host/**`、`scripts/actor/LifetimeSystem.cs`、`scripts/host/bridge/VisualBridge.cs`、`scenes/main/DungeonDebug.tscn`、`BiuBiuOrigin.csproj`、`config/architecture-rules.json`、`config/decor_catalog.json`、`tools/dungeon_check/**`、`tools/decor_catalog/**`、`tools/probes/**`、`tests/Rooms/**`、`docs/artifacts/decor_catalog.md` |
 | 2026-11-03 | v1 | 立规矩（规则体系建立） | 建立 7 条开发规矩与架构骨架：C# 主逻辑（`Game.*` 七层命名空间）、C++ GDExtension 于 `native/`、UI 层允许 GDScript、Excel 为数值唯一真源、架构守卫 GS001~GS007、完成定义 6 步检查表；本节所有「已落地」项均为空 | `docs/architecture/ARCHITECTURE.md`、`docs/rules/01-gdscript-ban.md`、`docs/rules/02-tech-selection.md`、`docs/rules/03-abstract-first.md`、`docs/rules/04-data-driven.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md`、`docs/rules/07-definition-of-done.md`、`tools/check_architecture.ps1`、`tools/env.ps1`、`docs/prompts/task-prompt-template.md`、`.gitignore`、`AGENTS.md` |
 | 2026-11-03 | v1 | 立规矩（仲裁收口，本日第二次更新） | 收口仲裁：`IVisualDescriptor` 由候选转**正式接口**；`ISkill`/`ISkillTarget` 声明**下沉 `Game.Data`**、实现留 `scripts/skill/`；`IActor` 增加 `TryApplyTakeover(in TakeoverSpec) : bool`；§3.2 新增「声明位置 / 实现位置」两列；§4 统一 Excel **按主题分文件**口径（characters/combat/presentation/progression，Sheet 名=表名）；§9.4 标注为性能阈值**唯一真源**；文件头恢复常规排版、变更日志恢复 §11 编号 | `docs/architecture/ARCHITECTURE.md`、`docs/rules/03-abstract-first.md`、`docs/rules/04-data-driven.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md`、`docs/rules/07-definition-of-done.md` |
@@ -1275,3 +1276,104 @@ PreUpdate → FixedUpdate×N → Update → LateUpdate → CommandFlush → 事�
 **下一步**：① `progression.xlsx` 的 `Dungeon` Sheet 承载 `DungeonConfig` + 房型表，`DungeonOptions` 改为只读生成物；
 ② 门的状态机（封锁/清场开锁/单向）落在 `scripts/spawn/` 的新 `SystemBase`，房间运行时状态用组件（`RoomState{ RoomIndex, Cleared, Visited }`）表达；
 ③ 多房间流式加载（一次只建当前房 + 相邻房的视图，其余只留数据）——这是 100+ 房间时的必选项（§9 预算）。
+
+---
+
+## 15. 角色抽象（2026-11-05 落地）
+
+> 本章回答一个问题：**「一个角色」到底是什么？** 答案：它不是一个类，而是
+> **「五层数值包 + 一个技能包 + 阵营/控制两个标签」的 ECS 实体组合**。
+> 玩家与怪物用**完全相同的组件集合**，区别只在数据行里填了什么。
+
+### 15.1 现状
+
+| 层 | 落地物 | 位置 |
+|---|---|---|
+| 值词汇 | `ActorKind`（Player/Monster/Elite/Boss/Summon/Destructible）、`ControlScheme`（PlayerInput/Ai/Script）、`SkillSlot`（5 槽）、`StatId` 追加号段 | `scripts/core/` |
+| 数据契约 | `ActorDefinition`、`StatPackageIds`、`IReadOnlyStatView`、`IStatPackageRepository` | `scripts/core/Actors/` |
+| 技能契约 | `ISkill` / `SkillContext` / `ISkillContext` / `SkillLoadout` / `InputIntent` / `IIntentSource` / `ICommandSink` | `scripts/core/Skills/` |
+| 组件 | `ActorIdentity`、`Mana`、`SkillState`、`ActorIntent`（+ 既有 `Transform3`/`Team`/`Health`/`Hurtbox`） | `scripts/actor/ActorComponents.cs` |
+| 系统 | `ActorIntentSystem`(PreUpdate) → `ActorAssemblySystem` → `SkillCastSystem`(Update) | `scripts/actor/`、`scripts/skill/` |
+| 数据 | `characters.xlsx`（Characters / StatPacks / SkillLoads）+ `CharacterContentSet` 运行时副本 | `data/excel/`、`scripts/data/` |
+| 引擎边界 | `PlayerInputIntentSource`、`HostSkillContext` | `scripts/host/control/` |
+| 测试 | 25 例（抽象 17 + 内容一致性 9，含端到端装配） | `tests/Characters/` |
+
+### 15.2 角色 = 8 个组件的组合
+
+```text
+[Transform3][Team][Health][Mana][Hurtbox][ActorIdentity][SkillState][ActorIntent]
+     ↑ 位置      ↑ 阵营   ↑ 血量  ↑ 法力  ↑ 受击盒  ↑ 定义槽+控制  ↑ 技能槽状态  ↑ 本帧意图
+```
+
+**玩家与怪物的这一行完全相同**。差异只有两处，且都在数据里：
+
+| 需求 | 实现 | 换阵营要改什么 |
+|---|---|---|
+| 怪物与角色同源，靠阵营区分 | `ActorIdentity.Team` 与 `ActorKind` **彼此独立**：`Kind` 只做标签（规则/AI/动画筛选），`Team` 才决定敌我 | 生成时传 `TeamOverride` —— 一行代码 |
+| 夺舍 | `ControlScheme` 从 `Ai` 改成 `PlayerInput` | 生成/改造时传 `ControlOverride` —— **不新增任何类型** |
+
+> 反例（禁止）：给怪物建 `class Monster`、给玩家建 `class Actor`，或在组件里加 `IsMonster` 布尔。
+
+### 15.3 数值：五层包，Base 绝对 + 四层差量（规则 6）
+
+```text
+Final(stat) = Base[stat](绝对值) + Growth[stat] + Equipment[stat] + Buff[stat] + Temporary[stat]
+```
+
+- 每层一个 `StatPackageLayer(packId, StatLayer, [(StatId, value)])`；
+- `IStatPackageRepository.Compose(StatPackageIds)` 折叠成一个只读视图（`Get` 拿最终值，`GetLayerValue(layer, stat)` 拿单层）；
+- **同一个 `packId` 可被不同角色共用**（`player_base` 给玩家、`goblin_base` 给怪），也可互相赋值（给怪挂 `player_growth_demo` 试平衡）。
+- 与 §5 的关系：§5 是规则与字段口径的**真源**，本章只是它在运行时的那一段落地。
+
+### 15.4 技能：五个固定槽位 + 定长表
+
+| 槽位 | 值 | 默认按键（InputMap action） | 语义 |
+|---|---|---|---|
+| `Dash` | 1 | Shift / `actor_dash` | 冲刺（位移类，无目标） |
+| `PrimaryAttack` | 2 | 左键 / `actor_primary_attack` | 瞄准射击（最频繁，冷却最短） |
+| `WeaponSwap` | 3 | Q / `actor_weapon_swap` | 切武器（改的是「下次射击用什么」） |
+| `Signature` | 4 | R / `actor_signature` | **角色独有技能**（角色身份的核心表达） |
+| `Interact` | 5 | F / `actor_interact` | 与场景交互（不产生伤害） |
+
+**为什么是定长表而不是 `List<ISkill>`**：槽位是数组下标 → 冷却也是同长度数组 → 每帧只遍历 5 个 int 做减法，无分配、无字典查找；且「哪个键对应哪个技能」由数据固定，玩家改键改的是 InputMap 不是技能表。
+
+**施放门控（`SkillCastSystem`）**：`意图 → 选槽（IntentRules 优先级）→ CanCast → Cast → 扣法力 → 起冷却`，**每帧只消费一个槽**（防止一帧内 Shift+R 双触发）。失败原因写进 `SkillState.LastFailure`（NoSkill/Cooldown/NoMana/TargetInvalid/Forbidden），HUD 与音效据此反馈——**失败也是数据**。
+
+### 15.5 策划怎么改（需求②）
+
+```text
+data/excel/characters.xlsx
+├─ Characters   ← 加一行 = 加一个角色（类型/默认阵营/控制方案/数值包/技能包/受击盒）
+├─ StatPacks    ← 每行 = 某包某层的一项数值（(PackId, Layer, StatId) 唯一）
+└─ SkillLoads   ← 每行 = 某包某槽装哪个技能 + 冷却 + 法力消耗
+```
+
+- 表头是**四行**（字段名 / 类型 / 中文名 / 备注），由 `tools/data_pipeline/gen_characters_xlsx.py` 生成，保证第一次就合规；
+- 生成后 **xlsx 即唯一真源**，不要改 `data/generated/`；
+- v1 的 xlsx→生成物 pipeline 尚未落地，`CharacterContentSet.BuildBuiltinV1()` 是与之**逐项一致**的兜底副本；
+  `CharacterContentRegressionTests` 用 9 条用例钉住两边（每个角色都能真装配出来、玩家五槽齐全、怪物不含冲刺）。
+  **pipeline 落地时只替换 `BuildBuiltinV1` 的填充方式，其余代码与断言不动**（规则 7：0 文件扩展）。
+- 想验证「改了数值游戏真变了」：改 xlsx 里 `player_base.HpMax` → 重跑 `GenCharacters` → 端到端用例会立刻告诉你期望值。
+
+### 15.6 新增一个角色 / 一个技能要动几个文件
+
+| 我想做 | 要改的文件 | 数量 |
+|---|---|---|
+| 加一个怪物（换血换速换技能） | `characters.xlsx`（Characters + StatPacks + SkillLoads 各加行） | **1** |
+| 加一个玩家角色 | 同上（`chosen_hero` 就是现成例子：数值包 + 技能包不同，零代码） | **1** |
+| 加一个新技能行为 | 1 个 `ISkill` 实现（`scripts/skill/`）+ xlsx 里引用它的 `SkillId` | **2** |
+| 让怪物会用技能（接 AI） | 1 个 `IIntentSource` 实现（宿主构造时传入） | **1** |
+| 夺舍怪物 | 0（生成/改造时传 `ControlOverride` + `TeamOverride`） | **0** |
+
+### 15.7 约束与下一步
+
+**约束**：① 角色逻辑**不得**读 `Input`——只能消费 `InputIntent`（J4：只有 `scripts/host/` 碰引擎）；
+② 组件里**不得**存 `ISkill`/`IReadOnlyStatView` 引用，只存槽位号（J2：组件必须是 unmanaged 值类型）；
+③ 技能**不得**在 `Cast` 里 `World.Create/Destroy`，只能走 `ICommandSink`（帧末统一提交，J5）；
+④ 加角色/加技能**不得**改 `ActorAssemblySystem` 或 `SkillCastSystem`——改不动它们才是抽象成功的标志。
+
+**下一步**：① 五个技能的真实实现（冲刺位移、射击出弹、切武器、独有技、交互），替换 `DataSkill` 占位；
+② xlsx→`data/generated/` 生成器 + 加载校验（`CharacterContentSet` 改为读生成物）；
+③ AI 意图源（`scripts/actor/` 的 `AiIntentSource`），让怪物真正用上自己的技能包；
+④ 数值快照查询入口（`StatsOf(actorId)` 目前返回 `null`），供技能计算伤害与 HUD 显示；
+⑤ 升级/装备/增益对 Growth/Equipment/Buff 层的写入路径。

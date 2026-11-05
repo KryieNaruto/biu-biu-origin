@@ -229,7 +229,7 @@ public sealed class ActorAssemblySystem : SystemBase
         TeamId team = request.TeamOverride ?? def.DefaultTeam;
 
         // 8 个组件的创建：内核只提供 ≤3 元泛型重载，这里显式列出组件类型列表（一次原型查找）。
-        var components = new List<ComponentType>(8)
+        var components = new List<ComponentType>(8) // arch-ok: 容量提示不是玩法数值
         {
             World.Register<Transform3>(),
             World.Register<Team>(),

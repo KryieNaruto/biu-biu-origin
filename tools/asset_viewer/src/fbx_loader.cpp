@@ -48,6 +48,14 @@ public:
 
     bool run(std::vector<unsigned char>* out) {
         out_ = out;
+        // 输出上限：DEFLATE 最大压缩比约 1032:1，解压结果不可能超过 (输入长度-2)*1032 + 余量。
+        // 没有这个上限时，一旦码表解码出错产生大量「复制」符号，out_ 会无限增长直至 OOM
+        // （实测：28KB 的 FBX 把进程撑到 4GB+）。这是权威校验，不是性能优化。
+        const size_t kMaxRatio = 1032u;
+        const size_t inSize = (size_t)(end_ - p_);
+        size_t inBody = (inSize > 2) ? (inSize - 2) : 0;
+        if (inBody > (SIZE_MAX / kMaxRatio) - 4096u) return false;   // 防溢出
+        outLimit_ = inBody * kMaxRatio + 4096u;
         // zlib 头（RFC 1950）
         if (end_ - p_ < 2) return false;
         unsigned cmf = p_[0], flg = p_[1];
@@ -79,6 +87,7 @@ private:
     const unsigned char* p_;
     const unsigned char* end_;
     std::vector<unsigned char>* out_ = nullptr;
+    size_t outLimit_ = 0;          // run() 按输入长度算出的输出上限
     bool active_ = false;
     uint32_t bitBuf_ = 0;
     int bitCnt_ = 0;
@@ -1236,12 +1245,17 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
             // 按材质拆分索引
             size_t tri = 0;
             for (size_t t = 0; t < triMat.size(); ++t) {
-                int mm = triMat[t];
-                if (mm < 0 || mm >= matCount) mm = (matCount > 0 ? 0 : -1);
-                // 收集连续相同材质的三角形
+                // 分组比较必须用「归一化后的材质疑」两侧同口径比较。
+                // 若 triMat[t] == -1（未挂材质）而 mm 被归一成 0，旧写法里 while 一次都不前进，
+                // t 被回退到 t-1 再由 ++t 拉回 t → 死循环，进程内存涨到数 GB 后被系统杀掉。
+                auto normMat = [&](int k) -> int {
+                    if (k < 0 || k >= matCount) return (matCount > 0 ? 0 : -1);
+                    return k;
+                };
+                int mm = normMat(triMat[t]);
                 size_t startTri = t;
-                size_t endTri = t;
-                while (endTri < triMat.size() && triMat[endTri] == mm) ++endTri;
+                size_t endTri = t + 1;               // 至少推进 1 格，保证 for 一定前进
+                while (endTri < triMat.size() && normMat(triMat[endTri]) == mm) ++endTri;
                 t = endTri - 1;
                 SubMesh sm;
                 sm.materialIndex = mm;

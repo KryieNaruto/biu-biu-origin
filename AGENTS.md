@@ -1,7 +1,7 @@
 # AGENTS.md — BiuBiuOrigin 开发契约
 
 > 本文件是**项目唯一的启动入口**。任何人（包括 AI agent）在动手写代码前必须先读完本文件。
-> 版本: v2 ｜ 建立日期: 2026-11-03 ｜ 最后更新: 2026-11-03 ｜ 状态: ECS 骨架已落地（内核 + 宿主 + 首批系统 + 63 测试全绿），业务内容待填充
+> 版本: v4 ｜ 建立日期: 2026-11-03 ｜ 最后更新: 2026-11-05 ｜ 状态: ECS 骨架已落地（内核 + 宿主 + 首批系统）；**角色抽象已落地**（数值包组合 + 五槽技能包 + 玩家怪物同源 + 策划可改 Excel，101 测试全绿）；仓库已入 git 并推送 GitHub；多会话并行工作流（规则8）已建立
 
 ---
 
@@ -15,6 +15,7 @@
 | 数值放哪 | **Excel 是唯一真源**，构建期生成 `data/generated/`；代码里出现游戏数值 = 违规 |
 | 开工流程 | 先想抽象 → 再想扩展点 → 才写实现（`docs/rules/03`、`06`） |
 | 收工流程 | 编译通过 → 架构守卫无 error → **就地覆盖更新** `docs/architecture/ARCHITECTURE.md`（`docs/rules/07`） |
+| 多会话并行 | **每个会话开自己的临时工作空间（git worktree），干完合并回 main**，绝不在 main 上直接开发（`docs/rules/08`） |
 
 ---
 
@@ -30,6 +31,13 @@
 ⑥ 才开始写代码
 ```
 
+> **第 ⓿ 步（只要有第二个会话就可能并行，就先做）：** 开一个会话工作空间，别在项目根直接开工。
+> ```powershell
+> .\tools\session.ps1 start -Name <会话名>     # 例：skill-takeover
+> cd ..\.worktrees\<会话名>                     # ★ 之后所有操作都在这个目录里
+> ```
+> 详见 [docs/rules/08-parallel-sessions.md](docs/rules/08-parallel-sessions.md)。单人单会话时可跳过。
+
 > 停在第 ② 步就卡住，说明 ARCHITECTURE.md 没维护好 —— 先把它补上，再开工。
 
 > **写玩法代码前的额外一步（2026-11-03 起强制）：** 本工程的运行时玩法**跑在数据导向 ECS 上**（`Game.Core.Ecs`，见 [docs/architecture/ECS.md](docs/architecture/ECS.md)）。
@@ -37,7 +45,7 @@
 
 ---
 
-## 2. 七条铁规（摘要，全文见 `docs/rules/`）
+## 2. 八条铁规（摘要，全文见 `docs/rules/`）
 
 | # | 规矩 | 一句话判据 | 全文 | 自动检查 |
 |---|---|---|---|---|
@@ -48,6 +56,7 @@
 | 5 | 先抽象，不许临时搭建 | 开工第一件事是写接口，不是写实现 | [03-abstract-first.md](docs/rules/03-abstract-first.md) | 人工审查清单 |
 | 6 | 人物/怪物数值封装成包，可互相赋值 | 一切都是 `StatPackage` 的不同组合 | [05-numeric-package.md](docs/rules/05-numeric-package.md) | 人工审查 |
 | 7 | 必须可扩展，新增功能不大改 | 「新增一种 X 要改几个文件？」答案 ≤ 2 | [06-extensibility.md](docs/rules/06-extensibility.md) | 人工审查 |
+| 8 | **多会话并行，每会话开临时工作空间，完成后合并主线** | 改动是不是发生在 `session/<会话名>` 分支的独立 worktree 里？在 `main` 上直接写 = 违规 | [08-parallel-sessions.md](docs/rules/08-parallel-sessions.md) | `tools/session.ps1` + 人工审查 |
 
 ---
 
@@ -60,6 +69,9 @@
 5. ❌ 在 `scripts/ui/` 里调用 `Game.Combat` / `Game.Skill` 的结算逻辑（UI 只能读数据和发事件）。
 6. ❌ 直接手改 `data/generated/` 下的文件（改 Excel 后重新生成）。
 7. ❌ 修改引擎源码（默认不允许；确需时走 [02-tech-selection.md](docs/rules/02-tech-selection.md) 的 fork 流程并记录引擎版本）。
+8. ❌ **在 `main` 分支上直接开发**（多个会话并行时）；或在两个会话里同时改同一批文件却不各自开 worktree。
+9. ❌ 把会话 worktree 建在项目根内部（会让 Godot 把两份工作树都当项目导入，`.godot/` 互相打架）。
+10. ❌ `git push --force` 到 `main`，或删除尚未合并的会话分支。
 
 ---
 
@@ -113,14 +125,19 @@ biu-biu-origin/
 │   ├─ check_architecture.ps1 架构守卫（收工前必跑）
 │   ├─ check_all.ps1         一键校验（build + 守卫 + 测试）
 │   ├─ env.ps1               环境探测
+│   ├─ session.ps1           ★多会话工作空间管理（规则8：start/commit/finish/stop）
 │   └─ probes/               只读探针
 ├─ tests/                     C# 测试工程（引用主工程，dotnet test / dotnet run 一键跑）
 └─ docs/
-    ├─ rules/                01~07 规矩全文
+    ├─ rules/                01~08 规矩全文
     ├─ architecture/
     │   ├─ ARCHITECTURE.md   ★架构大纲（收工必须更新，唯一入口）
     │   └─ ECS.md            ★ECS 数据导向实现的全部形状（ARCHITECTURE 的下游章节）
     └─ prompts/              任务提示词模板（复制给 AI 用）
+
+../.worktrees/<会话名>/        ← ★会话工作空间（git worktree），在项目根【之外】
+                                  各会话独立分支 session/<会话名>，共享同一个 .git 对象库
+                                  规则8 强制要求；不随主仓提交，各 worktree 自己 build
 ```
 
 ---
@@ -155,6 +172,18 @@ dotnet build                          # 1. C# 编译零错误
 
 只跑 1、2 不更新 3、4 的任务，视为**未完成**。
 
+**多会话并行时，收工顺序变成 7 步（规则8）：**
+
+```powershell
+# 在这个会话的 worktree 目录里做 1~4（不是项目根！）
+.\tools\session.ps1 commit -Name <会话名> -Message "<一句话说清改了什么>"
+.\tools\session.ps1 finish -Name <会话名>   # rebase 到最新 main → merge --no-ff 回 main
+# 合并完成后再回项目根复跑一次构建与守卫，确认 merge 没引入新问题
+.\tools\session.ps1 stop   -Name <会话名>   # 清理 worktree 与分支
+```
+
+> `finish` **不会**替你跑架构守卫（避免工具替你决定要不要 `-UpdateBaseline`），合并后的复跑必须人来做。
+
 ---
 
 ## 8. 想让 AI 干活时怎么用
@@ -182,6 +211,7 @@ dotnet build                          # 1. C# 编译零错误
 | [docs/rules/05-numeric-package.md](docs/rules/05-numeric-package.md) | StatPackage 数值包与互相赋值 |
 | [docs/rules/06-extensibility.md](docs/rules/06-extensibility.md) | 可扩展性判据与「夺舍」走查 |
 | [docs/rules/07-definition-of-done.md](docs/rules/07-definition-of-done.md) | 任务完成定义与架构大纲更新 SOP |
+| [docs/rules/08-parallel-sessions.md](docs/rules/08-parallel-sessions.md) | ★多会话并行工作流（worktree 临时工作空间、合并主线、冲突处理） |
 | [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) | ★架构大纲（每任务必更，唯一入口） |
 | [docs/architecture/ECS.md](docs/architecture/ECS.md) | ★ECS 数据导向实现的全部形状（七条判定 / 组件规范 / 内核 API / 一帧顺序 / 引擎边界 / 性能路线） |
 | [docs/prompts/task-prompt-template.md](docs/prompts/task-prompt-template.md) | 任务提示词模板 |
@@ -196,4 +226,6 @@ dotnet build                          # 1. C# 编译零错误
 |---|---|---|---|
 | 2026-11-03 | v1 | 立规矩 | 建立 7 条开发规约、架构守卫、环境探测、架构大纲、提示词模板；工程为 Godot 4.7.2-mono 空壳 |
 | 2026-11-03 | v1 | ECS 架构立骨架（Lead 定稿） | 运行时架构定为**数据导向 ECS**：新增 `docs/architecture/ECS.md` 为唯一 ECS 形状真源（七条判定 J1~J7、archetype 列式 + unmanaged 组件、SystemBase 系统族、帧末命令提交、`Game.Host` 作为唯一引擎边界）；目录契约新增 `scripts/core/ecs/`、`scripts/host/`、`tests/`、`nuget.config`；§6 技术栈**事实订正**：godot-cpp 无 4.7 分支 → master + 锁 hash + `-DGODOTCPP_API_VERSION=4.7`，cl.exe 需 vcvars64；新增 ECS 开工前置（§1） | `AGENTS.md`、`docs/architecture/ECS.md`、`docs/architecture/ARCHITECTURE.md`、`BiuBiuOrigin.csproj`、`nuget.config` |
-| 2026-11-03 | v2 | ECS 骨架落地验收 | **ECS 内核 + 宿主 + 首批系统全部落地并通过验收**：`scripts/core/ecs/`（14 文件内核）、`scripts/host/`（七阶段管线/视图池/事件队列/桥接）、`scripts/actor`+`scripts/spawn`（3 系统）、`tests/`（63 用例全绿）、`tools/check_all.ps1` 一键校验；修复 4 个真实内核缺陷（原型签名碰撞、命令值错位、预留实体误判、csproj glob 吞产物）。`ARCHITECTURE.md` §0/§1.1/§2.3/§3.2.0/§6.1.1/§10/§13 就地更新 | `AGENTS.md`、`docs/architecture/ARCHITECTURE.md`、`scripts/**`、`tests/**`、`tools/check_all.ps1`、`BiuBiuOrigin.csproj`
+| 2026-11-03 | v2 | ECS 骨架落地验收 | **ECS 内核 + 宿主 + 首批系统全部落地并通过验收**：`scripts/core/ecs/`（14 文件内核）、`scripts/host/`（七阶段管线/视图池/事件队列/桥接）、`scripts/actor`+`scripts/spawn`（3 系统）、`tests/`（63 用例全绿）、`tools/check_all.ps1` 一键校验；修复 4 个真实内核缺陷（原型签名碰撞、命令值错位、预留实体误判、csproj glob 吞产物）。`ARCHITECTURE.md` §0/§1.1/§2.3/§3.2.0/§6.1.1/§10/§13 就地更新 | `AGENTS.md`、`docs/architecture/ARCHITECTURE.md`、`scripts/**`、`tests/**`、`tools/check_all.ps1`、`BiuBiuOrigin.csproj` |
+| 2026-11-04 | v3 | 规则8 多会话并行 + 仓库入库 | **新增第 8 条铁规「多会话并行，每会话开临时工作空间，完成后合并主线」**：新增 `docs/rules/08-parallel-sessions.md`（6 步标准流程 / 主线纪律 / 冲突处理 / `ARCHITECTURE.md` 合并特例 / 8 条反例 / 会话命名规范）；新增 `tools/session.ps1`（start/list/status/commit/finish/stop，34 条断言自测全绿）；`07` 检查表追加 ⑦ 合并到主线；本文件 §0/§1/§2/§3/§5/§7/§9 同步；**git 仓库初始化并推送 `https://github.com/KryieNaruto/biu-biu-origin`**（首个提交 276 文件 / 2.75 MB），`.gitignore` 修正三处会污染仓库的规则（`libgodot-cpp` 嵌套仓库、`tools/*/bin\|obj` 缓存、`!tools/**` 过度放行） | `AGENTS.md`、`docs/rules/08-parallel-sessions.md`、`docs/rules/07-definition-of-done.md`、`tools/session.ps1`、`config/architecture-rules.json`、`.gitignore` |
+| 2026-11-05 | v4 | **角色抽象（Character）落地** | **新增 `ARCHITECTURE.md` §15 角色抽象**：角色 = 「五层数值包 + 一个技能包 + 阵营/控制两个标签」的 ECS 组合，玩家与怪物**同一组件集合**（`Transform3/Team/Health/Mana/Hurtbox/ActorIdentity/SkillState/ActorIntent`），差异只在数据行。① 数值：`StatId` 追加法力/护甲/力量·敏捷·幸运号段；`StatPackageRepository.Compose` 严格按规则6 折叠（Base 绝对值 + 四层差量，`GetLayerValue` 保留单层读取）。② 技能：`SkillSlot` 五固定槽（Shift 冲刺 / 左键射击 / Q 切武器 / R 独有 / F 交互），`SkillCastSystem` 每帧只消费一个槽，门控 `CanCast→Cast→扣法力→起冷却`，失败原因入组件供 HUD/音效反馈。③ 组合：`ActorSpawnRequest` 是唯一造人入口，**夺舍 = 改 `ControlOverride`/`TeamOverride` 两个字段**；组件只存槽位号不存引用（J2）。④ 策划可改：`data/excel/characters.xlsx`（Characters/StatPacks/SkillLoads，四行表头）为唯一真源，`CharacterContentSet` 提供逐项一致的运行时副本兜底，9 条回归用例钉住「表 ↔ 运行时」。⑤ 引擎边界：`PlayerInputIntentSource` 是唯一碰 `Input` 的地方，把 InputMap action 翻成 `InputIntent`（Q16 定点），故玩家/AI/回放共用同一代码路径。**测试 63 → 101 全绿**，架构守卫 0 error / 0 warning | `AGENTS.md`、`docs/architecture/ARCHITECTURE.md`、`scripts/core/**`、`scripts/actor/**`、`scripts/skill/**`、`scripts/data/**`、`scripts/host/control/**`、`scripts/host/DungeonDebugScene.cs`、`project.godot`、`data/excel/characters.xlsx`、`tools/data_pipeline/gen_characters_xlsx.py`、`tests/Characters/**`、`tests/BiuBiuOrigin.Tests.csproj` |
