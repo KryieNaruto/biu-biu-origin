@@ -79,8 +79,11 @@ CHARACTERS_COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
 
 ENUMS: "dict[str, list[str]]" = {
     "TagCategory": ["Kind", "Stat", "Element", "Ability", "Trigger"],
+    # ★ 标签轴：强化 / 图鉴 / 筛选按轴取范围（RuntimeTagAxes 的 TagFamily）
+    "TagFamily": ["Kind", "WeaponKind", "ProjectileKind", "Element", "Ability", "Trigger",
+                  "Rarity", "Race", "Role", "Effect"],
     "TagGroup": ["ObjectKind", "WeaponKind", "ProjectileKind", "Element", "Ability", "Chain",
-                 "Trigger"],
+                 "Trigger", "Rarity", "Race", "Role", "Effect"],
     "WeaponTrigger": ["Auto", "Semi", "Burst", "Charge", "Hold", "Triggered", "Manual"],
     "WeaponDelivery": ["Instant", "Projectile", "Beam", "Melee", "Aura", "SpawnActor", "Throw"],
     "WeaponAimKind": ["Forward", "AimPoint", "AimLock", "Orbit", "RandomSpread", "Grid",
@@ -100,6 +103,14 @@ ENUMS: "dict[str, list[str]]" = {
     "ActorKind": ["Player", "Monster", "Elite", "Boss", "Summon", "Destructible"],
     "ControlScheme": ["PlayerInput", "Ai", "Script"],
     "SkillSlot": ["Dash", "PrimaryAttack", "WeaponSwap", "Signature", "Interact"],
+}
+
+# 标签「组 → 轴」的唯一例外映射（其余情况下 Family 必须等于 Group）。
+# ObjectKind 组在 TagFamily 里登记为 Kind（枚举里没有 ObjectKind，而「对象种类」就是 Kind 轴）；
+# Chain 组属于 Ability 轴（熔炉链递推是一种能力）。
+TAG_GROUP_TO_FAMILY: "dict[str, str]" = {
+    "ObjectKind": "Kind",
+    "Chain": "Ability",
 }
 
 # StatId 全名集 + 数值。必须与 scripts/core/StatId.cs 一致（另一位队友在该文件里加
@@ -671,6 +682,7 @@ def validate_tags(report: Report, t: Table) -> "dict[str, int]":
                 index_owner[idx] = key
                 report.ok()
 
+        as_enum(report, t, row, "Family", key, t.cell(cells, "Family"), "TagFamily")
         as_enum(report, t, row, "Category", key, t.cell(cells, "Category"), "TagCategory")
         as_enum(report, t, row, "Group", key, t.cell(cells, "Group"), "TagGroup")
 
@@ -710,6 +722,60 @@ def validate_tags(report: Report, t: Table) -> "dict[str, int]":
         report.ok()
 
     return {_s(c[0]): _int_or(c[4], -1) for _, c in t.rows}
+
+
+def check_tag_families(report: Report, t: Table) -> "dict[str, str]":
+    """标签轴一致性（多轴标签扩展）：返回 {TagId: Family}。
+
+    · **Family 与 Group 的关系**：Group 是「实现分组」——`ObjectKind` 组决定 Capability 位；
+      Family 是「索引轴」——强化 / 图鉴 / 筛选按轴取范围。同一个 tag 两者必须指向同一件事，
+      所以只有**一个**历史遗留例外：`ObjectKind` 组在 TagFamily 里登记为 `Kind`
+      （枚举里没有 `ObjectKind` 这个名字，而"对象种类"就是 Kind 轴）。
+      `Chain` 组是 Ability 轴的分组（熔炉链递推属于能力）。
+    · **同轴互斥**的轴见 <see cref="check_tag_axes_per_object"/>。
+    """
+    family_of: "dict[str, str]" = {}
+    for row, cells in t.rows:
+        key = _s(cells[0])
+        family = _s(t.cell(cells, "Family"))
+        group = _s(t.cell(cells, "Group"))
+        family_of[key] = family
+        if not family or not group:
+            continue
+        expected = TAG_GROUP_TO_FAMILY.get(group, group)
+        if family != expected:
+            report.cell(t.file, t.name, row, t.col("Family"), key, "Family",
+                        f"Family「{family}」与 Group「{group}」不一致：组「{group}」应属于轴「{expected}」"
+                        f"（Family 是索引轴，Group 是实现分组，对同一个 tag 必须指向同一件事）")
+        else:
+            report.ok()
+    return family_of
+
+
+def check_tag_axes_per_object(report: Report, obj_t: Table, tag_family: "dict[str, str]") -> None:
+    """每个物体的「同轴互斥」检查。
+
+    唯一性轴（Kind / WeaponKind / ProjectileKind / Element / Rarity / Race / Role / Effect）
+    每个物体最多命中一个标签：稀有度不可能既是普通又是稀有，族裔不可能既是哥布林又是史莱姆。
+    **Ability 轴刻意不互斥**（穿透 + 弹跳 + 分裂可以叠在同一个弹上），这正是 ECS 组合的意义。
+    """
+    exclusive = {"Kind", "WeaponKind", "ProjectileKind", "Element", "Rarity", "Race", "Role", "Effect"}
+    for row, cells in obj_t.rows:
+        key = _s(cells[0])
+        by_family: "dict[str, list[str]]" = {}
+        for name in _tag_list(t_cell(obj_t, cells, "Tags")):
+            family = tag_family.get(name)
+            if family:
+                by_family.setdefault(family, []).append(name)
+        bad = False
+        for family, names in by_family.items():
+            if family in exclusive and len(names) > 1:
+                report.cell(obj_t.file, obj_t.name, row, obj_t.col("Tags"), key, "Tags",
+                            f"同轴「{family}」命中了 {len(names)} 个标签 {names}：该轴是互斥轴，"
+                            f"一个物体只能有一个（想表达叠加效果的请用 Ability 轴的标签）")
+                bad = True
+        if not bad:
+            report.ok()
 
 
 def _int_or(v, default: int) -> int:
@@ -1400,6 +1466,7 @@ def main(argv: "list[str]") -> int:
         return _finish(report)
 
     tags = validate_tags(report, tags_t)
+    tag_family = check_tag_families(report, tags_t)
     obj_tag_map = {_s(c[0]): _tag_list(t_cell(obj_t, c, "Tags")) for _, c in obj_t.rows}
 
     validate_objects(report, obj_t, tags)
@@ -1421,6 +1488,7 @@ def main(argv: "list[str]") -> int:
                       if _s(t_cell(p_t, c, "ObjectId"))}
     check_object_refs(report, obj_t, weapon_ids, set(projectile_obj))
     check_capabilities(report, obj_t, weapon_obj, projectile_obj)
+    check_tag_axes_per_object(report, obj_t, tag_family)
     check_clusters(report, obj_t)
     check_reference_cycles(report, obj_t)
     check_object_statpacks(report, obj_t, char_packs, combat_packs)

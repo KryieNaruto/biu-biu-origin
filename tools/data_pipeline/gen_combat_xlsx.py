@@ -48,9 +48,12 @@ COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
     "Tags": [
         ("TagId", "string", "标签id", "小写下划线，如 tag.pistol；= 运行时 tag 名的唯一来源"),
         ("TagIndex", "int", "标签下标", "★ 必须从 0 连续递增，= 运行时 tag id（位矩阵的行下标）"),
+        ("Family", "enum:TagFamily", "标签轴", "★ 标签的「轴」（Kind/WeaponKind/Element/Ability/Role/Rarity/Race/Effect）；"
+                                        "强化/图鉴/筛选按轴取范围，同轴只能命中一个的轴是 Group 的延伸"),
         ("Category", "enum:TagCategory", "类别", "Kind/Stat/Element/Ability/Trigger"),
-        ("Group", "enum:TagGroup", "分组", "ObjectKind/WeaponKind/ProjectileKind/Element/Ability/Chain；"
-                                     "运行时按「所有 ObjectKind 组 → Capability 位」落子，代码里不出现具体 tag 名"),
+        ("Group", "enum:TagGroup", "分组", "ObjectKind/WeaponKind/ProjectileKind/Element/Ability/Chain/Trigger/"
+                                      "Role/Rarity/Race/Effect；运行时按「所有 ObjectKind 组 → Capability 位」落子，"
+                                      "代码里不出现具体 tag 名"),
         ("BitMask", "int", "配方位", "该 tag 在 64 位配方字里的位，0..63 唯一；-1 = 不进配方字"),
         ("Note", "string", "备注", "人读说明"),
     ],
@@ -135,25 +138,72 @@ COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
 
 # ── 数据 ──────────────────────────────────────────────────────────────────────
 
+# 标签是**多轴的**：一个物体在不同轴上可以各挂一个（例如「稀有·精英·火元素·远程·爆炸怪」）。
+# Family（轴）与 Group（组）的区别：
+#   · Group 是「实现分组」——ObjectKind 组决定 Capability 位（代码只认这一组）；
+#   · Family 是「**索引轴**」——强化 / 图鉴 / 筛选按轴取范围（"本周所有火焰类伤害 +20%"）。
+# 同一物体在**唯一性轴**（Kind 与 Group 中标记为互斥的那些）上最多命中一个：
+#   ObjectKind / WeaponKind / ProjectileKind / Element / Rarity / Race / Role；
+#   Ability 轴**刻意不做唯一**（可以同时穿甲 + 弹跳 + 分裂，这正是 ECS 组合的意义）。
+#
+# ★ 只加不改：TagIndex 增量追加；新标签默认 BitMask = -1（不进熔炉配方字），
+#   只有真的要被配方引用时才分配位（0..63 全局唯一）。
 TAGS: list[list] = [
-    # TagId, TagIndex, Category, Group, BitMask, Note
-    ["tag.actor", 0, "Kind", "ObjectKind", 0, "人物/怪物"],
-    ["tag.weapon", 1, "Kind", "ObjectKind", 1, "武器"],
-    ["tag.projectile", 2, "Kind", "ObjectKind", 2, "子弹"],
-    ["tag.pistol", 3, "Kind", "WeaponKind", 3, "手枪类"],
-    ["tag.rifle", 4, "Kind", "WeaponKind", 4, "步枪/冲锋类"],
-    ["tag.bow", 5, "Kind", "WeaponKind", 5, "弓类（蓄力）"],
-    ["tag.melee", 6, "Kind", "WeaponKind", 6, "近战类"],
-    ["tag.homing", 7, "Kind", "ProjectileKind", 7, "追踪弹"],
-    ["tag.energy", 8, "Kind", "Element", 8, "能量元素"],
-    ["tag.kinetic", 9, "Kind", "Element", 9, "动能元素"],
-    ["tag.explosive", 10, "Kind", "Element", 10, "爆炸元素"],
-    ["tag.pierce", 11, "Kind", "Ability", 11, "穿透"],
-    ["tag.bounce", 12, "Kind", "Ability", 12, "弹跳"],
-    ["tag.split", 13, "Kind", "Ability", 13, "分裂"],
-    ["tag.summon", 14, "Kind", "Ability", 14, "召唤"],
-    ["tag.chain", 15, "Kind", "Chain", 15, "熔炉链递推"],
-    ["tag.volatile", 16, "Kind", "Trigger", -1, "不稳定：不进配方字，只做规则开关"],
+    # TagId, TagIndex, Family, Category, Group, BitMask, Note
+    # ── 轴 1：Kind / ObjectKind（决定 Capability 位；互斥）────────────────────────
+    ["tag.actor", 0, "Kind", "Kind", "ObjectKind", 0, "人物/怪物"],
+    ["tag.weapon", 1, "Kind", "Kind", "ObjectKind", 1, "武器"],
+    ["tag.projectile", 2, "Kind", "Kind", "ObjectKind", 2, "子弹"],
+    # ── 轴 2：武器形态 / WeaponKind（互斥）──────────────────────────────────────
+    ["tag.pistol", 3, "WeaponKind", "Kind", "WeaponKind", 3, "手枪类"],
+    ["tag.rifle", 4, "WeaponKind", "Kind", "WeaponKind", 4, "步枪/冲锋类"],
+    ["tag.bow", 5, "WeaponKind", "Kind", "WeaponKind", 5, "弓类（蓄力）"],
+    ["tag.melee", 6, "WeaponKind", "Kind", "WeaponKind", 6, "近战类"],
+    # ── 轴 3：弹体行为 / ProjectileKind（互斥）──────────────────────────────────
+    ["tag.homing", 7, "ProjectileKind", "Kind", "ProjectileKind", 7, "追踪弹"],
+    # ── 轴 4：元素 / Element（互斥）────────────────────────────────────────────
+    ["tag.energy", 8, "Element", "Element", "Element", 8, "能量元素"],
+    ["tag.kinetic", 9, "Element", "Element", "Element", 9, "动能元素"],
+    ["tag.explosive", 10, "Element", "Element", "Element", 10, "爆炸元素"],
+    # ── 轴 5：能力 / Ability（**可叠加**，非互斥）───────────────────────────────
+    ["tag.pierce", 11, "Ability", "Ability", "Ability", 11, "穿透"],
+    ["tag.bounce", 12, "Ability", "Ability", "Ability", 12, "弹跳"],
+    ["tag.split", 13, "Ability", "Ability", "Ability", 13, "分裂"],
+    ["tag.summon", 14, "Ability", "Ability", "Ability", 14, "召唤"],
+    # ── 轴 6：熔炉链 / Chain ────────────────────────────────────────────────────
+    ["tag.chain", 15, "Ability", "Ability", "Chain", 15, "熔炉链递推"],
+    # ── 轴 7：行为开关 / Trigger（不进配方字）───────────────────────────────────
+    ["tag.volatile", 16, "Trigger", "Trigger", "Trigger", -1, "不稳定：不进配方字，只做规则开关"],
+    # ══════════════════════════════════════════════════════════════════════════
+    # 以下为「多轴标签」扩展（2026-11-06）。全部 BitMask = -1：只做索引，不改熔炉行为。
+    # ── 轴 8：稀有度 / Rarity（互斥；强化词条按稀有度加权、图鉴按稀有度分档）────
+    ["tag.common", 17, "Rarity", "Stat", "Rarity", -1, "普通：权重 ≥ 2 的大众货"],
+    ["tag.uncommon", 18, "Rarity", "Stat", "Rarity", -1, "精良：权重 1~2"],
+    ["tag.rare", 19, "Rarity", "Stat", "Rarity", -1, "稀有：权重 0.5~1，需要构筑才能拿到"],
+    ["tag.legendary", 20, "Rarity", "Stat", "Rarity", -1, "传说：权重 < 0.5，或表里唯一的匠人级"],
+    # ── 轴 9：族裔 / Race（互斥；图鉴分组 + 「对某族增伤」类强化）─────────────────
+    ["tag.humanoid", 21, "Race", "Stat", "Race", -1, "人形"],
+    ["tag.goblin", 22, "Race", "Stat", "Race", -1, "哥布林"],
+    ["tag.slime", 23, "Race", "Stat", "Race", -1, "史莱姆"],
+    ["tag.ogre", 24, "Race", "Stat", "Race", -1, "食人魔"],
+    # ── 轴 10：战斗角色 / Role（互斥；AI 与强化都按它取范围）─────────────────────
+    ["tag.hero", 25, "Role", "Stat", "Role", -1, "可选英雄（图鉴人物页的入口）"],
+    ["tag.grunt", 26, "Role", "Stat", "Role", -1, "小怪：近身杂兵"],
+    ["tag.ranged", 27, "Role", "Stat", "Role", -1, "远程：会拉距离输出的敌人"],
+    ["tag.caster", 28, "Role", "Stat", "Role", -1, "施法者：靠技能/召唤，血量低"],
+    ["tag.elite", 29, "Role", "Stat", "Role", -1, "精英：高血高甲，常带独有技能"],
+    ["tag.assassin", 30, "Role", "Stat", "Role", -1, "机动型：高速 / 高会心"],
+    # ── 轴 11：攻击形态 / Ability（双轴归属：同属能力轴，便于叠词条）───────────────
+    ["tag.projectile_fired", 31, "Ability", "Ability", "Ability", -1, "弹道攻击：靠飞出弹体打人"],
+    ["tag.short_range", 32, "Ability", "Ability", "Ability", -1, "近身范围：贴脸才能打"],
+    ["tag.multi_shot", 33, "Ability", "Ability", "Ability", -1, "连发：射速高、单发弱"],
+    ["tag.charge", 34, "Ability", "Ability", "Ability", -1, "蓄力：按住越久越强"],
+    ["tag.ricochet", 35, "Ability", "Ability", "Ability", -1, "弹射：命中后折向新目标"],
+    ["tag.high_damage", 36, "Ability", "Ability", "Ability", -1, "重击：单发伤害显著高于同费"],
+    # ── 轴 12：特效表现 / Effect（互斥；表现层按轴挑池，逻辑层不解释）─────────────
+    ["tag.muzzle", 37, "Effect", "Stat", "Effect", -1, "枪口：开火瞬间"],
+    ["tag.hit", 38, "Effect", "Stat", "Effect", -1, "命中：打在受击盒上"],
+    ["tag.burst", 39, "Effect", "Stat", "Effect", -1, "爆散：范围爆开"],
 ]
 
 # 每行：Id, DisplayKey, Tags, Cluster, ClusterWeight, StatPacks, Weapon, Projectile, Actor, Effect,
@@ -166,60 +216,89 @@ TAGS: list[list] = [
 #   3. 权重体现稀有度：越常见越大，稀有物件给小值（王弹 0.1 vs 手枪弹 3.0）。
 OBJECTS: list[list] = [
     # ── 人物 / 怪物（簇 actor_goblin：三个哥布林，能力位都是 actor）──
-    ["player_hero", "actor.player", "tag.actor", "actor_player", 1.0, "player_base;;;;", "pistol_101", "", "", "",
+    # ★ 标签按轴挂（TagFamily）：Kind + WeaponKind/ProjectileKind + Element + 能力 + Rarity + Race + Role + Effect。
+    #   同轴互斥的轴（Kind/WeaponKind/ProjectileKind/Element/Rarity/Race/Role/Effect）每行最多一个，校验器会查；
+    #   Ability 轴允许叠（pierce + bounce + split 可以同时在同一个弹上）。
+    ["player_hero", "actor.player",
+     "tag.actor,tag.hero,tag.humanoid,tag.common,tag.ranged,tag.projectile_fired", "actor_player", 1.0, "player_base;;;;", "pistol_101", "", "", "",
      "capsule_player", 0.45, 1.8, "玩家本体；Weapon 指向默认武器（单候选簇，独立不参与熔炉）"],
-    ["goblin_grunt", "actor.goblin_grunt", "tag.actor", "actor_goblin", 5.0, "goblin_base;;;;", "", "", "", "",
+    ["goblin_grunt", "actor.goblin_grunt",
+     "tag.actor,tag.goblin,tag.humanoid,tag.common,tag.grunt,tag.short_range", "actor_goblin", 5.0, "goblin_base;;;;", "", "", "", "",
      "capsule_goblin", 0.40, 1.20, "普通哥布林（近战，无远程武器）——最常见"],
-    ["goblin_archer", "actor.goblin_archer", "tag.actor,tag.bow", "actor_goblin", 2.0, "goblin_archer_base;;;;", "bow_201", "bullet_201", "", "",
+    ["goblin_archer", "actor.goblin_archer",
+     "tag.actor,tag.bow,tag.goblin,tag.humanoid,tag.uncommon,tag.ranged,tag.projectile_fired", "actor_goblin", 2.0, "goblin_archer_base;;;;", "bow_201", "bullet_201", "", "",
      "capsule_archer", 0.40, 1.20, "哥布林弓手：Weapon/Projectile 都有，同源拼装"],
-    ["goblin_shaman", "actor.goblin_shaman", "tag.actor,tag.energy", "actor_goblin", 0.8, "goblin_shaman_base;;;;", "", "", "", "",
+    ["goblin_shaman", "actor.goblin_shaman",
+     "tag.actor,tag.energy,tag.goblin,tag.humanoid,tag.rare,tag.caster", "actor_goblin", 0.8, "goblin_shaman_base;;;;", "", "", "", "",
      "capsule_shaman", 0.40, 1.30, "哥布林萨满：稀有精英怪（权重小）"],
-    ["ogre_brute", "actor.ogre_brute", "tag.actor,tag.melee", "actor_ogre", 1.0, "ogre_base;;;;", "club_401", "", "", "",
+    ["ogre_brute", "actor.ogre_brute",
+     "tag.actor,tag.melee,tag.ogre,tag.uncommon,tag.elite,tag.short_range,tag.high_damage", "actor_ogre", 1.0, "ogre_base;;;;", "club_401", "", "", "",
      "capsule_ogre", 0.90, 2.60, "食人魔精英：近战武器（单候选簇）"],
-    ["slime_401", "actor.slime_401", "tag.actor,tag.split", "actor_slime", 3.0, "slime_401_base;;;;", "", "", "", "",
+    ["slime_401", "actor.slime_401",
+     "tag.actor,tag.split,tag.slime,tag.common,tag.grunt", "actor_slime", 3.0, "slime_401_base;;;;", "", "", "", "",
      "blob_slime", 0.35, 0.70, "分裂史莱姆（可被子弹喷出来 → 弹体里出怪）"],
-    ["slime_402", "actor.slime_402", "tag.actor,tag.split,tag.explosive", "actor_slime", 1.0, "slime_402_base;;;;", "", "", "", "",
+    ["slime_402", "actor.slime_402",
+     "tag.actor,tag.split,tag.explosive,tag.slime,tag.rare,tag.grunt", "actor_slime", 1.0, "slime_402_base;;;;", "", "", "", "",
      "blob_slime_fire", 0.40, 0.80, "爆炸史莱姆：稀有变种"],
-    ["slime_403", "actor.slime_403", "tag.actor,tag.split,tag.volatile", "actor_slime", 0.4, "slime_403_base;;;;", "", "", "", "",
+    ["slime_403", "actor.slime_403",
+     "tag.actor,tag.split,tag.volatile,tag.slime,tag.legendary,tag.assassin", "actor_slime", 0.4, "slime_403_base;;;;", "", "", "", "",
      "blob_slime_wild", 0.30, 0.60, "不稳定史莱姆：极稀有"],
     # ── 武器（簇 weapon_gun：三把手枪类；簇 weapon_rifle：三把长枪类）──
-    ["pistol_101", "item.pistol_101", "tag.weapon,tag.pistol", "weapon_gun", 3.0, "wpn_pistol_101;;;;", "", "bullet_101", "", "",
+    ["pistol_101", "item.pistol_101",
+     "tag.weapon,tag.pistol,tag.kinetic,tag.common,tag.projectile_fired", "weapon_gun", 3.0, "wpn_pistol_101;;;;", "", "bullet_101", "", "",
      "gun_pistol", 0.10, 0.10, "玩家左键手枪——最常见"],
-    ["smg_102", "item.smg_102", "tag.weapon,tag.pistol", "weapon_gun", 1.5, "wpn_smg_102;;;;", "", "bullet_102", "", "",
+    ["smg_102", "item.smg_102",
+     "tag.weapon,tag.pistol,tag.kinetic,tag.pierce,tag.uncommon,tag.multi_shot,tag.projectile_fired", "weapon_gun", 1.5, "wpn_smg_102;;;;", "", "bullet_102", "", "",
      "gun_smg", 0.10, 0.10, "冲锋枪：高速散射 + 分裂"],
-    ["revolver_103", "item.revolver_103", "tag.weapon,tag.pistol", "weapon_gun", 0.6, "wpn_revolver_103;;;;", "", "bullet_103", "", "",
+    ["revolver_103", "item.revolver_103",
+     "tag.weapon,tag.pistol,tag.kinetic,tag.rare,tag.high_damage,tag.projectile_fired", "weapon_gun", 0.6, "wpn_revolver_103;;;;", "", "bullet_103", "", "",
      "gun_revolver", 0.10, 0.10, "左轮：稀有高伤"],
-    ["bow_201", "item.bow_201", "tag.weapon,tag.bow", "weapon_rifle", 1.0, "wpn_bow_201;;;;", "", "bullet_201", "", "",
+    ["bow_201", "item.bow_201",
+     "tag.weapon,tag.bow,tag.kinetic,tag.homing,tag.uncommon,tag.charge,tag.projectile_fired", "weapon_rifle", 1.0, "wpn_bow_201;;;;", "", "bullet_201", "", "",
      "bow_basic", 0.10, 0.10, "弓：蓄力 + 追踪，子弹继承弓的数值"],
-    ["rifle_202", "item.rifle_202", "tag.weapon,tag.rifle", "weapon_rifle", 2.5, "wpn_rifle_202;;;;", "", "bullet_102", "", "",
+    ["rifle_202", "item.rifle_202",
+     "tag.weapon,tag.rifle,tag.kinetic,tag.common,tag.multi_shot,tag.projectile_fired", "weapon_rifle", 2.5, "wpn_rifle_202;;;;", "", "bullet_102", "", "",
      "gun_rifle", 0.10, 0.10, "突击步枪：常见长枪"],
-    ["sniper_203", "item.sniper_203", "tag.weapon,tag.rifle", "weapon_rifle", 0.5, "wpn_sniper_203;;;;", "", "bullet_103", "", "",
+    ["sniper_203", "item.sniper_203",
+     "tag.weapon,tag.rifle,tag.kinetic,tag.pierce,tag.rare,tag.charge,tag.high_damage,tag.projectile_fired", "weapon_rifle", 0.5, "wpn_sniper_203;;;;", "", "bullet_103", "", "",
      "gun_sniper", 0.10, 0.10, "狙击枪：低射速高穿透"],
-    ["club_401", "item.club_401", "tag.weapon,tag.melee", "weapon_melee", 1.0, "wpn_club_401;;;;", "", "", "", "",
+    ["club_401", "item.club_401",
+     "tag.weapon,tag.melee,tag.kinetic,tag.uncommon,tag.short_range,tag.high_damage", "weapon_melee", 1.0, "wpn_club_401;;;;", "", "", "", "",
      "club_basic", 0.30, 0.30, "食人魔大棒：Melee 投送，不发射子弹（单候选簇）"],
-    ["orb_501", "item.orb_501", "tag.weapon,tag.energy", "weapon_staff", 1.0, "wpn_orb_501;;;;", "", "bullet_501", "", "",
+    ["orb_501", "item.orb_501",
+     "tag.weapon,tag.energy,tag.summon,tag.legendary", "weapon_staff", 1.0, "wpn_orb_501;;;;", "", "bullet_501", "", "",
      "orb_staff", 0.15, 0.15, "能量法球：SpawnActor 投送（打出史莱姆）（单候选簇）"],
     # ── 子弹（簇 proj_kinetic：四种动能弹，权重差别明显）──
-    ["bullet_101", "proj.bullet_101", "tag.projectile,tag.kinetic", "proj_kinetic", 5.0, "bullet_101_base;;;;", "", "", "", "",
+    ["bullet_101", "proj.bullet_101",
+     "tag.projectile,tag.kinetic,tag.common", "proj_kinetic", 5.0, "bullet_101_base;;;;", "", "", "", "",
      "orb_small", 0.05, 0.05, "手枪弹——最常见"],
-    ["bullet_102", "proj.bullet_102", "tag.projectile,tag.kinetic", "proj_kinetic", 2.0, "bullet_102_base;;;;", "", "", "", "",
+    ["bullet_102", "proj.bullet_102",
+     "tag.projectile,tag.kinetic,tag.pierce,tag.bounce,tag.uncommon", "proj_kinetic", 2.0, "bullet_102_base;;;;", "", "", "", "",
      "orb_small", 0.05, 0.05, "冲锋枪弹"],
-    ["bullet_103", "proj.bullet_103", "tag.projectile,tag.kinetic,tag.pierce", "proj_kinetic", 0.5, "bullet_103_base;;;;", "", "", "", "",
+    ["bullet_103", "proj.bullet_103",
+     "tag.projectile,tag.kinetic,tag.pierce,tag.rare,tag.high_damage", "proj_kinetic", 0.5, "bullet_103_base;;;;", "", "", "", "",
      "orb_heavy", 0.06, 0.06, "重弹：稀有"],
-    ["arrow_202", "proj.arrow_202", "tag.projectile,tag.kinetic,tag.pierce", "proj_kinetic", 0.2, "arrow_202_base;;;;", "bow_201", "", "", "",
+    ["arrow_202", "proj.arrow_202",
+     "tag.projectile,tag.kinetic,tag.pierce,tag.legendary", "proj_kinetic", 0.2, "arrow_202_base;;;;", "bow_201", "", "", "",
      "arrow_pierce", 0.06, 0.06, "★ 具有武器属性的子弹：Weapon=bow_201，落地后再射一发（极稀有）"],
-    ["bullet_201", "proj.bullet_201", "tag.projectile,tag.homing", "proj_homing", 1.0, "bullet_201_base;;;;", "", "", "", "",
+    ["bullet_201", "proj.bullet_201",
+     "tag.projectile,tag.homing,tag.kinetic,tag.uncommon", "proj_homing", 1.0, "bullet_201_base;;;;", "", "", "", "",
      "orb_homing", 0.07, 0.07, "追踪箭（被弓发射）（单候选簇）"],
-    ["bullet_301", "proj.bullet_301", "tag.projectile,tag.explosive,tag.summon", "proj_explosive", 1.0, "bullet_301_base;;;;", "", "", "slime_401", "",
+    ["bullet_301", "proj.bullet_301",
+     "tag.projectile,tag.explosive,tag.summon,tag.split,tag.rare", "proj_explosive", 1.0, "bullet_301_base;;;;", "", "", "slime_401", "",
      "orb_bomb", 0.12, 0.12, "★ 分裂炸弹：消散时喷出史莱姆（子弹 → 怪物）（单候选簇）"],
-    ["bullet_501", "proj.bullet_501", "tag.projectile,tag.energy", "proj_energy", 1.0, "bullet_501_base;;;;", "", "", "", "",
+    ["bullet_501", "proj.bullet_501",
+     "tag.projectile,tag.energy,tag.ricochet,tag.uncommon", "proj_energy", 1.0, "bullet_501_base;;;;", "", "", "", "",
      "orb_energy", 0.08, 0.08, "能量弹（被法球发射）（单候选簇）"],
     # ── 特效（也是物体：Effect 引用谁都可以指向这里；无 Kind 标签 → Capability = None，不进熔炉）──
-    ["fx_muzzle_small", "fx.muzzle_small", "", "", 1.0, ";;;;", "", "", "", "",
+    ["fx_muzzle_small", "fx.muzzle_small",
+     "tag.muzzle,tag.kinetic,tag.common", "", 1.0, ";;;;", "", "", "", "",
      "fx_muzzle_small", 0.10, 0.10, "枪口火花（无 Kind 标签 → Capability = None）"],
-    ["fx_hit_spark", "fx.hit_spark", "", "", 1.0, ";;;;", "", "", "", "",
+    ["fx_hit_spark", "fx.hit_spark",
+     "tag.hit,tag.kinetic,tag.common", "", 1.0, ";;;;", "", "", "", "",
      "fx_hit_spark", 0.10, 0.10, "命中火花"],
-    ["fx_bomb_burst", "fx.bomb_burst", "", "", 1.0, ";;;;", "", "", "", "",
+    ["fx_bomb_burst", "fx.bomb_burst",
+     "tag.burst,tag.kinetic,tag.uncommon", "", 1.0, ";;;;", "", "", "", "",
      "fx_bomb_burst", 0.60, 0.60, "爆炸爆散"],
 ]
 
