@@ -133,7 +133,7 @@ public sealed class StatPackageRepository : IStatPackageRepository
     /// <inheritdoc />
     public IReadOnlyStatView Compose(in StatPackageIds ids)
     {
-        var layers = new List<StatPackageLayer>(5);
+        var layers = new List<StatPackageLayer>(5); // arch-ok: 容量提示对应 StatLayer 五层
         AddIfPresent(ids.Base, layers);
         AddIfPresent(ids.Growth, layers);
         AddIfPresent(ids.Equipment, layers);
