@@ -172,36 +172,9 @@ public struct Rigid
     public bool IsGrounded;
 }
 
-/// <summary>
-/// 抛射物：飞行参数与剩余行为次数（穿透 / 弹跳 / 追踪）。
-/// <para>
-/// 为什么「剩余穿透次数」放数据组件而不是系统私有表：一个系统实例要服务成百上千颗子弹，
-/// 私有字典会带来每帧查表与分配；放在 chunk 里就是同一行内存，随遍历免费到手。
-/// </para>
-/// </summary>
-public struct Projectile
-{
-    /// <summary>实体自引用。</summary>
-    [Identity] public Entity Owner;
-
-    /// <summary>发射者（用于伤害归属与友伤判定；已销毁时用 <see cref="World.IsAlive"/> 复核）。</summary>
-    public Entity Source;
-
-    /// <summary>伤害值（来自 Def，命中时结算）。</summary>
-    public float Damage;
-
-    /// <summary>剩余穿透次数（命中后减一；<= 0 时销毁）。</summary>
-    public int PierceLeft;
-
-    /// <summary>剩余弹跳次数。</summary>
-    public int BounceLeft;
-
-    /// <summary>当前速度（米/秒，沿飞行方向）。</summary>
-    public float Speed;
-
-    /// <summary>已飞行距离（米）；用于判定射程。</summary>
-    public float Traveled;
-}
+// 注意：本文件曾有一个示例组件 struct Projectile（Owner/Source/Damage/PierceLeft/BounceLeft/Speed/Traveled）。
+// 玩法子弹的组件是 Game.Combat.Projectile（scripts/combat/CombatComponents.cs），两者同名不同命名空间，
+// 字段部分重叠会导致「查询选错也能编译」，已于 2026-11-05 删除死代码（规则7：不留重复定义）。
 
 /// <summary>
 /// 「夺舍」状态：玩家临时控制某个敌方实体的玩法状态（规则6 / ECS.md 第 4.2 节）。
@@ -279,4 +252,107 @@ public struct Hurtbox
 
     /// <summary>击退抗性（0 = 完全不受击退，1 = 完整承受）。</summary>
     public float KnockbackResistance;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 2026-11-05 hero-1（契约 docs/design/character-hud-contract.md §3）
+// ─────────────────────────────────────────────────────────────────
+//
+// 为什么瞄准/移动意图是**官方组件**而不是角色域组件：它们描述的是「任何有位置的实体都可能收到的一种意图」——
+// 炮塔、可被击退的道具、被 AI 接管的召唤物都会用到；而「谁在控制系统」才是角色域的事（ActorIdentity）。
+// 放在官方组件表里，意味着将来「新增一种会瞄的实体」不需要改 scripts/actor/（规则7）。
+
+/// <summary>
+/// 瞄准目标：世界空间的点 + 方向（单位向量）。由宿主输入或 AI 写入，由瞄准/射击系统消费。
+/// <para>
+/// <b>为什么两点（点 + 方向）都存</b>：点用于「子弹该往哪飞」（鼠标射线与地面的交点），方向用于
+/// 「模型该朝哪转」（也是弹道方向）；两者在垂直瞄准（打空中目标）时并不等价，合成一个字段会丢信息。
+/// </para>
+/// <para>
+/// <b>为什么宿主能直接写这个组件而不用经过系统</b>：读鼠标射线需要引擎的射线求交（<c>J4</c>：只有宿主层能碰引擎），
+/// 所以「光标 → 世界点」这一步必须发生在宿主层；系统只做<u>校验与平滑</u>（见 <c>AimAtCursorSystem</c>）。
+/// 组件作为两条边的接缝，让宿主与系统之间只交换值，不交换控制流。
+/// </para>
+/// </summary>
+public struct AimTarget
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Entity Owner;
+
+    /// <summary>瞄准的世界坐标（米）。</summary>
+    public System.Numerics.Vector3 Point;
+
+    /// <summary>瞄准方向（单位向量；零向量表示"本帧没有有效瞄准"，系统会用上一帧 / 默认朝向兜底）。</summary>
+    public System.Numerics.Vector3 Direction;
+
+    /// <summary>
+    /// 本帧是否有一个"新鲜"的瞄准目标（由写入方置 true，被消费后由系统清掉）。
+    /// <para>为什么需要它：<see cref="Direction"/> 为 0 与「宿主这一帧没给瞄准」是不同的语义
+    /// （前者是数据错误，后者是正常状态：鼠标离开窗口、手柄回中、AI 暂时没目标）。
+    /// 用组件存在性表达不了「这一帧有没有更新」，所以留一个 bool，而不是让系统去猜。</para>
+    /// </summary>
+    public bool HasTarget;
+}
+
+/// <summary>
+/// 移动意图：本帧<u>期望</u>的速度（米/秒，世界空间）。由输入/寻路写入，由移动系统解析成 <see cref="Velocity"/>。
+/// <para>
+/// <b>为什么意图与速度分开两个组件</b>：意图是「玩家/AI 想怎么动」，速度是「物理上实际怎么动」——
+/// 后者还要叠加击退、惯性、地形限制、减速地带。若只留一个组件，那么「被击退时玩家仍能全速反向跑」
+/// 这类手感问题就没有可写的落点（谁覆盖谁取决于系统顺序，不可推理）。分开后：
+/// 意图 <c>MoveIntent</c>（输入写）→ <c>MoveAimSystem</c> 结合数值包算出 <c>Velocity</c> → <c>MovementSystem</c> 积分。
+/// </para>
+/// <para>
+/// <b>为什么是速度而不是按键位掩码</b>：把"WASD 这个键"翻译成方向属于操作方案（手柄/键位/摇杆，
+/// 宿主的输入包），系统只该看到已经合成的方向与大小。于是换一套手柄包、加一个"鼠标相对移动"的移动方式，
+/// 系统一行不改（规则7）。
+/// </para>
+/// </summary>
+public struct MoveIntent
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Entity Owner;
+
+    /// <summary>期望速度（米/秒，世界空间；长度 &gt; 1 表示"加速"，由移动系统的数值上限决定是否封顶）。</summary>
+    public System.Numerics.Vector3 Velocity;
+
+    /// <summary>强度 0..1：用于"摇杆推一半就走一半"，与 <see cref="Velocity"/> 的长度解耦（键盘 = 1）。</summary>
+    public float Magnitude;
+}
+
+/// <summary>
+/// 视图外观：外观包编号 + 配色档位 + 缩放。表现层据此挑模型/材质；<b>逻辑层不解释它的内容</b>。
+/// <para>
+/// <b>为什么不复用官方 <see cref="View"/></b>：<see cref="View"/> 是「视图池的租约」（借了哪个节点，
+/// 由桥在租还时写）；本组件是「长什么样」（配置），它在实体出生时就定了、整个生命周期基本不变。
+/// 把两者混在一起会让桥在换装时必须交出池管理权，且在"没分配视图"时丢失外观信息。
+/// </para>
+/// <para>
+/// <b>为什么叫 <c>ViewAppearance</c> 而不是契约里的 <c>ViewSlot</c></b>：
+/// 本文件已经有一个 <see cref="Game.Core.VisualSlot"/>（枚举），把新组件也叫 <c>ViewSlot</c> 会让
+/// <c>using Game.Core;</c> + <c>using Game.Core.Ecs;</c> 的文件里出现歧义（<c>ViewSlot.Body</c> vs
+/// <c>ViewSlot.Owner</c>），而宿主视图桥恰好要同时用两者。改名只影响本文件的类型名，组件语义与契约 §3 一行未变。
+/// </para>
+/// <para>
+/// <b>为什么外观 id 是 int 而不是字符串</b>：组件必须 unmanaged（J2）；外观包由宿主在装配期解析成
+/// 槽位号写进来（同 <c>ActorIdentity</c> 的数值包槽位做法）。<see cref="VisualKey"/> 额外留一个稳定哈希，
+/// 是为了「数据侧换了外观包 id 写法」时仍能按 key 复用视图（0 = 不用）。
+/// </para>
+/// </summary>
+public struct ViewAppearance
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Entity Owner;
+
+    /// <summary>外观包 id 的稳定哈希（0 = 未指定，桥退回按 <see cref="VisualSlotIndex"/> 选外观）。</summary>
+    public int VisualKey;
+
+    /// <summary>外观包在宿主外观注册表里的槽位号（-1 = 未解析）。</summary>
+    public int VisualSlotIndex;
+
+    /// <summary>配色档位号（表现层取色用；-1 = 默认配色）。</summary>
+    public int PaletteSlot;
+
+    /// <summary>视图缩放（相对预制体原始尺寸；1 = 原尺寸）。表现层专用，不参与任何判定。</summary>
+    public float Scale;
 }

@@ -61,12 +61,47 @@ public sealed class PlayerInputIntentSource : IIntentSource
     /// <summary>上一帧的按下掩码（用来把"按住"转换成"本帧按下"）。</summary>
     private uint _previousPressed;
 
+    /// <summary>
+    /// 冒烟/回放用的强制输入（null = 用真实键鼠）。
+    /// <para>
+    /// <b>为什么放在意图源里而不是直接写组件</b>：<c>ActorIntentSystem</c> 每帧都会用
+    /// <see cref="Poll"/> 的返回<u>整体覆盖</u>组件，任何在管线之前写进去的值都会被抹掉。
+    /// 把覆盖点放在这里，等于"伪造一次键鼠采样"——下游（管线、技能、HUD）完全走真实路径，
+    /// 所以它证明的东西和真的按了一下左键是同一件事。
+    /// </para>
+    /// </summary>
+    private InputIntent? _forced;
+
+    /// <summary>强制下一帧（及之后每帧）使用这组输入；<c>null</c> 恢复正常键鼠。</summary>
+    public void ForceInput(InputIntent? forced)
+    {
+        _forced = forced;
+        if (forced is null)
+        {
+            _previousPressed = 0;
+        }
+    }
+
+    /// <summary>强制"瞄准 <paramref name="aim"/> 并按住左键"（冒烟开火用）。</summary>
+    /// <param name="aim">瞄准方向（会被归一化）。</param>
+    public void ForceAimAndPrimary(Vector3 aim)
+    {
+        Vector3 dir = aim.LengthSquared() > 0f ? aim.Normalized() : new Vector3(1f, 0f, 0f);
+        uint mask = InputIntent.MaskOf(SkillSlot.PrimaryAttack);
+        ForceInput(new InputIntent(mask, mask, ToFixed(dir.X), ToFixed(dir.Y), ToFixed(dir.Z)));
+    }
+
     /// <summary>最近一次瞄准方向（鼠标离开窗口或轴为 0 时沿用，避免准心乱跳）。</summary>
     private Vector3 _lastAim = new Vector3(1f, 0f, 0f);
 
     /// <inheritdoc />
     public InputIntent Poll(int actorId)
     {
+        if (_forced is InputIntent forced)
+        {
+            return forced;
+        }
+
         uint held = 0;
         for (int slot = 1; slot < _actionOfSlot.Length; slot++)
         {

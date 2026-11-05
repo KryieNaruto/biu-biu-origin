@@ -125,3 +125,85 @@ public struct ActorIntent
     /// <summary>意图序列号：每采集一帧 +1（空意图帧也能被下游识别）。</summary>
     public int Sequence;
 }
+
+/// <summary>
+/// 角色装配标签：这批实体是哪次「装配清单 × 变体」产出的（统计 / 回收 / 夺舍归组用）。
+/// <para>
+/// <b>为什么存槽位号而不是字符串</b>：J2 要求组件 unmanaged；变体 id → 槽位号的解析发生在装配期
+/// （<c>CharacterAssemblyRepository</c> 那侧），实体生命周期里只读 int。
+/// </para>
+/// <para>
+/// <b>为什么需要它（而不是"查定义就知道是哪个变体"）</b>：同一个角色定义可以出现在多个变体里
+/// （标准型与重甲型可能共用受击盒/技能包），日志、HUD 小字、批量回收都需要区分「这一只是第几个变体」。
+/// 用组件表达后，筛选条件就是一个整型比较，不需要任何 <c>if (kind == Player)</c> 式的分支（J3）。
+/// </para>
+/// </summary>
+public struct ActorTag
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Game.Core.Ecs.Entity Owner;
+
+    /// <summary>装配清单在宿主侧注册表的槽位号（-1 = 不是由装配清单生成的）。</summary>
+    public int AssemblySlot;
+
+    /// <summary>同一装配清单内的第 N 个变体（0 起；-1 = 未指定）。</summary>
+    public int VariantIndex;
+}
+
+/// <summary>
+/// 武器数值（来自数据表的 WeaponStats 行；射击技能只读它，不写死任何数）。
+/// <para>
+/// <b>为什么武器是组件而不是技能的参数</b>：一套射击技能要能被不同角色复用（标准/重甲/敏捷/幸运），
+/// 差异全在武器行上。若把伤害/射速写进技能构造函数，那么"换个武器"就要 new 一个新技能实例，
+/// 技能包也就没法被多个角色共享。做成组件后：<c>FireProjectileSkill</c> 只负责"怎么开火"，
+/// 数值从实体身上的 <see cref="WeaponStats"/> 读 —— 「换武器」= 改一个组件（规则6 的"可互相赋值"在武器维度）。
+/// </para>
+/// <para>
+/// <b>为什么精确值 / 暴击是两个独立字段</b>：暴击在开火瞬间掷一次骰子，结果必须随子弹一起飞
+/// （子弹命中时再掷会与"开火时的数值快照"不一致，回放会漂）。
+/// </para>
+/// <para>
+/// <b>为什么有 <see cref="RangeMeters"/> 又有 <see cref="BulletSpeed"/></b>：射程是策划填的手感量，
+/// 弹速是表现量；两者相除得到子弹寿命（由射击技能算出来写进 <c>Lifetime</c>），
+/// 这样"改射程"不需要改弹速，也不会因为弹速调戏导致射程漂移。
+/// </para>
+/// </summary>
+public struct WeaponStats
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Game.Core.Ecs.Entity Owner;
+
+    /// <summary>单发伤害（未计护甲与暴击；暴击倍率在这里单独给）。</summary>
+    public float Damage;
+
+    /// <summary>弹速（米/秒）。</summary>
+    public float BulletSpeed;
+
+    /// <summary>射程（米）= 速度 × 子弹寿命。</summary>
+    public float RangeMeters;
+
+    /// <summary>扩散角度（度，全角）；0 = 完全精准。开火时在 ±一半 内随机。</summary>
+    public float SpreadDegrees;
+
+    /// <summary>暴击率（0..1）。</summary>
+    public float CriticalChance;
+
+    /// <summary>暴击倍率（暴击时伤害 = Damage × 本值）。</summary>
+    public float CriticalMultiplier;
+
+    /// <summary>子弹判定半径（米）。</summary>
+    public float ProjectileRadius;
+
+    /// <summary>
+    /// 两发之间的最小间隔（秒）。技能包把它用作冷却时长；本字段同时供 HUD/日志展示"数据上的真实射速"。
+    /// <para>为什么不直接复用技能冷却：冷却由技能系统按槽位管理（并且会被"换武器"整体替换技能包），
+    /// 而武器行是角色身上的数 —— 两者一个是"什么时候能再按"，一个是"这把枪多快"。HUD 要的是后者。</para>
+    /// </summary>
+    public float ShotIntervalSeconds;
+
+    /// <summary>弹药一次消耗几发（散弹枪 &gt; 1；v1 单发 = 1）。</summary>
+    public int PelletsPerShot;
+
+    /// <summary>武器行 id 的稳定哈希（数据侧槽位号；0 = 未指定）。</summary>
+    public int WeaponId;
+}

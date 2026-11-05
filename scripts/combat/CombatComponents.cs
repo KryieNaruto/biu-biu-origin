@@ -1,3 +1,4 @@
+using System;
 using Game.Core;
 using Game.Core.Ecs;
 
@@ -105,6 +106,33 @@ public struct ProjectileState
 
     /// <summary>熔炉链深度（顶层射出为 0；子弹再射子弹逐层 +1，用来防无限递归）。</summary>
     public int ChainDepth;
+
+    // ── 以下字段来自 hero-1 会话的弹道快照（main 的契约式 ProjectileState 原本没有） ──
+    // 契约式设计把"伤害/半径"放在投射物上、把"速度/射程"放进 ProjectileAdvanceSystem 读的
+    // WeaponContract；但 hero-1 的 FireProjectileSkill 需要一个自足的子弹快照，
+    // 才能在"开火那一刻的武器数值"上飞行（Buff 改数值 / 换武器后已飞出的子弹不受影响）。
+    // 两者共用同一个组件、同一个实体的不同字段，互不覆盖（规则：单写入者）。
+    /// <summary>速度（米/秒，标量；方向来自 <c>Transform3</c>.Rotation 的前方）。</summary>
+    public float Speed;
+
+    /// <summary>射程（米）：已飞距离 ≥ 本值时销毁（&lt;= 0 表示不看射程，只靠寿命兜底）。</summary>
+    public float RangeMeters;
+
+    /// <summary>是否暴击（开火时掷骰决定；表现层据此换特效颜色）。</summary>
+    public bool Critical;
+
+    /// <summary>武器行 id（统计/命中反馈按武器分流用；0 = 无）。</summary>
+    public int WeaponId;
+
+    /// <summary>伤害类型（决定是否吃元素抗性）。</summary>
+    public DamageType DamageType;
+
+    /// <summary>已飞行距离（米，由弹道系统累加）。</summary>
+    public float Traveled;
+
+    /// <summary>已命中/待销毁标记：置位后不再参与命中判定。</summary>
+    public bool Spent;
+
 }
 
 /// <summary>
@@ -134,4 +162,193 @@ public struct CastState
 
     /// <summary>本帧接收了这次铸造的实体（可空 <see cref="Entity.None"/>）。</summary>
     public Entity LastReceiver;
+}
+
+/// <summary>
+/// 命中记录（**命令载荷**，值类型）：由命中检测投递、由 <see cref="ImpactEventSystem"/> 在遍历结束后消费。
+/// <para>
+/// <b>为什么是队列而不是"命中时立刻发事件/生成特效"</b>：命中检测在 chunk 遍历里（J5：遍历期间不能改结构），
+/// 而命中要产生两件副作用——把子弹标记 <see cref="Projectile.Spent"/>（纯写，允许）与生成命中特效
+/// （结构变更，必须排队）。把"发生了什么"记成值记录，遍历结束后统一消费，顺序与入队顺序一致：
+/// 顺序可推理 → 特效与伤害的先后关系可推理 → 回放一致。
+/// </para>
+/// <para>
+/// <b>为什么命中不在这里直接扣血</b>：伤害结算是独立任务（护甲/暴击抗性/无敌帧/吸血/击杀判定都在那里）。
+/// 本任务只负责"几何上打到了"，并把伤害快照一起带过去；结算系统落地时直接消费本记录即可，
+/// 不需要改动命中检测（规则7：新增结算逻辑 ≤ 2 个文件）。
+/// </para>
+/// </summary>
+public readonly struct HitRecord
+{
+    /// <summary>子弹实体（Index/Generation 快照）。</summary>
+    public readonly Entity Projectile;
+
+    /// <summary>射手实体槽位号（可能已被销毁）。</summary>
+    public readonly int ShooterIndex;
+
+    /// <summary>射手世代号。</summary>
+    public readonly int ShooterGeneration;
+
+    /// <summary>被命中的目标实体。</summary>
+    public readonly Entity Target;
+
+    /// <summary>命中点（世界坐标）。</summary>
+    public readonly System.Numerics.Vector3 Position;
+
+    /// <summary>伤害快照（未计护甲）。</summary>
+    public readonly float Damage;
+
+    /// <summary>是否暴击。</summary>
+    public readonly bool Critical;
+
+    /// <summary>伤害类型。</summary>
+    public readonly DamageType DamageType;
+
+    /// <summary>武器 id。</summary>
+    public readonly int WeaponId;
+
+    /// <summary>命中发生在哪一帧之后（调试/乱序检测用）。</summary>
+    public readonly int Step;
+
+    /// <summary>构造一条命中记录。</summary>
+    public HitRecord(
+        Entity projectile,
+        int shooterIndex,
+        int shooterGeneration,
+        Entity target,
+        System.Numerics.Vector3 position,
+        float damage,
+        bool critical,
+        DamageType damageType,
+        int weaponId,
+        int step)
+    {
+        Projectile = projectile;
+        ShooterIndex = shooterIndex;
+        ShooterGeneration = shooterGeneration;
+        Target = target;
+        Position = position;
+        Damage = damage;
+        Critical = critical;
+        DamageType = damageType;
+        WeaponId = weaponId;
+        Step = step;
+    }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 以下来自 hero-1 会话：**碰撞/命中/伤害快照**方向的组件与缓冲。
+//
+// 与上面 main 的 ProjectileState 的分工（合并时的裁定，必须读懂）：
+//   · ProjectileState  —— **飞行动力学**：契约槽位、寿命、穿透/弹跳/链深。
+//     由 main 的 ProjectileAdvanceSystem 驱动（位置积分 + 寿命递减 + 到期产物）。
+//   · Projectile       —— **命中与伤害结算快照**：开火那一刻的伤害/暴击/武器/伤害类型，
+//     以及"已飞距离 / 是否已消耗"。由 HitDetectionSystem 与 ImpactEventSystem 使用。
+//
+// 为什么不是同一个组件：两者是**不同的写入者与不同的生命周期**
+//   （前者每固定步长被推进系统整体重写，后者开火时写一次、命中时置 Spent）。
+//   合成一个会让"推进系统每帧覆盖伤害字段"变成潜在事故 —— 单写入者纪律优先于字段数量。
+//   两个组件同时挂在一颗子弹上，各自只碰自己的字段，互不覆盖。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// <summary>
+/// 投射物：一个沿直线飞行、命中后消失的实体。
+/// <para>
+/// <b>为什么射手用 (Index, Generation) 两个 int 而不是 <see cref="Entity"/></b>：两者布局等价，
+/// 但显式两个 int 让「这是用于<u>比较</u>的快照，不是要解引用的句柄」这件事在阅读时一目了然；
+/// 命中检测里要做的正是"跳过自己"的相等比较，而不是去访问射手实体。
+/// </para>
+/// <para>
+/// <b>为什么伤害/暴击/半径都在子弹上而不是"开火时再查武器"</b>：开火到命中之间有飞行时间，
+/// 这期间射手的数值可能被 Buff 改掉、武器可能被换掉、射手可能已经死了。
+/// 把"开火那一刻的数值快照"烙在子弹上，才能做到"飞出去的子弹永远按开火时的规则结算"（回放/确定性）。
+/// </para>
+/// <para>
+/// <b>为什么同时存 Speed 与 Traveled</b>：射程用"已飞距离"表达比用"剩余寿命"更贴近策划的语言
+/// （射程 20 米 = 飞 20 米就消失），而 Speed 留给表现层（弹道有速度感）。寿命当作兜底安全网，
+/// 二者任何一个先到就销毁（见 <c>ProjectileSystem</c>）。
+/// </para>
+/// </summary>
+public struct Projectile
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Entity Owner;
+
+    /// <summary>射手实体槽位号（-1 = 无射手，例如场景机关发射的子弹）。</summary>
+    public int ShooterIndex;
+
+    /// <summary>射手世代号（与槽位号一起构成"这是不是同一只"的判据）。</summary>
+    public int ShooterGeneration;
+
+    /// <summary>子弹所属阵营（命中判定用；与射手阵营在开火时一致）。</summary>
+    public TeamId Team;
+
+    /// <summary>本发子弹的伤害快照（已含暴击倍率；护甲在结算时另算）。</summary>
+    public float Damage;
+
+    /// <summary>判定半径（米）。</summary>
+    public float Radius;
+
+    /// <summary>速度（米/秒，标量；方向来自 <see cref="Transform3"/>.Rotation 的前方）。</summary>
+    public float Speed;
+
+    /// <summary>射程（米）：已飞距离 ≥ 本值时销毁（&lt;= 0 表示不看射程，只靠寿命兜底）。</summary>
+    public float RangeMeters;
+
+    /// <summary>是否暴击（开火时掷骰决定；表现层据此换特效颜色）。</summary>
+    public bool Critical;
+
+    /// <summary>武器行 id（统计/命中反馈按武器分流用；0 = 无）。</summary>
+    public int WeaponId;
+
+    /// <summary>伤害类型（决定是否吃元素抗性）；默认 <see cref="DamageType.Kinetic"/> 来自数据，不在代码里挑。</summary>
+    public DamageType DamageType;
+
+    /// <summary>已飞行距离（米，由 <c>ProjectileSystem</c> 累加）。</summary>
+    public float Traveled;
+
+    /// <summary>已命中/待销毁标记：置位后不再参与命中判定（同一帧内避免一颗子弹打穿三个目标）。</summary>
+    public bool Spent;
+}
+
+/// <summary>
+/// 命中缓冲：一帧内的命中记录队列（复用数组、稳态零分配）。
+/// <para>
+/// <b>为什么不用 <c>Queue&lt;HitRecord&gt;</c></b>：命中是高频事件（割草游戏一帧几十条），
+/// <c>Queue</c> 的环形缓冲虽然不分配，但每帧的清空与容量增长管理不如"复用数组 + 计数"直接；
+/// 而且这个结构要被两端（检测系统追加 / 事件系统消费）共享，暴露 <c>AsSpan()</c> 让消费者零拷贝遍历，
+/// 避免逐条出队的函数调用。
+/// </para>
+/// </summary>
+public sealed class HitBuffer
+{
+    /// <summary>初始容量（内存预分配，不是玩法数值）。</summary>
+    private const int InitialCapacity = 64; // arch-ok: 缓冲区预分配容量（内存/性能参数），不是玩法数值
+
+    private HitRecord[] _items = new HitRecord[InitialCapacity];
+    private int _count;
+
+    /// <summary>当前待消费的命中数。</summary>
+    public int Count => _count;
+
+    /// <summary>累计写入的命中数（跨帧不清零；统计用）。</summary>
+    public int TotalEnqueued { get; private set; }
+
+    /// <summary>追加一条命中（只追加；容量不足时倍增，稳态不再分配）。</summary>
+    public void Add(in HitRecord record)
+    {
+        if (_count == _items.Length)
+        {
+            Array.Resize(ref _items, _items.Length * 2);
+        }
+        _items[_count++] = record;
+        TotalEnqueued++;
+    }
+
+    /// <summary>只读视图（有效区是前 <see cref="Count"/> 条）。</summary>
+    public ReadOnlySpan<HitRecord> Records => _items.AsSpan(0, _count);
+
+    /// <summary>清空（消费方在决定"跳过"时也可直接调用）。</summary>
+    public void Clear() => _count = 0;
 }

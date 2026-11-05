@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Godot;
 using Game.Actor;
 using Game.Core;
+using Game.Core.Actors;
 using Game.Core.Ecs;
 using Game.Core.Handles;
 using Game.Core.Randomness;
@@ -12,6 +13,7 @@ using Game.Host.Control;
 using Game.Skill;
 using Game.Spawn;
 using Game.Spawn.Rooms;
+using Game.UI;
 
 namespace Game.Host;
 
@@ -47,9 +49,29 @@ public sealed partial class DungeonDebugScene : Node3D
     private CharacterContentSet? _characters;
     private ActorDefinitionRegistry? _actorDefinitions;
     private ActorSpawnQueue? _actorSpawnQueue;
-    private ActorIntentSystem? _intentSystem;
     private PlayerInputIntentSource? _playerInput;
     private Entity _playerEntity = Entity.None;
+
+    /// <summary>第一个人物（测试人物）的运行时装配根：出生 / 移动 / 瞄准 / 射击 / HUD 全在这里。</summary>
+    private CharacterSession? _character;
+
+    /// <summary>是否生成测试人物（命令行 <c>--hero</c> 可开；Inspector 亦可）。</summary>
+    [Export]
+    public bool SpawnTestHero { get; set; } = true;
+
+    /// <summary>要生成的变体 id（对应 <c>CharacterContentSet.Assemblies</c> 里的行）。</summary>
+    [Export]
+    public string HeroVariantId { get; set; } = CharacterContentSet.HeroDefaultVariantId;
+
+    /// <summary>命令行参数：生成测试人物。</summary>
+    public const string HeroArgName = "--hero";
+
+    /// <summary>命令行参数前缀：指定变体，如 <c>--hero-variant=test_hero_tank</c>。</summary>
+    public const string HeroVariantArgPrefix = "--hero-variant=";
+
+    /// <summary>表现参数（相机 / 外观 / 准星 / HUD），可在 Inspector 用 .tres 覆盖。</summary>
+    [Export]
+    public GameViewOptions? ViewOptions { get; set; }
 
     private Node3D? _dungeonRoot;
     private Camera3D? _camera;
@@ -138,6 +160,24 @@ public sealed partial class DungeonDebugScene : Node3D
     /// <summary>最近一次建出来的布局产物（没有规划器时为 null）。</summary>
     public DungeonBuildResult? BuildResult => _result;
 
+    /// <summary>
+    /// 冒烟开火：headless 下没有鼠标，瞄准与开火永远触发不了。
+    /// 命令行给 <c>--hero-fire</c> 时，第 N 帧开始用脚本意图持续"瞄准 +X + 按住左键"，
+    /// 让"能开枪"这条链路在 CI 里也能被日志证明（施放数 / 子弹实体数）。
+    /// </summary>
+    [Export]
+    public bool SmokeFire { get; set; }
+
+    /// <summary>冒烟开火的起始帧（等角色出生+转向收敛）。</summary>
+    [Export]
+    public int SmokeFireStartFrame { get; set; } = SmokeFireStartFrameDefault;
+
+    /// <summary>冒烟开火起始帧默认值。</summary>
+    public const int SmokeFireStartFrameDefault = 30; // arch-ok: 冒烟时序常量，不是玩法数值
+
+    /// <summary>命令行参数：冒烟开火。</summary>
+    public const string SmokeFireArgName = "--hero-fire";
+
     /// <inheritdoc />
     public override void _Ready()
     {
@@ -152,17 +192,34 @@ public sealed partial class DungeonDebugScene : Node3D
             return;
         }
         _wantShots = Array.IndexOf(OS.GetCmdlineUserArgs(), ShotArgName) >= 0;
+        SmokeFire |= Array.IndexOf(OS.GetCmdlineUserArgs(), SmokeFireArgName) >= 0;
         _statsTimer = (long)Time.GetTicksMsec();
     }
 
     /// <inheritdoc />
     public override void _Process(double delta)
     {
-        if (_fixed is null)
+        if (_fixed is null && _character is null)
         {
             return;
         }
-        _fixed.Tick(delta, 1f);
+
+        // 冒烟开火：headless 没有鼠标，用脚本意图把"瞄准 + 按住左键"喂进去。
+        if (SmokeFire && _character is not null && _frameCounter >= SmokeFireStartFrame)
+        {
+            _character.PressPrimaryForSmoke();
+        }
+
+        // 第一个人物：会话自己拥有管线（含视图桥），所以有会话时由它跑那一帧。
+        // 没有会话（SpawnTestHero=false 的纯冒烟）时退回旧的裸管线路径。
+        if (_character is not null)
+        {
+            _character.Tick((float)delta);
+        }
+        else
+        {
+            _fixed!.Tick(delta, 1f);
+        }
         _frameCounter++;
 
         if (QuitAfterFrames > 0 && _frameCounter >= QuitAfterFrames)
@@ -185,16 +242,45 @@ public sealed partial class DungeonDebugScene : Node3D
             long now = (long)Time.GetTicksMsec();
             double elapsed = now - _statsTimer;
             _statsTimer = now;
-            FramePhases phases = _fixed.LastPhases;
-            GD.Print("[DungeonDebug] 帧 ", _frameCounter, " tick=", _fixed.TickIndex,
+            FramePhases phases = _character?.FramePipeline?.LastPhases ?? _fixed!.LastPhases;
+            GD.Print("[DungeonDebug] 帧 ", _frameCounter,
+                " tick=", _character?.FramePipeline?.TickIndex ?? _fixed!.TickIndex,
                 " 实体=", _world!.EntityCount,
                 " 视图在用=", _views!.InUseCount,
                 " ECS=", phases.TotalMs.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture), "ms",
-                " 间隔=", (elapsed / MsPerSecond).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture), "s");
+                " 间隔=", (elapsed / MsPerSecond).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture), "s",
+                CharacterStatsSuffix());
         }
 
         TryCaptureScreenshots();
     }
+
+    /// <summary>统计行的角色后缀（没有人物时为空串）。</summary>
+    private string CharacterStatsSuffix()
+    {
+        if (_character is null)
+        {
+            return string.Empty;
+        }
+        HudSnapshot hud = _character.Hud;
+        return string.Concat(
+            " HP=", hud.Health.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+            "/", hud.Health.Max.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+            " 法力=", hud.Mana.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+            " 护甲减伤=", (hud.ArmorReduction * PercentScale).ToString("0", System.Globalization.CultureInfo.InvariantCulture), "%",
+            " 施放=", _character.CastCount,
+            " HUD=", _character.HudSubmitCount);
+    }
+
+    /// <summary>释放人物会话（视图池 / 输入回调 / 外观表）。节点本身由场景树销毁。</summary>
+    public override void _ExitTree()
+    {
+        _character?.Dispose();
+        _character = null;
+    }
+
+    /// <summary>百分数展示换算（仅日志）。</summary>
+    private const double PercentScale = 100d; // arch-ok: 展示换算，不是玩法数值
 
     /// <summary>收尾退出：打印摘要并让场景树退出。所有退出路径都走这里，
     /// 保证「为什么退的」一定在日志里留痕（否则 headless 卡住时无从判断）。
@@ -244,11 +330,41 @@ public sealed partial class DungeonDebugScene : Node3D
 
             case ShotPhase.SaveOverview:
                 SaveShot(ShotOverviewFileDefault, "全层总览");
+                _heroShotFrame = _frameCounter + ShotSettleFrames;
                 _shotPhase = MoveCameraForCloseup() ? ShotPhase.SaveCloseup : ShotPhase.Done;
                 break;
 
             case ShotPhase.SaveCloseup:
                 SaveShot(ShotRoomFileDefault, "单间特写 " + _closeupRoomLabel);
+                // 有第一个人物时再拍一张"角色特写"：让相机跟到玩家身上，
+                // 用来验收 HUD / 准心 / 角色白模 / 子弹是否真的出现在画面里。
+                // ★ 必须 SnapCameraToPlayer：相机平时是指数收敛跟随的，只等几帧的话镜头还停在
+                //   "单间特写"的旧构图上 —— hero_closeup 与 dungeon_overview 曾经几乎同图就是这个原因。
+                if (_character is not null)
+                {
+                    _character.SnapCameraToPlayer();
+                }
+                _shotPhase = _character is not null ? ShotPhase.WaitHeroFraming : ShotPhase.Done;
+                break;
+
+            case ShotPhase.WaitHeroFraming:
+                // 角色相机要在下一帧才把位置跟到位；给两帧余量，避免拍到过渡中的镜头。
+                if (_frameCounter >= _heroShotFrame)
+                {
+                    _shotPhase = ShotPhase.SaveHero;
+                }
+                break;
+
+            case ShotPhase.SaveHero:
+                {
+                    Camera3D? shotCam = GetViewport().GetCamera3D();
+                    GD.Print("[Shot] 角色特写 帧=" + _frameCounter
+                        + " 相机=" + (shotCam is null ? "NULL" : shotCam.Name.ToString())
+                        + " 相机位置=" + (shotCam is null ? "-" : shotCam.GlobalPosition.ToString())
+                        + " 玩家位置=" + (_character is null ? "-" : _character.PlayerWorldPosition().ToString())
+                        + " HUD推送=" + (_character is null ? -1 : _character.HudSubmitCount));
+                }
+                SaveShot(ShotHeroFileDefault, "角色特写（HUD + 准心 + 玩家）");
                 _shotPhase = ShotPhase.Done;
                 break;
         }
@@ -565,7 +681,14 @@ public sealed partial class DungeonDebugScene : Node3D
         // 需要复现时在 Inspector 勾上 IncludeLifetimeSystemSmoke 即可（不改别人的代码）。
         if (IncludeLifetimeSystemSmoke)
         {
-            pipeline.Add(new LifetimeSystem(sink, worldOptions.ViewPrewarm), 1);
+            // selfManaged：子弹的回收权独占在 ProjectileSystem（它还要判命中/射程，且必须独占销毁，
+            // 否则 LifetimeExpiredCount 恒为 0）。本系统对子弹完全不碰 —— 不减也不销毁。
+            pipeline.Add(
+                new LifetimeSystem(
+                    sink,
+                    worldOptions.ViewPrewarm,
+                    entity => _world.Has<Game.Combat.Projectile>(entity)),
+                1);
         }
         else
         {
@@ -646,12 +769,12 @@ public sealed partial class DungeonDebugScene : Node3D
     }
 
     /// <summary>
-    /// 装配角色相关的系统族：意图采集 → 角色装配 → 技能施放。
+    /// 装配角色相关的系统族 —— 现在整块交给 <see cref="CharacterSession"/>。
     /// <para>
-    /// <b>顺序为什么是这样</b>：意图系统在 <see cref="UpdateGroup.PreUpdate"/> 采集"这一帧玩家想干什么"，
-    /// 装配系统在自己的组里把排队的生成请求变成实体（出生时顺带补一次出生帧意图），
-    /// 技能系统在 <see cref="UpdateGroup.Update"/> 里消费意图并施放。整条链上，
-    /// <u>玩家与怪物走的是同一套系统</u> —— 差别只有 <see cref="ControlScheme"/> 与数值包（需求⑤）。
+    /// <b>为什么搬走</b>：之前这里手写「意图 → 装配 → 技能」三个 <c>pipeline.Add</c>，
+    /// 而移动 / 瞄准 / 射击 / 视图 / HUD 一件都没有，玩家角色因此从来没有真正出生过。
+    /// 第一个人物把这些全部收进 <see cref="CharacterSession"/>：它是组合根，
+    /// 按变体的模块集合决定拼哪些系统，本场景只负责"造一个会话、每帧推一下"。
     /// </para>
     /// </summary>
     private void BuildCharacterSystems(SystemPipeline pipeline)
@@ -662,34 +785,93 @@ public sealed partial class DungeonDebugScene : Node3D
         _actorSpawnQueue = new ActorSpawnQueue();
 
         // 输入：宿主是唯一允许碰引擎输入的地方（J4）。
-        // AI 与脚本意图源在 v1 尚未接入真实 AI，这里用 Null 源占位 —— 怪物会有技能包但暂时不动手，
-        // 等 AI 系统落地后只需替换这一个构造参数（规则7：0 文件扩展）。
         _playerInput = new PlayerInputIntentSource();
-        _intentSystem = new ActorIntentSystem(
-            _playerInput,
-            NullIntentSource.Instance,
-            NullIntentSource.Instance);
-        pipeline.Add(_intentSystem, 3);
 
-        // 装配：把生成请求变成实体（8 个组件，玩家怪物完全一致）。
-        var slotResolver = new RepositoryPackageSlotResolver(_characters.StatPacks);
-        pipeline.Add(
-            new ActorAssemblySystem(
-                _characters.Definitions,
-                _characters.Loadouts,
-                _characters.StatPacks,
-                slotResolver,
-                _actorSpawnQueue!,
-                _intentSystem),
-            4);
+        if (!SpawnTestHero)
+        {
+            GD.Print("[DungeonDebug] 未生成测试人物（SpawnTestHero=false）。");
+            return;
+        }
 
-        // 技能：冷却门控 → 施放 → 扣法力。
-        pipeline.Add(
-            new SkillCastSystem(
-                _characters.Loadouts,
-                new HostSkillContext(this, _world!)),
-            5);
+        string variantId = ResolveHeroVariant();
+        System.Numerics.Vector3 spawn = ResolveHeroSpawnPoint();
+        _character = new CharacterSession(
+            this,
+            _world!,
+            pipeline,
+            _characters,
+            variantId,
+            spawn,
+            _camera,
+            WorldOptions,
+            ViewOptions ?? new GameViewOptions());
     }
+
+    /// <summary>解析要生成的变体 id：命令行 <c>--hero-variant=</c> 优先，其次 Inspector。</summary>
+    private string ResolveHeroVariant()
+    {
+        string[] args = OS.GetCmdlineUserArgs();
+        foreach (string arg in args)
+        {
+            if (arg.StartsWith(HeroVariantArgPrefix, StringComparison.Ordinal))
+            {
+                string id = arg.Substring(HeroVariantArgPrefix.Length);
+                if (!string.IsNullOrEmpty(id))
+                {
+                    return id;
+                }
+            }
+        }
+        return HeroVariantId;
+    }
+
+    /// <summary>解析出生点：优先起始房间中心，没有布局时退回原点。</summary>
+    private System.Numerics.Vector3 ResolveHeroSpawnPoint()
+    {
+        if (_result is null || _dungeonOptions is null)
+        {
+            return System.Numerics.Vector3.Zero;
+        }
+
+        IReadOnlyList<RoomPlan> rooms = _result.Layout.Rooms;
+        float cellSize = _dungeonOptions.CellSizeMeters;
+        // 优先 Start 房；没有 Start 时退回 Safe；两者都没有就用第一间房（真正的地牢总会有一间起点房）。
+        RoomPlan? picked = null;
+        for (int i = 0; i < rooms.Count; i++)
+        {
+            if (rooms[i].Category == RoomCategory.Start)
+            {
+                picked = rooms[i];
+                break;
+            }
+        }
+        if (picked is null)
+        {
+            for (int i = 0; i < rooms.Count; i++)
+            {
+                if (rooms[i].Category == RoomCategory.Safe)
+                {
+                    picked = rooms[i];
+                    break;
+                }
+            }
+        }
+        if (picked is null)
+        {
+            picked = rooms[0];
+        }
+
+        // 与 TryFocusRoom 同一口径：格子坐标 × 格距 + 半个占地面积 = 房间中心。
+        RoomPlan room = picked.Value;
+        int side = room.Footprint.Side;
+        return new System.Numerics.Vector3(
+            (room.Cell.X + (side * HalfSpan)) * cellSize,
+            0f,
+            (room.Cell.Z + (side * HalfSpan)) * cellSize);
+    }
+
+    /// <summary>半格换算（房间中心用）。</summary>
+    private const float HalfSpan = 0.5f; // arch-ok: 几何换算系数，不是玩法数值
 
     /// <summary>
     /// 生成一个角色实体（宿主侧入口：波次、房间编排、玩家出生都走这里）。
@@ -814,6 +996,12 @@ public sealed partial class DungeonDebugScene : Node3D
     private const string ShotArgName = "--shots";
 
     /// <summary>截图阶段机：每帧只推进一格，保证「改相机」与「存图」跨帧生效。</summary>
+    /// <summary>角色特写的取图帧（本次总览存图后的 N 帧）。</summary>
+    private int _heroShotFrame;
+
+    /// <summary>镜头切换后等几帧再存图（相机跟随与渲染稳定都需要帧）。</summary>
+    private const int ShotSettleFrames = 3; // arch-ok: 时序常量，非玩法数值
+
     private enum ShotPhase
     {
         /// <summary>还没开始。</summary>
@@ -825,11 +1013,20 @@ public sealed partial class DungeonDebugScene : Node3D
         /// <summary>下一帧存单间特写（相机已挪好并渲染完成）。</summary>
         SaveCloseup,
 
+        /// <summary>等角色相机跟到位（有第一个人物时才走这一步）。</summary>
+        WaitHeroFraming,
+
+        /// <summary>存角色特写（HUD + 准心 + 玩家白模 + 子弹）。</summary>
+        SaveHero,
+
         /// <summary>结束。</summary>
         Done,
     }
 
     /// <summary>第几帧开始截图（先让相机与光照稳定一帧）。</summary>
+    /// <summary>角色特写文件名。</summary>
+    private const string ShotHeroFileDefault = "hero_closeup.png";
+
     private const int ShotFrame = 12; // arch-ok: 时序常量（等待渲染稳定的帧数），非玩法数值
 
     /// <summary>单间特写取景相对房间跨度的放大系数（&gt; 1 留边距）。</summary>

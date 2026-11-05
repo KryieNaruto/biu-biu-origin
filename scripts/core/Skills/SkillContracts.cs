@@ -52,8 +52,18 @@ public interface ISkill
 /// </summary>
 public readonly struct SkillContext
 {
-    /// <summary>施放者（实体 id）。</summary>
+    /// <summary>施放者（实体 id：槽位号；世代号见 <see cref="CasterEntity"/>）。</summary>
     public readonly int CasterActorId;
+
+    /// <summary>
+    /// 施放者实体键（槽位号 + 世代号）。
+    /// <para><b>为什么需要它</b>：技能要读"施放者身上的组件"（武器数值、瞄准点、阵营），
+    /// 而 <see cref="CasterActorId"/> 只有槽位号 —— 槽位会被复用，只凭槽位号去读组件可能读到
+    /// "上一任住户"的数据。世代号让读取可以走 <c>World.TryGet(entity, …)</c> 的正常校验路径。</para>
+    /// <para>默认 <c>(0,0)</c>：旧调用点不传它时（测试/工具）取值仍然是"槽位 0"，
+    /// 真正的读取失败会以 <c>TryGet == false</c> 的形式安全退化，而不是抛异常。</para>
+    /// </summary>
+    public readonly Game.Core.Ecs.Entity CasterEntity;
 
     /// <summary>施放者阵营（免伤判定用）。</summary>
     public readonly TeamId CasterTeam;
@@ -94,8 +104,37 @@ public readonly struct SkillContext
         float cooldownRemaining,
         float manaCurrent,
         ISkillContext world)
+        : this(
+            casterActorId,
+            Game.Core.Ecs.Entity.None,
+            casterTeam,
+            casterKind,
+            slot,
+            aimDirection,
+            aimPoint,
+            origin,
+            cooldownRemaining,
+            manaCurrent,
+            world)
+    {
+    }
+
+    /// <summary>构造一个施放上下文（带施放者实体键；推荐用这个重载）。</summary>
+    public SkillContext(
+        int casterActorId,
+        Game.Core.Ecs.Entity casterEntity,
+        TeamId casterTeam,
+        ActorKind casterKind,
+        SkillSlot slot,
+        System.Numerics.Vector3 aimDirection,
+        System.Numerics.Vector3 aimPoint,
+        System.Numerics.Vector3 origin,
+        float cooldownRemaining,
+        float manaCurrent,
+        ISkillContext world)
     {
         CasterActorId = casterActorId;
+        CasterEntity = casterEntity;
         CasterTeam = casterTeam;
         CasterKind = casterKind;
         Slot = slot;
@@ -122,11 +161,30 @@ public readonly struct SkillContext
 /// 绕过命令缓冲直接 <c>Create/Destroy</c>（违反 J5）。门面把「技能能做的那几件事」<u>显式列出来</u>：
 /// 写命令、取随机、发事件、读数值。新增一种技能不需要更大的权限。
 /// </para>
+/// <para>
+/// <b>2026-11-05 hero-1 追加 <see cref="Ecs"/></b>：射击技能要读<u>施放者自己身上</u>的组件
+/// （武器数值、瞄准点）。那是<u>读取</u>，不违反上面的门面纪律；把整个 <c>World</c> 交出去的<u>写</u>能力才是。
+/// </para>
 /// </summary>
 public interface ISkillContext
 {
     /// <summary>结构化命令入口（生成子弹/特效/单位），帧末统一提交。</summary>
     ICommandSink Commands { get; }
+
+    /// <summary>
+    /// 只读的 ECS 世界句柄：<b>仅供读取组件</b>（<c>TryGet</c> / 诊断），<b>禁止</b>调用
+    /// <c>Create/Destroy/Set/Remove/Flush</c>。
+    /// <para><b>为什么必须开这个口子</b>：技能实现在 <c>scripts/skill/</c>，它拿不到实体上的数据；
+    /// 而"把武器的伤害/弹速/散布复制进技能构造函数"会让同一个技能无法被不同武器复用 ——
+    /// 规则7 的扩展判据当场失败（换武器 = 改数据行，不该 new 一个新技能实例）。</para>
+    /// <para><b>为什么不是逐个加"读武器/读瞄准/读阵营"方法</b>：那会把"技能能读哪些组件"变成
+    /// <c>Game.Core</c> 的接口演进负担，每新增一种"技能需要的数据"都要改契约层。
+    /// 开一个只读句柄后，这类扩展 0 文件。</para>
+    /// <para><b>纪律怎么保证</b>：技能只在施放期间同步执行，而施放发生在查询遍历里；
+    /// 内核的 <c>World.AssertStructuralAllowed</c> 会让任何"遍历中改结构"当场抛异常（J5 的兜底），
+    /// 所以即使有人写错也炸得出来，不会静默损坏 chunk。</para>
+    /// </summary>
+    Ecs.World Ecs { get; }
 
     /// <summary>随机源（必须来自注入，保证同 seed 同结果）。</summary>
     IRandomProvider Random { get; }

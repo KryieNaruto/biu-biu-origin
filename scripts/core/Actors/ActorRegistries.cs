@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Game.Core;
-using Game.Core.Actors;
 using Game.Core.Skills;
 
-namespace Game.Actor;
+namespace Game.Core.Actors;
 
 /// <summary>
 /// 角色定义仓库：把 Excel 生成物里的 <see cref="ActorDefinition"/> 收进定长槽位，供生成/装配按 id 查。
@@ -156,6 +154,36 @@ public sealed class SkillLoadoutRegistry
 
     /// <summary>按 id 直接取技能包；不存在返回 <c>null</c>（与 <see cref="ActorDefinitionRegistry.Find"/> 对称）。</summary>
     public SkillLoadout? Find(string id) => Get(SlotOf(id));
+
+    /// <summary>
+    /// 原地替换同名技能包（槽位号不变 —— 已经写在 <c>SkillState.LoadoutSlot</c> 里的引用继续有效）。
+    /// <para>
+    /// <b>为什么需要它</b>：数据层先放一个占位技能包让「冷却/法力门控」可测，
+    /// 宿主的组合根随后把它换成带真技能实现的版本。替换而不是删除重注册，
+    /// 是因为删除会让后面的槽位号整体前移，<u>已经生成的角色会指向别人的技能包</u>。
+    /// </para>
+    /// </summary>
+    /// <param name="id">技能包 id；不存在时返回 <c>false</c>。</param>
+    /// <param name="loadout">新技能包（id 必须与 <paramref name="id"/> 一致）。</param>
+    public bool Replace(string id, SkillLoadout loadout)
+    {
+        if (loadout is null)
+        {
+            throw new ArgumentNullException(nameof(loadout));
+        }
+        if (!_byId.TryGetValue(id, out int slot))
+        {
+            return false;
+        }
+        if (!string.Equals(loadout.Id, id, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                string.Concat("替换技能包时 id 必须一致：目标是 '", id, "'，实际是 '", loadout.Id, "'。"),
+                nameof(loadout));
+        }
+        _loadouts[slot] = loadout;
+        return true;
+    }
 
     /// <summary>清空。</summary>
     public void Clear()
