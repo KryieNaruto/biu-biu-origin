@@ -202,6 +202,7 @@ private:
         p_ += 4;
         if ((len ^ 0xFFFFu) != nlen) return false;
         if ((size_t)(end_ - p_) < len) return false;
+        if (out_->size() + len > outLimit_) return false;
         out_->insert(out_->end(), p_, p_ + len);
         p_ += len;
         return true;
@@ -221,6 +222,7 @@ private:
             int sym = 0;
             if (!decodeSym(&lit, &sym)) return false;
             if (sym < 256) {
+                if (out_->size() >= outLimit_) return false;
                 out_->push_back((unsigned char)sym);
                 continue;
             }
@@ -230,6 +232,7 @@ private:
             int extra = 0;
             if (!getBits(lenExtra[sym], &extra)) return false;
             size_t len = (size_t)(lenBase[sym] + extra);
+            if (out_->size() + len > outLimit_) return false;
             int dsym = 0;
             if (!decodeSym(&dist, &dsym)) return false;
             if (dsym >= 30) return false;
