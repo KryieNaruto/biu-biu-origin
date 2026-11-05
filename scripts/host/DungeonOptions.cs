@@ -320,13 +320,13 @@ public partial class DungeonOptions : Resource
     // ─────────────────────────────────────────────────────────────
 
     /// <summary>网格宽默认值（格）。</summary>
-    public const int GridWidthDefault = 8;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int GridWidthDefault = 11;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>网格高默认值（格）。</summary>
-    public const int GridHeightDefault = 8;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int GridHeightDefault = 11;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>普通房边长默认值（格）。</summary>
-    public const int RoomSideDefault = 1;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int RoomSideDefault = 2;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>起始房边长默认值（格）。</summary>
     public const int StartRoomSideDefault = 2;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖

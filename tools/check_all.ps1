@@ -275,6 +275,22 @@ try {
         if ($NoRestore) { $argList += '--no-restore' }
         $c = Invoke-Step -Name ('4/4 tools/dungeon_check (seeds=' + $DungeonSeeds + ')') -Exe 'dotnet' -ArgList $argList
         if ($c -ne 0 -and $failCode -eq 0) { $failCode = $c }
+
+        # Step 4b: the SAME property test, but with the defaults the 3D scene actually ships.
+        #
+        #   Why: step 4 runs an editor-friendly 9x24 / side=3 config. The 3D debug scene
+        #   runs DungeonOptions' defaults, and on 2026-11-05 those two drifted far enough
+        #   apart that 8x8 / side=1 could not fit a hidden room AT ALL -- every seed threw
+        #   "地牢生成失败" on scene load, while step 4 stayed green the whole time.
+        #   A green step 4 must mean "the game can open", so the shipped numbers get their
+        #   own pass. --options mirrors DungeonOptions' *Default constants (see the comment
+        #   on DungeonOptionsDefaults() in tools/dungeon_check/Program.cs).
+        $argList = @('run', '--project', $DungeonCsproj, '-c', 'Release',
+                     '--', '--options', '--seeds', "$DungeonSeeds",
+                     '--out', (Join-Path $RootFull 'tools\dungeon_check\report-options.md'))
+        if ($NoRestore) { $argList += '--no-restore' }
+        $c = Invoke-Step -Name ('4b/4 tools/dungeon_check --options (3D 实机默认值)') -Exe 'dotnet' -ArgList $argList
+        if ($c -ne 0 -and $failCode -eq 0) { $failCode = $c }
     }
 } finally {
     Pop-Location

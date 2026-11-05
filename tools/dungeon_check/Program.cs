@@ -26,11 +26,41 @@ internal static class Program
     {
         int seeds = DefaultSeeds;
         string outPath = "dungeon_check_report.md";
+        bool mapMode = false;
+        int gallery = 0;
+        string samplesPath = string.Empty;
+        int samplesCount = 6;
+        bool benchMode = false;
+        bool optionsMode = false;
 
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
+                case "--map":
+                    mapMode = true;
+                    break;
+                case "--bench":
+                    benchMode = true;
+                    break;
+                case "--options":
+                    optionsMode = true;
+                    break;
+                case "--gallery" when i + 1 < args.Length:
+                    if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out gallery))
+                    {
+                        Console.Error.WriteLine("--gallery 需要整数。");
+                        return 2;
+                    }
+                    break;
+                case "--samples" when i + 1 < args.Length:
+                    if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out samplesCount))
+                    {
+                        Console.Error.WriteLine("--samples 需要整数。");
+                        return 2;
+                    }
+                    samplesPath = "dungeon_map_samples.md";
+                    break;
                 case "--seeds" when i + 1 < args.Length:
                     if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out seeds))
                     {
@@ -43,7 +73,10 @@ internal static class Program
                     break;
                 case "--help":
                 case "-h":
-                    Console.WriteLine("用法: dungeon_check [--seeds N] [--out <路径>]");
+                    Console.WriteLine("用法: dungeon_check [--seeds N] [--out <路径>] [--map] [--gallery N] [--bench]");
+                    Console.WriteLine("  --map         只跑 2D 字符地图的连通性体检（栅格化 + BFS），并打印统计");
+                    Console.WriteLine("  --gallery N   地图模式下额外打印前 N 张字符画");
+                    Console.WriteLine("  --bench       只测「规划 + 栅格化 + 体检」单次耗时（调试面板拖滑条会不会卡）");
                     return 0;
                 default:
                     Console.Error.WriteLine("未知参数: " + args[i]);
@@ -55,6 +88,25 @@ internal static class Program
         {
             Console.Error.WriteLine("--seeds 必须为正数。");
             return 2;
+        }
+
+        if (benchMode)
+        {
+            if (optionsMode)
+            {
+                return MapCheck.Run(seeds, new DungeonMapConfig(), DungeonOptionsDefaults(), gallery);
+            }
+            return MapCheck.RunBench(seeds, new DungeonMapConfig(), BuildConfig());
+        }
+
+        if (mapMode)
+        {
+            int code = MapCheck.Run(seeds, new DungeonMapConfig(), BuildConfig(), gallery);
+            if (!string.IsNullOrEmpty(samplesPath))
+            {
+                MapSamples.Write(samplesPath, samplesCount, new DungeonMapConfig(), BuildConfig());
+            }
+            return code;
         }
 
         RunResult result = Run(seeds);
@@ -285,6 +337,40 @@ internal static class Program
         }
         return false;
     }
+
+    /// <summary>
+    /// 与 <c>DungeonOptions</c>（3D 实机那一套）的默认值逐项对齐的配置。
+    /// <para>
+    /// <b>为什么抄一份而不是引用</b>：<c>DungeonOptions</c> 在 <c>Game.Host</c> 里、依赖 Godot，
+    /// 而本工具是纯控制台工程（不引用引擎），够不着。所以这里手抄一遍。
+    /// </para>
+    /// <para>
+    /// <b>抄了就得管住</b>：改 <c>DungeonOptions</c> 的默认值时必须同步改这里，
+    /// 否则「工具全绿」就不能代表「3D 实机能开」—— 2026-11-05 就吃过这个亏：
+    /// 工具用 9×24/side=3，3D 默认是 8×8/side=1，隐藏房在后者里怎么都摆不下，
+    /// 工具却一路绿。现在 <c>--options</c> 专门跑这一套数值，check_all 会用上。
+    /// </para>
+    /// </summary>
+    private static DungeonConfig DungeonOptionsDefaults() => new DungeonConfig
+    {
+        // 以下逐项对应 DungeonOptions 的 *Default 常量
+        GridWidth = 11,
+        GridHeight = 11,
+        RoomSide = 2,
+        StartRoomSide = 2,
+        BossRoomSide = 2,
+        TargetRoomCount = 7,
+        RoomCountTolerance = 1,
+        HiddenRoomCount = 1,
+        MinSpecialRooms = 1,
+        MaxSpecialRooms = 2,
+        MinBossDepth = 2,
+        RoomsPerStep = 1,
+        SpecialOnCriticalPathChance = 0f,
+        MinHiddenDepth = 2,
+        LoopDistance = 0,
+        CellSizeMeters = 12f,
+    };
 
     private static DungeonConfig BuildConfig() => new DungeonConfig
     {
