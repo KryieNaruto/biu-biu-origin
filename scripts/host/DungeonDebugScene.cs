@@ -6,7 +6,10 @@ using Game.Core;
 using Game.Core.Ecs;
 using Game.Core.Handles;
 using Game.Core.Randomness;
+using Game.Data;
 using Game.Host.Bridge;
+using Game.Host.Control;
+using Game.Skill;
 using Game.Spawn;
 using Game.Spawn.Rooms;
 
@@ -39,6 +42,14 @@ public sealed partial class DungeonDebugScene : Node3D
     private AppEvents? _events;
     private SpawnDirectorSystem? _spawnDirector;
     private Query _actorQuery = null!;
+
+    /// <summary>角色内容（角色定义 / 数值包 / 技能包）——策划改 Excel 后这一份内容随之改变。</summary>
+    private CharacterContentSet? _characters;
+    private ActorDefinitionRegistry? _actorDefinitions;
+    private ActorSpawnQueue? _actorSpawnQueue;
+    private ActorIntentSystem? _intentSystem;
+    private PlayerInputIntentSource? _playerInput;
+    private Entity _playerEntity = Entity.None;
 
     private Node3D? _dungeonRoot;
     private Camera3D? _camera;
@@ -572,6 +583,7 @@ public sealed partial class DungeonDebugScene : Node3D
                 worldOptions.ProjectileSpeedMax,
                 worldOptions.ProjectileScale));
         pipeline.Add(_spawnDirector, 2);
+        BuildCharacterSystems(pipeline);
         pipeline.Build();
 
         CommandFlushSystem flush = new CommandFlushSystem(_world);
@@ -631,6 +643,78 @@ public sealed partial class DungeonDebugScene : Node3D
         {
             // 需要联动视图/音效时在这里按事件类型驱动（单向：事件 → 表现）。
         });
+    }
+
+    /// <summary>
+    /// 装配角色相关的系统族：意图采集 → 角色装配 → 技能施放。
+    /// <para>
+    /// <b>顺序为什么是这样</b>：意图系统在 <see cref="UpdateGroup.PreUpdate"/> 采集"这一帧玩家想干什么"，
+    /// 装配系统在自己的组里把排队的生成请求变成实体（出生时顺带补一次出生帧意图），
+    /// 技能系统在 <see cref="UpdateGroup.Update"/> 里消费意图并施放。整条链上，
+    /// <u>玩家与怪物走的是同一套系统</u> —— 差别只有 <see cref="ControlScheme"/> 与数值包（需求⑤）。
+    /// </para>
+    /// </summary>
+    private void BuildCharacterSystems(SystemPipeline pipeline)
+    {
+        // 内容：先注册角色/数值包/技能包。v1 用内置副本（= data/excel/characters.xlsx 的内容）。
+        _characters = new CharacterContentSet().BuildBuiltinV1();
+        _actorDefinitions = _characters.Definitions;
+        _actorSpawnQueue = new ActorSpawnQueue();
+
+        // 输入：宿主是唯一允许碰引擎输入的地方（J4）。
+        // AI 与脚本意图源在 v1 尚未接入真实 AI，这里用 Null 源占位 —— 怪物会有技能包但暂时不动手，
+        // 等 AI 系统落地后只需替换这一个构造参数（规则7：0 文件扩展）。
+        _playerInput = new PlayerInputIntentSource();
+        _intentSystem = new ActorIntentSystem(
+            _playerInput,
+            NullIntentSource.Instance,
+            NullIntentSource.Instance);
+        pipeline.Add(_intentSystem, 3);
+
+        // 装配：把生成请求变成实体（8 个组件，玩家怪物完全一致）。
+        var slotResolver = new RepositoryPackageSlotResolver(_characters.StatPacks);
+        pipeline.Add(
+            new ActorAssemblySystem(
+                _characters.Definitions,
+                _characters.Loadouts,
+                _characters.StatPacks,
+                slotResolver,
+                _actorSpawnQueue!,
+                _intentSystem),
+            4);
+
+        // 技能：冷却门控 → 施放 → 扣法力。
+        pipeline.Add(
+            new SkillCastSystem(
+                _characters.Loadouts,
+                new HostSkillContext(this, _world!)),
+            5);
+    }
+
+    /// <summary>
+    /// 生成一个角色实体（宿主侧入口：波次、房间编排、玩家出生都走这里）。
+    /// <para>只入队，不立即创建 —— 结构变更统一在管线里发生，避免"在遍历中改世界"这类内核禁忌。</para>
+    /// </summary>
+    public bool SpawnCharacter(string definitionId, Vector3 at, TeamId? teamOverride = null)
+    {
+        if (_actorDefinitions is null || _actorSpawnQueue is null)
+        {
+            GD.PushError("[DungeonDebug] 角色系统未初始化，无法生成 ", definitionId);
+            return false;
+        }
+
+        int slot = _actorDefinitions.SlotOf(definitionId);
+        if (slot < 0)
+        {
+            GD.PushError("[DungeonDebug] 未注册的角色定义：", definitionId);
+            return false;
+        }
+
+        _actorSpawnQueue.Enqueue(
+            teamOverride.HasValue
+                ? new ActorSpawnRequest(slot, new System.Numerics.Vector3(at.X, at.Y, at.Z), teamOverride.Value)
+                : new ActorSpawnRequest(slot, new System.Numerics.Vector3(at.X, at.Y, at.Z)));
+        return true;
     }
 
     /// <summary>降级子弹预制体：正式素材接入前，用一个自发光方块占位。</summary>

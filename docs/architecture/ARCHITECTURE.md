@@ -37,7 +37,7 @@
 | 性能语言 | **C++ GDExtension**，位于 `native/`，仅用于热路径 / 渲染 / 引擎能力扩展 |
 | 脚本例外 | **GDScript 仅在 UI 层**（`scripts/ui/**`）允许，其余全项目禁止（规则1，守卫 GS001） |
 | 数值真源 | **Excel `.xlsx`** → `tools/data_pipeline/` → `data/generated/`（`.tres` + index JSON）；运行期只读生成物 |
-| 架构守卫 | `tools/check_architecture.ps1`（检查项 GS001~GS007）+ `tools/check_all.ps1`（build → 守卫 → 测试一键） |
+| 架构守卫 | `tools/check_architecture.ps1`（检查项 GS001~GS007）+ `tools/check_all.ps1`（四步一键：build ×2 → 守卫 → 测试 → 200-seed 地牢性质校验） |
 | 目录骨架 | `scripts/ scenes/ data/ shaders/ native/ addons/ tools/ tests/ docs/` |
 | 完成定义 | 6 步检查表见 `docs/rules/07-definition-of-done.md`，最后一步必是**覆盖更新本文件** |
 | 当前阶段 | **v3：ECS 骨架 + 房间/地牢系统已落地**（地牢四层抽象 + 200-seed 性质校验 + 可跑调试场景）；战斗/技能/数值由**并行任务**在填充，素材层当前为 Box 白模（用户已确认先白模后换资源），Excel 数据层未落地 |
