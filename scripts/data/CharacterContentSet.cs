@@ -34,12 +34,150 @@ public sealed class CharacterContentSet
     public bool IsBuilt { get; private set; }
 
     /// <summary>
+    /// **按行填充**（唯一正式入口）：把一张表的一行数据注册成运行时对象。
+    /// <para>
+    /// <b>为什么要把「一行 Excel」拆成公开方法</b>：v1 时内置副本与 <c>characters.xlsx</c> 是两份
+    /// 各自手写的内容，靠人工保持同步 —— 一旦漂移就出现「策划改表但游戏没变」这类最难排查的事故。
+    /// 把注册拆成逐行方法之后，<b>xlsx 读取与内置副本走的是同一条代码路径</b>，
+    /// 于是两者是否一致可以被机械比对，而不是靠人眼（见 <c>tests/Characters/CharacterXlsxParityTests</c>）。
+    /// </para>
+    /// <para>
+    /// <b>累积语义</b>：数值包与技能包在表里都是「一个包里的第 N 行」，而仓库里它们是**一次成型的不可变值**。
+    /// 所以 <c>RegisterPackRow</c> / <c>RegisterLoadoutRow</c> 只做累积，真正入仓发生在
+    /// <see cref="FlushLoadouts"/> / <see cref="FlushStatPacks"/>。
+    /// </para>
+    /// <para>
+    /// 调用顺序有意义：数值包与技能包必须先于角色行，因为角色行引用前两者的 id。
+    /// </para>
+    /// </summary>
+    public void RegisterPackRow(string packId, StatLayer layer, StatId stat, float value)
+    {
+        _statPackRows.Add(new StatPackRow(packId, layer, stat, value));
+    }
+
+    /// <summary>表里的一行数值包数据（累积期用）。</summary>
+    private readonly struct StatPackRow
+    {
+        public StatPackRow(string packId, StatLayer layer, StatId stat, float value)
+        {
+            PackId = packId;
+            Layer = layer;
+            Stat = stat;
+            Value = value;
+        }
+
+        public string PackId { get; }
+
+        public StatLayer Layer { get; }
+
+        public StatId Stat { get; }
+
+        public float Value { get; }
+    }
+
+    /// <summary>累积的数值包行（保持表内顺序，flush 时按包聚合）。</summary>
+    private readonly System.Collections.Generic.List<StatPackRow> _statPackRows = new System.Collections.Generic.List<StatPackRow>();
+
+    /// <summary>
+    /// 收尾：把累积的数值包行按 (包 id, 层) 聚合后**各注册一次**。
+    /// **必须在所有 <see cref="RegisterPackRow"/> 之后调用一次。**
+    /// <para>
+    /// <b>为什么必须聚合</b>：仓库以包 id 为键、重复注册直接抛异常；而一个包在表里天然是十几行
+    /// （`player_base` 就有 13 个属性）。逐行注册会当场炸，不炸则意味着后面的行被静默丢弃 ——
+    /// 两种都是不可接受的。
+    /// </para>
+    /// </summary>
+    public void FlushStatPacks()
+    {
+        var grouped = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<StatId, float>>>(
+            StringComparer.Ordinal);
+        var order = new System.Collections.Generic.List<string>();
+        var layers = new System.Collections.Generic.Dictionary<string, StatLayer>(StringComparer.Ordinal);
+
+        for (int i = 0; i < _statPackRows.Count; i++)
+        {
+            StatPackRow row = _statPackRows[i];
+            if (!grouped.TryGetValue(row.PackId, out System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<StatId, float>>? items))
+            {
+                items = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<StatId, float>>();
+                grouped.Add(row.PackId, items);
+                order.Add(row.PackId);
+                layers.Add(row.PackId, row.Layer);
+            }
+            else if (layers[row.PackId] != row.Layer)
+            {
+                throw new InvalidOperationException(string.Concat(
+                    "数值包「", row.PackId, "」在表里同时出现了 ", layers[row.PackId].ToString(),
+                    " 与 ", row.Layer.ToString(), " 两层。仓库以包 id 为键，同包跨层会互相覆盖；",
+                    "请把不同层的属性拆成不同 PackId。"));
+            }
+            items.Add(new System.Collections.Generic.KeyValuePair<StatId, float>(row.Stat, row.Value));
+        }
+
+        for (int i = 0; i < order.Count; i++)
+        {
+            string packId = order[i];
+            StatPacks.Register(new StatPackageLayer(packId, layers[packId], grouped[packId]));
+            _statPackIds.Add(packId);
+        }
+    }
+
+    /// <summary>按行注册一条角色定义（每个字段显式传入，便于与表列一一对应）。</summary>
+    public void RegisterCharacterRow(
+        string id,
+        string displayKey,
+        ActorKind kind,
+        TeamId team,
+        ControlScheme control,
+        StatPackageIds packages,
+        string skillLoadoutId,
+        float hitRadius,
+        float hitHeight,
+        int visualSlot)
+    {
+        Definitions.Register(new ActorDefinition(
+            id, displayKey, kind, team, control, packages, skillLoadoutId, hitRadius, hitHeight, visualSlot));
+    }
+
+    /// <summary>按行注册一个技能包里的一个槽位。</summary>
+    public void RegisterLoadoutRow(string loadoutId, SkillSlot slot, int skillId, float cooldownSeconds, float manaCost)
+    {
+        if (!_loadoutBuilders.TryGetValue(loadoutId, out System.Collections.Generic.List<ISkill>? builder))
+        {
+            builder = new System.Collections.Generic.List<ISkill>();
+            _loadoutBuilders.Add(loadoutId, builder);
+        }
+        builder.Add(new DataSkill(skillId, string.Concat("skill_", skillId.ToString()), slot, cooldownSeconds, manaCost));
+    }
+
+    /// <summary>技能包分批累积：表是按槽位逐行写的，注册到仓库要一次成型。</summary>
+    private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<ISkill>> _loadoutBuilders =
+        new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<ISkill>>(StringComparer.Ordinal);
+
+    /// <summary>已登记的全部数值包 id（只读快照，供一致性校验与调试面板遍历）。</summary>
+    public string[] StatPacksIds() => _statPackIds.ToArray();
+
+    /// <summary>登记过的数值包 id（按注册顺序，便于输出稳定）。</summary>
+    private readonly System.Collections.Generic.List<string> _statPackIds = new System.Collections.Generic.List<string>();
+
+    /// <summary>
+    /// 收尾：把累积的技能包真正注册进仓库。**必须在所有 <see cref="RegisterLoadoutRow"/> 之后调用一次。**
+    /// </summary>
+    public void FlushLoadouts()
+    {
+        foreach (System.Collections.Generic.KeyValuePair<string, System.Collections.Generic.List<ISkill>> pair in _loadoutBuilders)
+        {
+            Loadouts.Register(SkillLoadout.FromSkills(pair.Key, pair.Value.ToArray()));
+        }
+    }
+
+    /// <summary>
     /// v1 内置示例内容（与 <c>data/excel/characters.xlsx</c> 保持一致）。
     /// <para>
-    /// <b>为什么 v1 在代码里写一份、Excel 里也写一份</b>：xlsx→生成物的 pipeline 尚未落地（ARCHITECTURE §4.1），
-    /// 这里先让运行时有东西可跑；等 pipeline 落地后，这个方法的体被替换为读取生成物即可，
-    /// 所有调用点（宿主、测试、调试场景）不用改。**唯一的真源仍是 Excel**，本方法里的值
-    /// 必须与表里逐项一致，由 <c>tests</c> 的一致性用例守护（见 CharacterContentRegressionTests）。
+    /// <b>xlsx→生成物的 pipeline 尚未落地（ARCHITECTURE §4.1）</b>，这里先让运行时有东西可跑；
+    /// 等 pipeline 落地后，体被替换为读取生成物即可，所有调用点（宿主、测试、调试场景）不用改。
+    /// **唯一的真源是 Excel**：本方法现在改为调用逐行注册方法（与 xlsx 读取同一路径），
+    /// 其值必须与表逐项一致，由 <c>CharacterXlsxParityTests</c> 直接读真表机械比对。
     /// </para>
     /// </summary>
     public CharacterContentSet BuildBuiltinV1()
@@ -154,6 +292,10 @@ public sealed class CharacterContentSet
             items.Add(new System.Collections.Generic.KeyValuePair<StatId, float>(entries[i].Stat, entries[i].Value));
         }
         StatPacks.Register(new StatPackageLayer(packId, layer, items));
+        if (!_statPackIds.Contains(packId))
+        {
+            _statPackIds.Add(packId);
+        }
     }
 
     private void RegisterLoadout(string loadoutId, (SkillSlot Slot, int SkillId, float Cooldown, float Mana)[] entries)
