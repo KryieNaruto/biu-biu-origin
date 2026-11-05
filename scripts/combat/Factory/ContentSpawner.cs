@@ -130,6 +130,13 @@ public sealed class ContentSpawner
             PierceLeft = (int)ValueResolver.Resolve(contract.Pierce, in ctx),
             BounceLeft = (int)ValueResolver.Resolve(contract.Bounce, in ctx),
             ChainDepth = chainDepth,
+            // 运动学参数在这里「定一次」：rand: 之类的随机项若放到每步求值会逐帧漂移。
+            Motion = (byte)contract.Motion,
+            HomingTurn = ValueResolver.Resolve(contract.HomingTurn, in ctx),
+            Gravity = ValueResolver.Resolve(contract.Gravity, in ctx),
+            BaseSpeed = speed,
+            Age = 0f,
+            LaunchDirection = direction,
         });
         _world.Commands.Set(entity, new Hurtbox
         {
