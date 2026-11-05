@@ -12,15 +12,23 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace BiuBiuOrigin.Tests.Characters
 {
     /// <summary>
-    /// 内容一致性 / 回归用例组：守护"Excel 真源 = 运行时可跑内容"这条契约。
+    /// 内容一致性 / 回归用例组：守护「内置副本自身是自洽的」。
     /// <para>
-    /// 为什么这类测试比普通单测更重要：策划改表的自由度来自"表是唯一真源"，
-    /// 而唯一真源一旦和代码里的内置副本漂移，就会出现"策划改了表但游戏没变"的
-    /// 最难排查的一类事故。v1 的 xlsx→生成物 pipeline 还没落地（ARCHITECTURE §4.1），
-    /// 代码里有一份内置副本兜底，因此必须有测试把两边钉在一起。
+    /// <b>这组用例能证明什么、不能证明什么</b>：
+    /// </para>
+    /// <list type="bullet">
+    /// <item>能证明：<u>内置副本</u>是自洽的 —— 每个角色都能真的装配出实体、每个数值包都能被解析；</item>
+    /// <item><b>不能证明</b>：内置副本与 <c>characters.xlsx</c> 一致。本组用例完全不读 xlsx，
+    /// 它比较的是 C# 常量与 C# 常量。</item>
+    /// </list>
+    /// <para>
+    /// <b>「表 = 运行时」由 <see cref="CharacterXlsxParityTests"/> 守护</b>：那组用例打开真实
+    /// <c>data/excel/characters.xlsx</c> 逐字段比对，并已被注入式验证过 ——
+    /// 把表里某个数值改掉，它会精确报出「预期 A、实际 B」。
+    /// 本组用例保留是因为它守护的是另一件事（装配自洽），两者互补而非重复。
     /// </para>
     /// <para>
-    /// 等 pipeline 落地后，这些用例改成读 <c>data/generated/</c> 即可，断言不动。
+    /// 等 <c>data/generated/</c> pipeline 落地后，这些用例改成读生成物即可，断言形状不动。
     /// </para>
     /// </summary>
     [TestClass]
@@ -31,7 +39,8 @@ namespace BiuBiuOrigin.Tests.Characters
         [TestMethod]
         public void BuiltinContent_HasEveryCharacterFromDesignTable()
         {
-            // 与 data/excel/characters.xlsx 的 Characters 表逐行对应。
+            // 期望值镜像 data/excel/characters.xlsx 的 Characters 表；但**本用例不读 xlsx**，
+            // 真正的「表 = 运行时」比对在 CharacterXlsxParityTests 里（它直接解析真表）。
             string[] expected =
             {
                 "player_hero", "goblin_grunt", "goblin_archer", "ogre_brute", "chosen_hero",

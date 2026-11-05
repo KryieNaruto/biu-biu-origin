@@ -405,7 +405,30 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 
 ### 4.1 现状
 
-`data/excel/`、`data/generated/`、`tools/data_pipeline/` 均不存在。**当前没有任何数据源**。
+**已落地**：`data/excel/characters.xlsx`（Characters / StatPacks / SkillLoads + `_Meta`）与
+`data/excel/combat.xlsx`（Tags / Objects / Weapons / Projectiles / StatPacks + `_Meta`）；
+`tools/data_pipeline/` 下已有 `validate_content_xlsx.py`（构建期校验器，2217 项检查）与两个表生成器。
+
+**仍缺**：`data/generated/` 及 xlsx → 生成物的转换器。也就是说 **Excel 已经是真源，但还没有派生物**。
+
+#### 4.1.1 「表 = 运行时」的证据链（2026-11-05 补强）
+
+数据驱动最危险的不是"没做"，而是**看起来做了、实际没接上**。本工程用两条链证明真源真的生效：
+
+| 链路 | 证据 | 注入验证 |
+|---|---|---|
+| **战斗内容**（combat.xlsx） | `tests/Content/Data/ContentBinderTests` 用 `XlsxReader` **直接解析真表**并断言运行期对象 | 是（改表 → 断言失败） |
+| **角色内容**（characters.xlsx） | `tests/Characters/CharacterXlsxParityTests` 打开真表，与内置副本**逐字段、逐数值**比对 | **是**（改 `player_base.Hp` → 精确报出「预期 120、实际 999」） |
+
+> ⚠️ **历史教训（必须记住）**：在这两组用例之前，`CharacterContentRegressionTests` 的注释声称"与
+> characters.xlsx 逐行对应"，但它**从不打开 xlsx**，比对的是 C# 常量与 C# 常量。
+> 它与 C# 自己完全自洽，因此永远不可能失败 —— 这类"假守护"比没有测试更危险，
+> 因为它会让人以为已经安全。**任何声称守护跨层一致性的用例，必须真的触碰另一层；否则不算数。**
+>
+> 该组用例已改为只声称"内置副本自身自洽"，并显式声明不能证明什么。
+
+**边界不变**：运行期代码仍然**不得**读取 `.xlsx`（§4.8）；`XlsxReader` 只存在于测试工程，
+它是 CI 里的尺子，不是运行时依赖。
 
 ### 4.2 目标数据流全图
 
