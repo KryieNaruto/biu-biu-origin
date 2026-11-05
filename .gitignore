@@ -148,3 +148,6 @@ tools/*/bin/
 tools/*/obj/
 tools/*/build/
 tools/*/.vs/
+# dungeon_check 的报告是每次校验的副产物（内容随种子/配置变），不入库
+tools/dungeon_check/report.md
+tools/dungeon_check/report-options.md
