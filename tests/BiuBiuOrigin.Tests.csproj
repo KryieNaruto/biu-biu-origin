@@ -63,7 +63,7 @@
       这本身就是一道额外守卫（比人工审查更硬）。
     -->
     <CharacterSourceGlob>..\scripts\actor\**\*.cs</CharacterSourceGlob>
-    <CharacterSourceGlob2>..\scripts\skill\SkillCastSystem.cs</CharacterSourceGlob2>
+    <CharacterSourceGlob2>..\scripts\skill\**\*.cs</CharacterSourceGlob2>
     <CharacterSourceGlob3>..\scripts\data\StatPackageRepository.cs</CharacterSourceGlob3>
     <CharacterSourceGlob4>..\scripts\data\CharacterContentSet.cs</CharacterSourceGlob4>
 
@@ -83,17 +83,38 @@
       与 CharacterSourceGlob / ContentSourceGlob 是同一道守卫（比人工审查更硬）。
     -->
     <CombatSourceGlob>..\scripts\combat\**\*.cs</CombatSourceGlob>
+
+    <!--
+      ★ 2026-11-05 hero-1「第一个人物」任务：为了让「4 个变体 + 装配清单 + 移动/瞄准/射击/子弹」
+      这套**纯逻辑**能在没有引擎的进程里被证明，下面三组源文件也编进本工程。
+      它们全部零 Godot 依赖；一旦有人往里面加 `using Godot`，本工程会直接编译失败（硬守卫）。
+      - CharacterAssemblySpec.cs  装配清单 / 变体 / 外观·镜头·手柄·武器包 + 外键校验（需求6）
+      - scripts/combat/**         投射物飞行、命中检测、命中事件（需求4）
+      - scripts/skill/**          技能门控 + 射击技能（需求4）
+      契约：docs/design/character-hud-contract.md §8（验收必须在无引擎进程里可跑）。
+    -->
+    <CharacterSourceGlob5>..\scripts\data\CharacterAssemblySpec.cs</CharacterSourceGlob5>
+    <CompositionSourceGlob>..\scripts\host\composition\**\*.cs</CompositionSourceGlob>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Engine-free Game.Core sources (the system under test). -->
     <Compile Include="$(CoreSourceGlob)" Link="Game.Core\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(CharacterSourceGlob)" Link="Game.Character\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(CharacterSourceGlob2)" Link="Game.Skill\%(Filename)%(Extension)" />
+    <Compile Include="$(CharacterSourceGlob2)" Link="Game.Skill\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(CharacterSourceGlob3)" Link="Game.Data\%(Filename)%(Extension)" />
     <Compile Include="$(CharacterSourceGlob4)" Link="Game.Data\%(Filename)%(Extension)" />
     <Compile Include="$(ContentSourceGlob)" Link="Game.Data.Content\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(CombatSourceGlob)" Link="Game.Combat\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="$(CharacterSourceGlob5)" Link="Game.Data\%(Filename)%(Extension)" />
+    <!--
+      ★ 组合根里**纯逻辑**的那部分（技能工厂 / 技能包实例化）。
+      为什么要编进来：`EndToEnd_PressingPrimarySpawnsRealProjectile` 的本质断言是
+      「数据行 → 真技能 → 真子弹」这条链**在宿主的工厂上**是通的。工厂若不在本工程里编译，
+      测试就只能测到数据层的 DataSkill 占位，红着也是红、绿了也说明不了宿主接线正确。
+      该目录不含任何 `using Godot`（一旦有，本工程立刻编译失败 —— 硬守卫）。
+    -->
+    <Compile Include="$(CompositionSourceGlob)" Link="Game.Host.Composition\%(RecursiveDir)%(Filename)%(Extension)" />
 
     <!--
       No generated code is expected inside scripts/core yet. If a future change adds a

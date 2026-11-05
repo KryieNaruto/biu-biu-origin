@@ -11,9 +11,18 @@ namespace Game.Core.Ecs;
 /// <c>TypeSet</c> 的相等/哈希就退化成「逐元素比 int」，不分配、可内联，还能直接当原型字典的键。
 /// </para>
 /// <para>
-/// <b>为什么长度上限是 16</b>：unmanaged 组件平均 32~64 字节，16 个组件已足以覆盖本项目全部官方组件
-/// （ECS.md 第 4.2 节共 11 个）。把上限写死成常量，让签名哈希能放进一个 long（每个组件 4 bit），
-/// Journal 与原型索引都用同一个 long 当键，热路径不做任何对象分配。
+/// <b>为什么长度上限是 64</b>：签名是「每个组件 id 占一位」的 <c>long</c> 位图，64 就是这套表示法的物理上限。
+/// <para>
+/// 历史：最初写的是 16（当时 ECS.md §4.2 只有 11 个官方组件）。第一个人物上线时官方组件扩到 20 个
+/// （新增 <c>WeaponStats</c>/<c>ActorTag</c>/<c>ViewAppearance</c>/<c>MoveIntent</c>/<c>AimTarget</c>/<c>Projectile</c>…），
+/// 上限 16 会在<u>角色装配</u>那一刻抛异常 —— 而它偏偏在运行期才炸，编译期毫无提示。
+/// 位图天然支持 64 个，把上限提到 64 不增加任何内存或热路径成本，只把「够不够用」从猜测变成到顶才报错。
+/// </para>
+/// <para>
+/// <b>为什么不直接放宽到 int[]</b>：位图让「签名哈希 / 包含判定 / 相等比较」全是单条整数运算，
+/// 原型字典与查询匹配都靠它，换成集合比较会把最热的路径从「几条指令」变成「一次循环 + 内存访问」。
+/// 真到 64 个组件的项目规模，该做的是换表示法（例如两段 long），而不是先把位图丢掉。
+/// </para>
 /// </para>
 /// <para>
 /// <b>为什么是不可变结构</b>：一旦被 <see cref="Archetype"/> 持有，签名就不能变——
@@ -23,7 +32,7 @@ namespace Game.Core.Ecs;
 public readonly struct TypeSet : IEquatable<TypeSet>
 {
     /// <summary>一个原型最多能装的组件种类数。</summary>
-    public const int MaxComponentCount = 16;
+    public const int MaxComponentCount = 64;
 
     private readonly long _bits;
     private readonly long _hash;

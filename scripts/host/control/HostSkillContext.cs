@@ -45,6 +45,14 @@ public sealed class HostSkillContext : ISkillContext
     public ICommandSink Commands { get; }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// <b>只读纪律</b>：这是世界本身，交给技能是为了让它们能 <c>TryGet</c> 施放者身上的组件（武器/瞄准）。
+    /// 技能实现禁止调用 <c>Create/Destroy/Set/Remove/Flush</c>；即使写了，内核的"遍历中禁止结构变更"
+    /// 守卫也会把它变成一条中文异常而不是静默的 chunk 损坏（见 <see cref="ISkillContext.Ecs"/> 的说明）。
+    /// </remarks>
+    public World Ecs => _world;
+
+    /// <inheritdoc />
     public IRandomProvider Random => _random;
 
     /// <inheritdoc />
@@ -95,11 +103,15 @@ internal sealed class HostCommandSink : ICommandSink
     public void SpawnProjectile(string projectileId, in SpawnPoint at, in LaunchVector launch, TeamId team)
     {
         PendingProjectiles++;
-        // 子弹系统（scripts/spawn）落地前，这里只记录意图，不再生成占位实体 ——
-        // 避免"技能看起来能用但打不出伤害"这种假完成。
+        // 真正的子弹实体由技能自己通过 `ctx.World.Ecs.Commands.CreateDeferred + Set` 生成
+        // （玩法组件 Projectile/Transform3/Velocity/Lifetime/Team 属于战斗层，宿主不该重复组装一份）。
+        // 这里保留入口给"纯表现型子弹"（只有外观、没有判定）与统计使用；
+        // 首个请求打一行日志，便于确认"射击 → 子弹"这条链真的走通了。
         if (PendingProjectiles == 1)
         {
-            GD.Print("[Skill] 首个子弹请求 ", projectileId, " 阵营=", team);
+            GD.Print("[Skill] 首个子弹请求 ", projectileId, " 阵营=", team,
+                " 位置=", at.Position.X.ToString("F2"), ",", at.Position.Y.ToString("F2"), ",", at.Position.Z.ToString("F2"),
+                " 弹速=", launch.Speed.ToString("F1"));
         }
     }
 

@@ -86,9 +86,24 @@ namespace BiuBiuOrigin.Tests.Characters
             Random = random;
         }
 
+        /// <summary>
+        /// 只读 ECS 句柄（契约：仅供技能<u>读取</u>施放者身上的组件，禁止写结构）。
+        /// <para>
+        /// 默认 <c>null</c>：本类服务于「技能门控」用例，那些用例不需要读世界；
+        /// 需要读武器的射击用例请传一个真实 <see cref="World"/>（见 <c>HeroSystemsTests</c>）。
+        /// 内核的 <c>World</c> 不可为空，因此这里用可空型并在读取方做判定，而不是塞一个假 World。
+        /// </para>
+        /// </summary>
+        public Game.Core.Ecs.World? World { get; set; }
+
         public ICommandSink Commands { get; }
         public IRandomProvider Random { get; }
         public float DeltaTime { get; set; }
+
+        /// <inheritdoc />
+        public Game.Core.Ecs.World Ecs => World
+            ?? throw new InvalidOperationException(
+                "TestSkillContext.Ecs 未注入：本用例的技能要读施放者身上的组件（武器/瞄准），请先设置 World 属性。");
 
         public IReadOnlyStatView? StatsOf(int actorId) => null;
     }

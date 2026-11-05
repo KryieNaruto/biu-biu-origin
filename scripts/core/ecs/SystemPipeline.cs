@@ -47,8 +47,22 @@ public sealed class SystemPipeline
         /// <summary>我必须在这些类型之前执行（未注册的会被忽略）。</summary>
         public readonly Type[] Before;
 
+        /// <summary>
+        /// 系统声明的模块 id（<see cref="ModuleAttribute"/>，注册期解析一次）。
+        /// <para>为什么放在条目里而不是每次读反射：模块判定发生在装配期（可能对每个变体跑一遍），
+        /// 而特性读一次就够；热路径（逐帧执行）完全不碰它。</para>
+        /// </summary>
+        public readonly string[] Modules;
+
         /// <summary>构造一个条目（由 <see cref="Add"/> 填写）。</summary>
-        public SystemEntry(SystemBase system, int registrationOrder, UpdateGroup group, bool isJob, Type[] after, Type[] before)
+        public SystemEntry(
+            SystemBase system,
+            int registrationOrder,
+            UpdateGroup group,
+            bool isJob,
+            Type[] after,
+            Type[] before,
+            string[] modules)
         {
             System = system;
             RegistrationOrder = registrationOrder;
@@ -56,6 +70,31 @@ public sealed class SystemPipeline
             IsJob = isJob;
             After = after;
             Before = before;
+            Modules = modules;
+        }
+
+        /// <summary>
+        /// 这个系统是否属于模块 <paramref name="moduleId"/>。
+        /// <para>没写 <see cref="ModuleAttribute"/> 的系统恒返回 false —— 它仍然会被 <see cref="Add"/> 正常执行，
+        /// 只是「不属于任何可勾选的模块」，因此模块式的装配清单里<u>看不见</u>它。</para>
+        /// </summary>
+        public bool IsInModule(string moduleId)
+        {
+            if (string.IsNullOrEmpty(moduleId) || Modules is null)
+            {
+                // Modules 为 null 只有一种来源：<c>default(SystemEntry)</c>（"这个系统还没注册"）。
+                // 让它返回 false 而不是 NRE —— "未注册"与"不属于该模块"对调用方是同一种回答，
+                // 而 NullReferenceException 会把前因（哪一步传了未注册的系统）埋在堆栈里。
+                return false;
+            }
+            for (int i = 0; i < Modules.Length; i++)
+            {
+                if (string.Equals(Modules[i], moduleId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>系统名。</summary>
@@ -70,11 +109,21 @@ public sealed class SystemPipeline
     private readonly int[] _groupEnd;
     private bool _built;
 
+    /// <summary>
+    /// 已加入的模块 id（按加入顺序、去重）。
+    /// <para><b>为什么单独记一份而不是从条目里现算</b>：模块的「加入顺序」是装配清单的可读输出
+    /// （日志行 <c>[Hero] ... modules=a,b,c</c>），而条目顺序是系统注册顺序；两者不等价。
+    /// 另外宿主可以声明一个「本变体要这一组模块」而其中<u>部分系统尚未注册</u>时，仍需要一条可打印的记录
+    /// （见 <see cref="AddModule"/> 的说明），这份列表就是那条记录。</para>
+    /// </summary>
+    private readonly System.Collections.Generic.List<string> _modules;
+
     /// <summary>创建管线（绑定一个世界；系统通过 <see cref="Add"/> 注册）。</summary>
     public SystemPipeline(World world)
     {
         _world = world ?? throw new GameEcsException("SystemPipeline 必须绑定一个 World。");
         _entries = new System.Collections.Generic.List<SystemEntry>(EcsConfig.InitialSystemsPerGroup);
+        _modules = new System.Collections.Generic.List<string>(EcsConfig.InitialSystemsPerGroup);
         _groupCount = CountGroups();
         _order = Array.Empty<int>();
         _groupStart = new int[_groupCount];
@@ -83,6 +132,12 @@ public sealed class SystemPipeline
 
     /// <summary>已注册系统数。</summary>
     public int Count => _entries.Count;
+
+    /// <summary>已加入的模块数量（<see cref="AddModule"/> 成功加入的不同 id 数）。</summary>
+    public int ModuleCount => _modules.Count;
+
+    /// <summary>已加入的模块 id（按加入顺序；只读视图，不要缓存到跨帧字段）。</summary>
+    public System.Collections.Generic.IReadOnlyList<string> ModuleNames => _modules;
 
     /// <summary>是否已完成排序。</summary>
     public bool IsBuilt => _built;
@@ -127,6 +182,223 @@ public sealed class SystemPipeline
         {
             Add(systems[i], i);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 模块（装配式 ECS，「拼接」的落点；契约 §4）
+    // ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 加入一个模块：注册所有「声明了该模块 id」的系统，并记录模块名。
+    /// <para>
+    /// <b>语义（逐条都是刻意的）</b>
+    /// </para>
+    /// <list type="bullet">
+    /// <item><b>系统从哪来</b>：由调用方（宿主装配）把这些系统的实例传进来。管线<u>不做反射扫描程序集</u>——
+    /// 系统需要构造参数（随机源、数值读取器、事件出口），扫出来的实例无法正确注入；
+    /// 而且「程序集里有哪些类型」在裁剪/AOT 下并不可靠（规则2 的技术路线）。</item>
+    /// <item><b>声明校验</b>：传进来的每个系统，其类型上必须有 <see cref="ModuleAttribute"/> 且包含
+    /// <paramref name="moduleId"/>，否则抛异常。这条断言是模块机制的全部价值所在：
+    /// 它能拦住「清单里写了 move_standard，但装配代码把 AimAtCursorSystem 传了进来」这种
+    /// <u>看起来能跑、却少了一个模块</u>的错误 —— 那类错误在运行期只表现为「手感不对」，极难定位。</item>
+    /// <item><b>空模块不报错</b>：<paramref name="systems"/> 为空时只登记模块名并返回 0。
+    /// 原因：表现层模块（镜头包 / HUD 包）的系统不在 ECS 管线里（它们在宿主层按帧驱动），
+    /// 数据侧的装配清单却必须能列出它们；对它们来说「本管线没有对应系统」是正常状态。</item>
+    /// <item><b>幂等</b>：同一个模块 id 重复加入只登记一次；单个系统重复出现在 <paramref name="systems"/> 里
+    /// 也只会被注册一次（否则 <see cref="Add"/> 会抛「已注册」）。</item>
+    /// <item><b>注册顺序</b>：按本次调用内数组的下标递增；同分组内无显式依赖的系统按这个顺序稳定执行
+    /// （见类注释）。跨多次调用时，先前的注册顺序恒小于后来的，因此「先加基础模块、再加扩展模块」是可推理的。</item>
+    /// </list>
+    /// </summary>
+    /// <param name="moduleId">模块 id（与数据侧装配清单里的字符串逐字一致）。</param>
+    /// <param name="systems">属于该模块的系统实例（可为空）。</param>
+    /// <returns>本次<u>新</u>注册的系统数（已注册过的、不属于该模块的（后者会抛）都不计入）。</returns>
+    public int AddModule(string moduleId, params SystemBase[] systems)
+    {
+        if (string.IsNullOrWhiteSpace(moduleId))
+        {
+            throw new GameEcsException("SystemPipeline.AddModule 的模块 id 不能为空：空 id 无法在装配清单里被引用。");
+        }
+        if (systems is null)
+        {
+            throw new GameEcsException(
+                string.Concat("SystemPipeline.AddModule('", moduleId, "') 的系统数组不能为 null（空模块请传 Array.Empty<SystemBase>()）。"));
+        }
+        if (_built)
+        {
+            // 与 Add 同一纪律：Build 之后拓扑序已固定，再塞系统会让「本帧顺序」不可推理。
+            // 现有宿主的做法是「装配完再 Build」，因此这里保持严格。
+            throw new GameEcsException(
+                string.Concat("SystemPipeline.AddModule('", moduleId, "') 必须在 Build() 之前调用；",
+                    "运行期动态拔插系统会让帧内顺序不可推理（模块是装配期概念）。"));
+        }
+
+        for (int i = 0; i < systems.Length; i++)
+        {
+            SystemBase system = systems[i];
+            if (system is null)
+            {
+                throw new GameEcsException(
+                    string.Concat("SystemPipeline.AddModule('", moduleId, "') 的系统数组里有 null。"));
+            }
+            // 未注册的系统 default(SystemEntry) 的 Modules 是 null（结构体的字段不会自动给初值），
+            // 所以「已注册条目」这条旁路必须判 index >= 0，而不是依赖 IsInModule 对 null 的容忍。
+            int existing = IndexOfSystem(system);
+            bool declared = existing >= 0
+                ? _entries[existing].IsInModule(moduleId)
+                : HasModuleAttribute(system.GetType(), moduleId);
+            if (!declared)
+            {
+                throw new GameEcsException(
+                    string.Concat("系统 ", system.Name, " 没有声明模块 '", moduleId,
+                        "'。每个进入模块的系统都必须在类型上写 [Module(\"", moduleId,
+                        "\")] —— 否则「清单说装了、实际没装」这类错误要到运行期才暴露。"));
+            }
+        }
+
+        if (!_modules.Contains(moduleId))
+        {
+            _modules.Add(moduleId);
+        }
+
+        int added = 0;
+        for (int i = 0; i < systems.Length; i++)
+        {
+            SystemBase system = systems[i];
+            if (IndexOfSystem(system) >= 0)
+            {
+                // 已经在管线里（可能来自另一个模块，也可能是本次调用的重复元素）：不重复注册。
+                continue;
+            }
+            Add(system, _entries.Count);
+            added++;
+        }
+        return added;
+    }
+
+    /// <summary>
+    /// 取消注册一个系统（<b>只在 <see cref="Build"/> 之前合法</b>，之后抛异常）。
+    /// <para>
+    /// <b>为什么不在运行期支持</b>：<see cref="Build"/> 之后 <see cref="Execute"/> 走的是扁平 <c>_order</c> 数组，
+    /// 运行期删系统会让「谁在谁之前」变成时间依赖 —— 同一个输入序列在不同时刻跑出不同结果，
+    /// 回放与确定性立刻失效。装配期（开始一局 / 加载一个变体）的增删才是安全的，那正是模块机制的用法。
+    /// </para>
+    /// <para>系统实例本身不被销毁：它只是被移出管线，仍可再加入（<see cref="Add"/> / <see cref="AddModule"/>）。</para>
+    /// </summary>
+    /// <returns>确实移除时返回 true；系统不在管线里返回 false（幂等，便于「按清单回收」的写法）。</returns>
+    public bool Remove(SystemBase system)
+    {
+        if (system is null)
+        {
+            throw new GameEcsException("SystemPipeline.Remove 的系统不能为 null。");
+        }
+        if (_built)
+        {
+            throw new GameEcsException(
+                string.Concat("SystemPipeline.Remove(", system.Name, ") 只能在 Build() 之前调用；",
+                    "运行期取消注册会让帧内执行顺序不可推理（请改为装配期重建管线）。"));
+        }
+        int index = IndexOfSystem(system);
+        if (index < 0)
+        {
+            return false;
+        }
+        _entries.RemoveAt(index);
+        // 注册顺序是稳定排序的次要键：移除后重排成 0..n-1，保证「相对顺序」不受历史增删影响。
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            SystemEntry entry = _entries[i];
+            if (entry.RegistrationOrder != i)
+            {
+                _entries[i] = new SystemEntry(
+                    entry.System, i, entry.Group, entry.IsJob, entry.After, entry.Before, entry.Modules);
+            }
+        }
+        _built = false;
+        return true;
+    }
+
+    /// <summary>
+    /// 移除一个模块的登记（只改 <see cref="ModuleNames"/>，<b>不</b>移除系统）。
+    /// <para>
+    /// 为什么分开：一个系统可能同时属于两个模块（<c>[Module("move_standard", "move_tank")]</c>），
+    /// 由模块 A 注册进来后又被模块 B 引用；「取消模块登记」若顺手删系统，就会误伤另一个模块。
+    /// 真要回收系统请显式 <see cref="Remove"/>。
+    /// </para>
+    /// </summary>
+    public bool RemoveModule(string moduleId)
+    {
+        if (_built)
+        {
+            throw new GameEcsException(
+                string.Concat("SystemPipeline.RemoveModule('", moduleId, "') 只能在 Build() 之前调用。"));
+        }
+        return !string.IsNullOrEmpty(moduleId) && _modules.Remove(moduleId);
+    }
+
+    /// <summary>某个模块 id 是否已加入本管线。</summary>
+    public bool HasModule(string moduleId)
+    {
+        if (string.IsNullOrEmpty(moduleId))
+        {
+            return false;
+        }
+        for (int i = 0; i < _modules.Count; i++)
+        {
+            if (string.Equals(_modules[i], moduleId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>某个系统是否已在本管线里。</summary>
+    public bool Contains(SystemBase system) => system is not null && IndexOfSystem(system) >= 0;
+
+    /// <summary>本管线里属于模块 <paramref name="moduleId"/> 的系统名（按注册顺序；日志与调试面板用）。</summary>
+    public System.Collections.Generic.IReadOnlyList<string> SystemNamesOfModule(string moduleId)
+    {
+        var names = new System.Collections.Generic.List<string>(_entries.Count);
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            if (_entries[i].IsInModule(moduleId))
+            {
+                names.Add(_entries[i].Name);
+            }
+        }
+        return names;
+    }
+
+    private int IndexOfSystem(SystemBase system)
+    {
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            if (ReferenceEquals(_entries[i].System, system))
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>直接读类型上的 <see cref="ModuleAttribute"/>（注册期一次性反射；只用于声明校验与 ReadEntry）。</summary>
+    private static bool HasModuleAttribute(Type type, string moduleId)
+    {
+        object[] attributes = type.GetCustomAttributes(typeof(ModuleAttribute), inherit: false);
+        for (int i = 0; i < attributes.Length; i++)
+        {
+            var module = (ModuleAttribute)attributes[i];
+            System.Collections.Generic.IReadOnlyList<string> ids = module.ModuleIds;
+            for (int m = 0; m < ids.Count; m++)
+            {
+                if (string.Equals(ids[m], moduleId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -438,6 +710,7 @@ public sealed class SystemPipeline
 
         System.Collections.Generic.List<Type> afterList = new System.Collections.Generic.List<Type>(2);
         System.Collections.Generic.List<Type> beforeList = new System.Collections.Generic.List<Type>(2);
+        System.Collections.Generic.List<string> moduleList = new System.Collections.Generic.List<string>(1);
         bool isJob = false;
 
         for (int i = 0; i < attributes.Length; i++)
@@ -459,10 +732,22 @@ public sealed class SystemPipeline
             {
                 isJob = true;
             }
+            else if (attribute is ModuleAttribute module)
+            {
+                System.Collections.Generic.IReadOnlyList<string> ids = module.ModuleIds;
+                for (int m = 0; m < ids.Count; m++)
+                {
+                    if (!moduleList.Contains(ids[m]))
+                    {
+                        moduleList.Add(ids[m]);
+                    }
+                }
+            }
         }
 
         Type[] after = afterList.Count > 0 ? afterList.ToArray() : Array.Empty<Type>();
         Type[] before = beforeList.Count > 0 ? beforeList.ToArray() : Array.Empty<Type>();
-        return new SystemEntry(system, order, group, isJob, after, before);
+        string[] modules = moduleList.Count > 0 ? moduleList.ToArray() : Array.Empty<string>();
+        return new SystemEntry(system, order, group, isJob, after, before, modules);
     }
 }

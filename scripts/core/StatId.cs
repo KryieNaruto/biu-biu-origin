@@ -176,6 +176,18 @@ public enum StatId : ushort
 
     /// <summary>投射物受到的重力加速度（抛掷 / 坠落弹用）。</summary>
     ProjectileGravity = 1054,
+
+    // ★ 2026-11-05 hero-1：移动/瞄准手感（契约 docs/design/character-hud-contract.md §3）。
+    //   为什么放在追加区而不是移动号段 [100..199]：号段是发布后的稳定编码，已有成员禁止重排；
+    //   追加区就是为「发布后新增」开的，放这里不会与任何已有数据/存档的数值号冲突。
+    /// <summary>加速响应时间（秒）：从静止到达目标速度所需时间。重甲型填大、敏捷型填小。</summary>
+    MoveAccelTime = 1023,
+
+    /// <summary>转向响应时间（秒）：角色朝向追上瞄准方向所需时间。0 = 瞬间对准。</summary>
+    TurnResponseTime = 1024,
+
+    /// <summary>瞄准距离上限（米）：光标点被夹取到角色周围的世界半径。</summary>
+    AimRange = 1025,
 }
 
 /// <summary><see cref="StatId"/> 的号段查询：给数据生成器与单测做构建期校验用。</summary>

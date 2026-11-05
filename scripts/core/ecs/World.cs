@@ -399,7 +399,13 @@ public sealed class World : IDisposable
         int existingColumn = source.ColumnOf(componentId);
         if (existingColumn >= 0)
         {
-            ((ComponentPool<T>)source.ChunkAt(chunkIndex)!.Pools[existingColumn]).SlotRef(slot) = value;
+            ComponentPool<T> existing = (ComponentPool<T>)source.ChunkAt(chunkIndex)!.Pools[existingColumn];
+            existing.SlotRef(slot) = value;
+            // 「已存在」这条快路径也必须重写 [Identity]：调用方传进来的 value 里那个 Owner 通常是
+            // default(Entity)，整结构赋值会把它盖成 E0:0。漏这一步的后果是"组件在，但 Owner 指向空实体"——
+            // 查询能匹配到它，任何 TryGet(x.Owner) 却全部失败（表现为"系统跑起来了但一个实体都没处理"，
+            // 极难定位）。两条分支都写 identity，才能维持「组件里的 Self 恒等于所属实体」的不变式。
+            existing.WriteIdentityAt(slot, entity);
             return;
         }
 

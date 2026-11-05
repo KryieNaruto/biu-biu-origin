@@ -1,4 +1,5 @@
 using System;
+using Game.Combat;
 using Game.Core;
 using Game.Core.Ecs;
 using NVector3 = System.Numerics.Vector3;
@@ -7,7 +8,13 @@ using NQuaternion = System.Numerics.Quaternion;
 namespace Game.Spawn;
 
 /// <summary>
-/// 刷怪导演：按配置生成「子弹」实体，写入 Transform3 / Velocity / Lifetime / Team / View 五个组件。
+/// 刷怪导演：按配置生成「子弹」实体，写入 Game.Combat.Projectile / Transform3 / Velocity / Lifetime / Team 五个组件。
+/// <para>
+/// <b>为什么是 <c>Game.Combat.Projectile</c> 而不是某个同名示例组件</b>：玩法子弹的组件只有一个真源。
+/// 曾经的 <c>Game.Core.Ecs.Projectile</c> 与本文件靠 <c>using Game.Core.Ecs</c> 静默绑定，字段部分重叠、
+/// 编译照样过，但 <c>ProjectileSystem</c>/<c>HitDetectionSystem</c>（查 Combat 版）永远看不到这些子弹 ——
+/// 子弹不动、不回收、打不到人，却没有任何报错。2026-11-05 已删除该示例组件并在此改绑。
+/// </para>
 /// <para>
 /// <b>为什么生成必须走 <c>World.Commands</c> 而不是 <c>World.Create</c></b>（J5）：
 /// 生成会创建新原型 / 新 chunk，属于结构化变更。若在遍历或系统执行中途直接 <c>Create</c>，
@@ -109,8 +116,11 @@ public sealed class SpawnDirectorSystem : SystemBase
         // 从「位置」指向「位置 + 速度」的四元数（LookAt 语义）。
         NQuaternion rotation = LookRotation(dir, NVector3.UnitY);
 
-        // 缩放：视觉尺寸，不影响判定逻辑（判定走 Hurtbox 半径）。
+        // 缩放：视觉尺寸，不影响判定逻辑（判定走下面子弹的 Radius）。
         float scale = _settings.Scale;
+
+        // 阵营：冒烟子弹统一按敌方发射（与下面的 Team 组件同源，两处必须一致）。
+        TeamId projectileTeam = TeamId.Enemy;
 
         Transform3 transform = new Transform3
         {
@@ -120,14 +130,30 @@ public sealed class SpawnDirectorSystem : SystemBase
         };
         Velocity vel = new Velocity { Linear = velocity, Angular = NVector3.Zero };
         Lifetime life = new Lifetime { Remaining = _settings.LifetimeSeconds, Duration = _settings.LifetimeSeconds };
-        Team team = new Team { Value = TeamId.Enemy };
+        Team team = new Team { Value = projectileTeam };
         Projectile projectile = new Projectile
         {
-            Source = Entity.None,
+            // 无射手：冒烟子弹由场景机关发射，不属于任何实体。HitDetectionSystem 的「自己不打自己」
+            // 判据是 (槽位号, 世代号) 同时相等，这两个哨兵值永远匹配不上真实实体，因此不会误伤/误放行。
+            ShooterIndex = Entity.None.Index,
+            ShooterGeneration = Entity.None.Generation,
+            Team = projectileTeam,
+            // 伤害：冒烟子弹不参与对角色结算（没有 Hurtbox 目标时命中检测直接跳过），
+            // 这里只填"不产生结算"的零值，不给它编一个玩法数值。
+            Damage = 0f,
+            // 判定半径：沿用冒烟场景既有的池化尺寸 —— ProjectileScale 是这颗子弹的"视觉直径缩放"，
+            // 它的实际模型约为 1 米，因此半径 = 缩放的一半，跟视觉体积对得上。
+            // arch-ok: 由 Resource 的 ProjectileScale 派生，不是硬编码玩法数值（Excel 落地后改读 Def 的 CollisionRadius）
+            Radius = scale * SampleRadiusRatio,
             Speed = speed,
-            PierceLeft = 0,
-            BounceLeft = 0,
+            // 射程：0 = 不看射程，只靠 Lifetime 兜底（与 ProjectileSystem 的约定一致），
+            // 冒烟的模型就是"飞到寿命结束"，所以不给它编一个射程数值。
+            RangeMeters = 0f,
+            Critical = false,
+            WeaponId = 0,
+            DamageType = DamageType.Kinetic,
             Traveled = 0f,
+            Spent = false,
         };
         View view = new View { Slot = 0, Kind = 0, Dirty = false };
 
@@ -137,15 +163,18 @@ public sealed class SpawnDirectorSystem : SystemBase
         // 那会先把实体放进「只有 T 一个组件」的原型，后续 Set 追加组件要触发一次迁移——
         // 每生成一颗子弹白迁移一次，还多建一个原型。这里一次性按完整原型预留，Set 只是原地写值。
         Entity entity = World.Commands.CreateDeferred(ViewModel.Components(World));
+        World.Commands.Set(entity, projectile);
         World.Commands.Set(entity, transform);
         World.Commands.Set(entity, vel);
         World.Commands.Set(entity, life);
         World.Commands.Set(entity, team);
-        World.Commands.Set(entity, projectile);
         World.Commands.Set(entity, view);
 
         LastSpawned++;
     }
+
+    /// <summary>判定半径 = 视觉缩放 × 本比例（1 米模型 → 半径为缩放的一半）。结构性比例，不是玩法数值。</summary>
+    private const float SampleRadiusRatio = 0.5f;  // arch-ok: 由 ProjectileScale 派生半径的比例常量（模型 1 米 → r = scale/2），不是玩法数值
 
     /// <summary>π 的两倍（结构性常量，不是玩法数值）。</summary>
     private const float Tau = (float)(Math.PI * 2.0);  // arch-ok: 2π 三角常量（数学常数，不是玩法数值）

@@ -133,6 +133,7 @@ public sealed class SkillCastSystem : SystemBase, ISpanAction<ActorIdentity, Ski
             var origin = new Vector3(_originX, _originY, _originZ);
             var ctx = new SkillContext(
                 owner.Index,
+                owner,
                 identity[i].Team,
                 identity[i].Kind,
                 requested,

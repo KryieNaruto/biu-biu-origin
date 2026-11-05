@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v6  最后更新: 2026-11-05  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v7  最后更新: 2026-11-06  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -41,7 +41,7 @@
 | 目录骨架 | `scripts/ scenes/ data/ shaders/ native/ addons/ tools/ tests/ docs/` |
 | 完成定义 | 6 步检查表见 `docs/rules/07-definition-of-done.md`，最后一步必是**覆盖更新本文件** |
 | 开发期工具 | `tools/asset_viewer/` **素材快查看器**：独立 Win32 exe（CMake+MSVC+D3D11/D2D，**零第三方依赖**），双击扫全量 371 个 `.glb`/`.fbx` 看缩略图与动画，**不进游戏**（见 §16） |
-| 当前阶段 | **v5：ECS 骨架 + 房间/地牢 + 角色抽象 + 素材查看器 + 基础物件抽象（武器/子弹/怪物同源 + 熔炉组合）均已落地**（174 测试全绿；素材查看器全量 371/371 验收通过）；战斗/技能的具体实现在填充，素材层当前为 Box 白模（用户已确认先白模后换资源），已落地的是「数据 + 契约 + 工厂」，碰撞/伤害结算仍待下一任务 |
+| 当前阶段 | **v7：ECS 骨架 + 房间/地牢 + 角色抽象 + 素材查看器 + 基础物件抽象 + 第一个可玩人物均已落地**：① 基础物件抽象（武器/子弹/怪物同源 `ObjectArchetype` + 熔炉组合 + `combat.xlsx` + 零分配铸造工厂）；② 第一个可玩人物 `test_hero`（标准 + 三个纯数据变体：重甲/敏捷/幸运）——WASD 移动、鼠标左键瞄准射击、真子弹生成与命中、HUD 全量数值显示；人物 = 「数值包 + 技能包 + 模块集合」的 ECS 拼接，换变体只改 `characters.xlsx` 一行（0 行 C# 改动）；③ 素材查看器全量 371/371 验收通过。素材层当前为 Box 白模（用户已确认先白模后换资源）；五槽技能中仅左键为真实现，其余四槽仍是占位 |
 
 **一句话**：C# 写逻辑、Excel 出数值、C++ 兜性能、GDScript 只碰 UI、每个任务收工就回来改这份文件。
 
@@ -1082,9 +1082,7 @@ user://saves/<slot>.json
 | 2026-11-03 | v1 | 立规矩（仲裁收口，本日第二次更新） | 收口仲裁：`IVisualDescriptor` 由候选转**正式接口**；`ISkill`/`ISkillTarget` 声明**下沉 `Game.Data`**、实现留 `scripts/skill/`；`IActor` 增加 `TryApplyTakeover(in TakeoverSpec) : bool`；§3.2 新增「声明位置 / 实现位置」两列；§4 统一 Excel **按主题分文件**口径（characters/combat/presentation/progression，Sheet 名=表名）；§9.4 标注为性能阈值**唯一真源**；文件头恢复常规排版、变更日志恢复 §11 编号 | `docs/architecture/ARCHITECTURE.md`、`docs/rules/03-abstract-first.md`、`docs/rules/04-data-driven.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md`、`docs/rules/07-definition-of-done.md` |
 | 2026-11-03 | v1 | 立规矩（第四轮收口，本日第四次更新） | **`ISkillCaster` 悬空接口关闭**：§3.2 行更新为 03 §4.1 定稿签名（新增 `CanCast` 预检、`TickSkill(id,dt)`→批量 `TickSkills(dt)`、新增 `TryReplaceSkills` 受控通路），状态由「v1 待正式定义」改为「✅ 签名已定稿」；原「⚠️ 已知缺口」小节改写为「归属已收口」并补**两通路纪律**（`TryApplyTakeover` 内部改技能 = 夺舍专用；`TryReplaceSkills` 非夺舍、夺舍中返回 false）；03 §4.1.1 待仲裁项全部改标 ✅、03 补 `ISkillCaster` 为第 15 个正式接口、05 §8 补 `IStatProvider` 实现位置注释、06 修 2 处省略式 `ApplySlot` 槽位写法；06 §9.2 开放问题 OQ-1~OQ-9 **全部关闭** | `docs/architecture/ARCHITECTURE.md`、`docs/rules/03-abstract-first.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md` |
 | 2026-11-03 | v2 | ECS 权重骨架落地 | **运行时架构由「纸面」转为「已实现」**：`scripts/core/ecs/`（内核 14 文件）、`scripts/host/`（七阶段管线 + 视图池 + 事件队列）、`scripts/actor`+`scripts/spawn`（3 个系统）、`tests/`（63 用例全绿）落地；§0 阶段改为 v2、§1.1 现状树重写、§2.3 矩阵新增 `Game.Host`/`Game.Core.Ecs` 两行并写明「Host 是唯一 using Godot 的游戏层」硬约束、§3.2.0 新增 ECS 类型清单、§6.1 现状更新 + 新增 §6.1.1「七步逻辑如何映射到 ECS 阶段」、§10 关闭 R1/R2/R3、R11 部分关闭、新增 R13~R15、**新增 §13 ECS 落地汇总**（含 4 条真炸过的缺陷复盘与填充顺序）；形状真源仍是 `docs/architecture/ECS.md` | `docs/architecture/ARCHITECTURE.md`、`docs/architecture/ECS.md`、`AGENTS.md` |
-
----
-
+| 2026-11-05 | 第一个可玩人物 `test_hero` 落地 | **在 ECS + 角色抽象之上做出第一个真正可操作的人物**：新增 §16 记录全链路（Excel 数据行 → `CharacterContentSet` 镜像 → `ContentSkillSet` 实例化真技能 → `CharacterSession` 一条管线 → `VisualBridge`/`TransformBridge` → HUD 快照）。① **组合根**：新增 `scripts/host/composition/`（`ISkillFactory` / `NullSkillFactory` / `NullSkill` / `ContentSkillFactory` / `ContentSkillSet`），刻意不 `using Godot`，测试工程直接编译 —— 「数据行 kind → 技能实现类」的唯一定义点。② **人物会话**：新增 `scripts/host/CharacterSession.cs`，把「出生 + 意图 + 装配 + 技能 + 移动 + 瞄准 + 视图 + HUD」收成一个可 `Tick` 的单元；`DungeonDebugScene` 改为持有会话并支持 `--hero` / `--hero-variant=` / `--hero-fire` / 角色特写截图。③ **四个变体纯数据**：`test_hero`(标准) / `test_hero_tank`(重甲) / `test_hero_agile`(敏捷) / `test_hero_lucky`(幸运)，换变体只改 xlsx 一行，C# 0 行改动。④ **修复四个静默失效的接线**（详见 §16.4）：玩家实体发现死循环（人物不出生）、技能包注册表槽位号错位（按左键永不开枪）、`DataSkill` 占位不生成子弹、意图覆盖方向写错。⑤ **HUD**：`HudSnapshot`/`CharacterHudDrawer` 显示 HP/法力/耐力/护甲减伤/移速/暴击/瞄准角/五技能槽；护甲减伤口径修正为 `armor/(armor+k)`（曾显示 94%）。⑥ **测试 101 → 219 全绿**（新增 `HeroIntegrationTests` 端到端用例：按下左键 → 世界里真出现 `Projectile` 且弹速/射程/伤害/半径全部可追溯到武器行；新增 `RuntimeSkillRegistry_KeepsContentSlotNumbers` 钉住槽位号一致性，并做了变异验证确认它能抓到原 bug），架构守卫 0 error / 0 warning。⑦ ECS 内核：`TypeSet.MaxComponentCount` 16 → 64（人物 12 类组件超出原上限导致运行时崩溃）。 |
 ## 12. 待办与下一步（按优先级）
 
 | 优先级 | 待办 | 产出位置 | 完工时必须回写本文件的章节 |
@@ -1726,3 +1724,111 @@ data/excel/
 > （「每个 X 都必须能查到 Y」），也不要只写"负向会报错"用例。
 
 加载器**只产出 `ModelData`**，所以新增格式不会波及渲染与 UI —— 这是 §16.3 那条边界带来的收益。
+
+## 18. 第一个可玩人物（`test_hero`，2026-11-05 落地）
+
+> 本章回答：**「在 ECS + 角色抽象之上，怎么把一个人物真正做出来」**——
+> 数值从 Excel 来、能力靠模块拼接、操作走意图、表现走桥接，
+> 整条链路没有一处「为这个人物特判」的代码。
+
+### 18.1 一句话结论
+
+**人物 = 数据行 × 模块集合。** 换一个变体（`test_hero` → `test_hero_tank`）只改 `characters.xlsx`
+里的一行，C# 侧 **0 行改动**；四个变体（标准 / 重甲 / 敏捷 / 幸运）共用同一套系统。
+
+### 18.2 分层落点（谁在做什么）
+
+| 层 | 落地物 | 位置 | 职责边界 |
+|---|---|---|---|
+| 数据（真源） | `Characters` / `StatPacks` / `SkillLoads` / `Assemblies` 四张表 | `data/excel/characters.xlsx` | 策划唯一编辑区 |
+| 数据（运行时镜像） | `CharacterContentSet`、`CharacterAssemblyRepository`、`CharacterVariantSpec`、`CharacterWeaponSpec`、`CharacterSkillSpec`、`CharacterModuleSet` | `scripts/data/` | 只做**读取与校验**，不认识技能实现类 |
+| 组件 | `Transform3` `Team` `Health` `Mana` `Hurtbox` `ActorIdentity` `SkillState` `ActorIntent` `MoveIntent` `AimTarget` `ViewAppearance` `WeaponStats` `ActorTag` | `scripts/actor/`、`scripts/combat/` | 全是 `unmanaged` 值类型，只存**槽位号/数值**，不存对象引用（J2） |
+| 系统 | `ActorIntentSystem`(PreUpdate) → `ActorAssemblySystem` → `SkillCastSystem` → `MoveAimSystem` / `AimAtCursorSystem` → `ProjectileSystem` / `HitDetectionSystem` / `ImpactEventSystem`(FixedUpdate) | `scripts/actor|skill|combat/` | 每帧纯函数式推进，不碰引擎 |
+| 组合根 | `ContentSkillSet`（数据行 → 真技能对象）、`ContentSkillFactory`（`kind` → `ISkill`）、`ISkillFactory`/`NullSkill` | `scripts/host/composition/` | **唯一**知道「`fire_projectile` 意味着哪个类」的地方；刻意不 `using Godot`，所以测试工程能直接编译它 |
+| 宿主 | `CharacterSession`（一个会话 = 一条管线 + 一个玩家 + 一套视图/HUD）、`DungeonDebugScene`（场景入口） | `scripts/host/` | 唯一允许 `using Godot` 的边界（J4） |
+| 视图桥 | `VisualBridge` / `TransformBridge` / `ViewRegistry` / `ActorViewDirector` / `TopDownCameraRig` | `scripts/host/view/`、`scripts/host/bridge/` | ECS 组件 → 引擎节点，单向 |
+| 输入 | `PlayerInputIntentSource`（键位 → `InputIntent` Q16 定点）、`CursorAimInputSource`（鼠标 → 世界点） | `scripts/host/control/` | 引擎输入只在这里出现 |
+| UI | `HudModel` / `HudSnapshot` / `CharacterHudDrawer` / `CharacterHudSkin` | `scripts/ui/` | 只读快照 + 绘制，**不做结算**（红线 5） |
+
+### 18.3 一帧的数据流（人物视角）
+
+```
+键盘/鼠标 ──► PlayerInputIntentSource ──► InputIntent（Q16 定点）
+                                        │
+CursorAimInputSource ─► AimTarget ──────┤
+                                        ▼
+                         ActorIntentSystem (PreUpdate)   意图 → ActorIntent 组件
+                                        ▼
+                         ActorAssemblySystem             ActorSpawnRequest → 12 个组件一次性拼好
+                                        ▼
+                         SkillCastSystem                 边沿判定 → CanCast → Cast → 扣法力 → 起冷却
+                                        ▼  ICommandSink（帧末提交，J5）
+                         ProjectileSystem / HitDetectionSystem (FixedUpdate)
+                                        ▼  事件
+                         AppEvents ──► HUD 快照 / 音效 / 飘字
+                                        ▼
+                         TransformBridge（插值）──► Godot 节点
+```
+
+### 18.4 四条关键接线（也是四个真实踩过的坑）
+
+| # | 接线 | 踩的坑 | 现在的钉子 |
+|---|---|---|---|
+| ① | 玩家实体 discovery | `_stats.TryGetOwnerOfDefinition` 只由 `BindStats` 填充，而 `BindStats` 又依赖这个查询 → **死亡循环，人物永远不出生** | `ResolvePlayer()` 改读 `ActorAssemblySystem.LastAssembled[^1]`，再回调 `BindStats` |
+| ② | 技能包**槽位号** | 宿主注册表只 `Register` 英雄自己那一个包 → 它的槽位是 0；而装配系统按 `Content.Loadouts`（含 `player_kit`/`goblin_kit`）解析出 5 → `SkillCastSystem` 每帧查不到包，**按左键永远不开枪、不报错** | 先镜像整个仓库保住槽位号，再 `SkillLoadoutRegistry.Replace` 原地换真实现；用例 `RuntimeSkillRegistry_KeepsContentSlotNumbers` |
+| ③ | 技能种类绑定 | 数据层只能放 `DataSkill` 占位（它不许 `using Game.Skill`）→ 左键按下、冷却照走、法力照扣，**一颗子弹都没有** | `ContentSkillFactory` 按 `kind` 造 `FireProjectileSkill`；用例 `EndToEnd_PressingPrimarySpawnsRealProjectileFlyingDownAimDirection` |
+| ④ | 意图**覆盖方向** | `ActorIntentSystem` 每帧用意图源采样**整体覆盖** `ActorIntent`；在管线前直接写组件会被静默抹掉 | 冒烟/回放一律走意图源的 `ForceInput` 通道（伪造一次采样），下游全走真实路径 |
+
+> ①~④ 的共同点：**都是"不崩、不报错、日志干净，但功能静默失效"**。
+> 这类问题只能靠跨层断言抓，不能靠肉眼跑一遍。
+
+### 18.5 数值与变体（全部来自 Excel）
+
+| 变体 | HP | 护甲 | 速度 | 暴击 | 武器 | DefinitionSlot |
+|---|---|---|---|---|---|---|
+| `test_hero`（测试人物·标准） | 120 (+10 成长) = 130 | 6 | 5.2 | 5% ×1.75 | `pistol_basic` 1101 | 5 |
+| `test_hero_tank`（重甲） | 220 | 20 | 3.6 | — | `cannon_heavy` 1106 | 6 |
+| `test_hero_agile`（敏捷） | 90 | — | 7.4 | — | `smg_light` 1107 | 7 |
+| `test_hero_lucky`（幸运） | 110 | — | 5% | 15% ×2.0 | `ricochet_lucky` 1108 | 8 |
+
+**护甲减伤口径（HUD 与战斗必须一致）**：`armor / (armor + armorK)`。
+`test_hero` = 6/(6+100) ≈ **6%**（曾写成 `1 - armor/(armor+k)` → 显示 94%，已修正）。
+
+**五槽技能（`SkillSlot`）**：`Dash`(Shift) / `PrimaryAttack`(左键) / `WeaponSwap`(Q) / `Signature`(R) / `Interact`(F)。
+v1 只有左键是**真实现**（`fire_projectile`）；其余四行是 `kind=data` 的占位，
+宿主日志会如实打印「跳过了 4 行」，而不是假装能用。
+
+### 18.6 扩展成本（规则 7 实操核对）
+
+| 我想做 | 要改的文件 | 数量 |
+|---|---|---|
+| 加一个变体（换血/换速/换枪） | `characters.xlsx` 加一行 | **1** |
+| 让变体换一套技能包 | `characters.xlsx` + `SkillLoads` 加 5 行 | **1** |
+| 加一种新技能种类（如 `cone_slash`） | `ISkill` 实现 + `ContentSkillFactory` 一个 `case` | **2** |
+| 加一个新 HUD 字段 | `HudSnapshot` 加字段 + `CharacterHudDrawer` 画它 | **2** |
+| 人物换外观白模 | 0（`VisualPack` 数据行指向视觉槽位） | **0** |
+
+### 18.7 验证（可复现）
+
+```powershell
+dotnet build                                          # 0 error / 0 warning
+.\tools\check_architecture.ps1                        # new=0 existing=0 fixed=0 errors=0 warnings=0
+cd tests; dotnet test                                 # 219/219 通过
+
+# 无渲染冒烟：出生 + 出弹链路（headless 没有鼠标，故用 --hero-fire 伪造一次采样）
+E:\Godot\Godot_v4.7.2-stable_mono_win64_console.exe --path . --headless --quit-after 150 -- --hero --hero-fire
+#   期望日志： [Hero] 出生 entity=... 血量上限=130 / 实体数随射击增长 / 施放=5
+
+# 带截图的真渲染：
+... --path . --quit-after 200 -- --hero --hero-fire --shots
+#   out/dungeon/hero_closeup.png  ← 角色特写（HUD + 玩家 + 子弹）
+```
+
+### 18.8 已知债务（不在本章解决）
+
+1. `SpawnDirectorSystem` 给每颗子弹多挂一个 `View` 组件（组件种类上限已由 16 抬到 64，故未爆但仍在浪费）。
+2. 交叉准心只有一处（HUD Drawer 画的屏幕中心），`ViewOptions.CrosshairVisible` 默认 false。
+3. Excel ↔ C# 镜像的一致性**没有**自动化 `--verify`（靠 9 条回归用例钉住）。
+4. 四个 `kind=data` 技能仍是 `NullSkill` 占位。
+5. `Behavior/Action/Control` 三类 pack 只有数据、无系统消费（BehaviorSystem / spawn director 未落地）。
+6. Spreadsheet 是手写生成脚本 `tools/data_pipeline/gen_characters_xlsx.py`，尚未接 `data/generated/`。

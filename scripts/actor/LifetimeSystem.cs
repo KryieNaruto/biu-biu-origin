@@ -21,11 +21,22 @@ namespace Game.Actor;
 /// <b>两遍扫描</b>：第一遍只做减法并把到期实体记进旁路数组；第二遍（遍历已结束）才投递销毁命令。
 /// 这样世界结构在整个遍历期间不变，符合 J5。旁路数组是复用的，稳态零分配。
 /// </para>
+/// <para>
+/// <b>例外：<c>selfManaged</c> 判定为"自己管回收"的实体，本系统不递减也不销毁</b>。子弹就是这类：
+/// 它有三条死法（命中 / 飞出射程 / 寿命到），前两条只有 <c>ProjectileSystem</c>（FixedUpdate 组）知道，
+/// 所以三条判据必须收在同一个系统里，才能保证"销毁恰好一次、计数与销毁同源"。
+/// 若让本系统（Update 组）代劳，会出现「寿命在 Update 归零 → 本系统当场销毁 → 下一个 FixedUpdate
+/// ProjectileSystem 的查询里已经没有这颗子弹」的空窗，它的寿命判定与诊断计数就永远不触发
+/// （曾经因此使 <c>ProjectileSystem.LifetimeExpiredCount</c> 恒为 0）。
+/// </para>
 /// </summary>
 [UpdateInGroup(UpdateGroup.Update)]
 public sealed class LifetimeSystem : SystemBase, ISpanAction<Lifetime>
 {
     private readonly HostEventSink _events;
+
+    /// <summary>"这个实体由别人管回收"的谓词（<c>null</c> = 所有实体都归本系统管）。</summary>
+    private readonly Func<Entity, bool>? _selfManaged;
 
     /// <summary>
     /// 到期实体暂存数组。**故意不是 readonly**：容量不足时要 <c>Array.Resize(ref _expired, ...)</c>
@@ -50,10 +61,19 @@ public sealed class LifetimeSystem : SystemBase, ISpanAction<Lifetime>
     /// </summary>
     /// <param name="events">事件出口。</param>
     /// <param name="capacity">到期暂存数组初始容量。</param>
-    public LifetimeSystem(HostEventSink events, int capacity = 64)  // arch-ok: 到期暂存数组初始容量（内存预分配，不是玩法数值）
+    /// <param name="selfManaged">
+    /// 可选：判断"这个实体由别人管回收"。返回 true 的实体本系统<u>完全不碰</u>（不递减、不销毁、不发事件）。
+    /// <para>
+    /// 为什么用委托而不是直接判 <c>Game.Combat.Projectile</c>：<c>scripts/actor</c> 是下层，
+    /// 让下层反过来认识上层的组件会把依赖方向拧成环（combat 已依赖 actor）。这里只表达"有些实体
+    /// 不归我管"这个协议，具体是谁由装配方（宿主）决定。
+    /// </para>
+    /// </param>
+    public LifetimeSystem(HostEventSink events, int capacity = 64, Func<Entity, bool>? selfManaged = null)  // arch-ok: 到期暂存数组初始容量（内存预分配，不是玩法数值）
     {
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _expired = new Entity[Math.Max(capacity, 1)];
+        _selfManaged = selfManaged;
         _action = this;
     }
 
@@ -97,6 +117,13 @@ public sealed class LifetimeSystem : SystemBase, ISpanAction<Lifetime>
         int written = _expiredCount;
         for (int i = 0; i < count; i++)
         {
+            // 别人的实体（如子弹）完全不碰：不递减、不记入到期表 —— 它的倒计时与销毁由拥有者负责。
+            // 放在循环最前面而不是销毁阶段过滤：如果这里也递减，拥有者再递减一次就成了"每帧减两次"，
+            // 寿命会莫名其妙地缩短一半。
+            if (_selfManaged is not null && _selfManaged(lifetimes[i].Owner))
+            {
+                continue;
+            }
             float remaining = lifetimes[i].Remaining - dt;
             lifetimes[i].Remaining = remaining;
             if (remaining <= 0f)

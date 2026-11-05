@@ -1,5 +1,5 @@
 using System;
-using Game.Actor;
+using System.Collections.Generic;
 using Game.Core;
 using Game.Core.Actors;
 using Game.Core.Skills;
@@ -30,7 +30,29 @@ public sealed class CharacterContentSet
     /// <summary>技能包仓库。</summary>
     public SkillLoadoutRegistry Loadouts { get; } = new SkillLoadoutRegistry();
 
-    /// <summary>是否已经注册过（防止重复注册导致槽位重排）。</summary>
+    /// <summary>
+    /// 装配清单仓库（v1 追加）：Excel 的 <c>Assemblies</c> / <c>VariantAssembly</c> / <c>VisualPacks</c> /
+    /// <c>CameraPacks</c> / <c>InputPacks</c> / <c>Weapons</c> 六张表在这里落地成"可生成的变体"。
+    /// <para>
+    /// <b>为什么它是仓库上的一个属性而不是一堆静态字段</b>：宿主、HUD、截图脚本都要按变体 id 查装配；
+    /// 放在内容集上意味着"一份内容集 = 一份可查询的角色清单"，测试也无引擎即可查询（不需要 Godot）。
+    /// </para>
+    /// </summary>
+    public CharacterAssemblyRepository Assemblies { get; } = new CharacterAssemblyRepository();
+
+    /// <summary>
+    /// v1 测试人物（「人物槽位就是测试人物」需求）的装配 id 与默认变体 id。
+    /// <para>它们是**数据的入口点**（宿主按名字找到要生成谁），不是数值：数值全在数值包/武器行里。</para>
+    /// </summary>
+    public const string HeroAssemblyId = "hero";
+
+    /// <summary>默认（标准）变体 id。</summary>
+    public const string HeroDefaultVariantId = "test_hero";
+
+    /// <summary>测试人物 4 个变体共用的成长层数值包 id（成长层与 Base 正交：换变体不改成长）。</summary>
+    public const string HeroGrowthPackageId = "test_hero_growth";
+
+    /// <summary>是否已经构建过（防止重复注册）。</summary>
     public bool IsBuilt { get; private set; }
 
     /// <summary>
@@ -178,12 +200,20 @@ public sealed class CharacterContentSet
     /// 等 pipeline 落地后，体被替换为读取生成物即可，所有调用点（宿主、测试、调试场景）不用改。
     /// **唯一的真源是 Excel**：本方法现在改为调用逐行注册方法（与 xlsx 读取同一路径），
     /// 其值必须与表逐项一致，由 <c>CharacterXlsxParityTests</c> 直接读真表机械比对。
+    /// <b>为什么 v1 在代码里写一份、Excel 里也写一份</b>：xlsx→生成物的 pipeline 尚未落地（ARCHITECTURE §4.1），
+    /// 而游戏又要能跑起来，所以先有这份手写副本；它和 Excel 的一致性由
+    /// <c>tools/data_pipeline/gen_characters_xlsx.py</c> 与 <c>tests</c> 下的内容回归用例钉住。
+    /// </para>
+    /// <para>
+    /// 一旦 pipeline 落地，本方法会被 <c>LoadFromGeneratedJson()</c> 取代，**Excel 才成为唯一真源**；
+    /// 在那之前，改数值必须两边一起改，否则就是"测试全绿但游戏是错的"。
     /// </para>
     /// </summary>
     public CharacterContentSet BuildBuiltinV1()
     {
         if (IsBuilt)
         {
+            // 重复注册会打乱槽位号并让已有实体失效 —— 宁可在构建期炸掉，也不要在运行期静默错乱。
             throw new InvalidOperationException("CharacterContentSet 只能构建一次：重复注册会打乱槽位号并让已有实体失效。");
         }
 
@@ -228,8 +258,8 @@ public sealed class CharacterContentSet
             (StatId.CritChance, 0.12f), (StatId.CritMultiplier, 2.0f), (StatId.HurtInvulnTime, 0.8f),
         });
 
-        // 技能槽位的数据化装配：v1 先用「占位技能」表达"哪个槽装了哪个技能 id + 冷却/消耗"，
-        // 真正的技能行为在 scripts/skill/ 里逐步落地（每个技能 = 一个 ISkill 实现）。
+        // ── 怪物/旧角色的技能包（v1 遗留：只有槽位 + 技能 id + 冷却/消耗，没有 Kind）──
+        //    数据层的 SkillRows 会把它们补成 Kind = data，让宿主工厂有统一输入。
         RegisterLoadout("player_kit", new (SkillSlot, int, float, float)[]
         {
             (SkillSlot.Dash, 1001, 1.2f, 8f),
@@ -280,8 +310,234 @@ public sealed class CharacterContentSet
             ActorKind.Player, TeamId.Player, ControlScheme.PlayerInput,
             new StatPackageIds("chosen_base"), "chosen_kit", 0.5f, 2.0f, 5));
 
+        // ══════════════════════════════════════════════════════════════════════════
+        // v1 测试人物（hero-1 需求）：一个装配（hero）+ 4 个变体（标准/重甲/敏捷/幸运）。
+        // 关键性质：变体之间的差异**全部来自数据行**，系统代码 0 行改动（规则7）。
+        // 上面那些旧角色（player_hero / 怪物）保留不动，避免破坏已有测试；
+        // 下面新造的数值包/武器/技能包/外观/镜头/输入全部登记进 CharacterAssemblyRepository。
+        // ══════════════════════════════════════════════════════════════════════════
+        BuildHeroV1();
+
         IsBuilt = true;
         return this;
+    }
+
+    /// <summary>
+    /// 构建 v1 的 4 个测试人物变体。
+    /// <para>
+    /// <b>变体之间的差异只在数据</b>：共用数值包的结构、共用武器行的结构，差别只是每一行填的值不同。
+    /// </para>
+    /// <list type="table">
+    /// <listheader><term>变体</term><description>设计意图</description></listheader>
+    /// <item><term>标准 test_hero</term><description>均衡基准：120 血 / 80 蓝 / 6 甲 / 5.2 移速 @ 0.15s 冷却</description></item>
+    /// <item><term>重甲 test_hero_tank</term><description>血厚、护甲高、移速慢、手感沉</description></item>
+    /// <item><term>敏捷 test_hero_agile</term><description>移速快、射速快、伤害低</description></item>
+    /// <item><term>幸运 test_hero_lucky</term><description>暴击率高、暴击倍率高</description></item>
+    /// </list>
+    /// <para>
+    /// <b>为什么 Base 包里也放 CritChance/CritMultiplier</b>：
+    /// 暴击是"人物属性"，不是"武器属性"；武器只提供它自己那点额外暴击，两者相加。
+    /// 所以 4 个变体各自 Base 里都有一份，武器行里再叠一份。
+    /// </para>
+    /// </summary>
+    private void BuildHeroV1()
+    {
+        // ── 4 个变体的 Base 数值包（五层里的 Base 层 = 绝对值）+ 1 个共用成长包 ──
+        RegisterPack("test_hero_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 120f), (StatId.HpMax, 120f),
+            (StatId.Mana, 80f), (StatId.ManaMax, 80f), (StatId.ManaRegenPerSec, 4f),
+            (StatId.Stamina, 100f), (StatId.StaminaMax, 100f), (StatId.StaminaRegenPerSec, 12f),
+            (StatId.Armor, 6f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 5.2f),
+            (StatId.MoveAccelTime, 0.12f), (StatId.TurnResponseTime, 0.10f), (StatId.AimRange, 18f),
+            (StatId.Strength, 5f), (StatId.Dexterity, 6f), (StatId.Luck, 3f),
+            (StatId.CritChance, 0.05f), (StatId.CritMultiplier, 1.75f), (StatId.HurtInvulnTime, 0.6f),
+        });
+        RegisterPack("test_hero_growth", StatLayer.Growth, new (StatId, float)[]
+        {
+            (StatId.HpMax, 10f), (StatId.Strength, 1f),
+        });
+        RegisterPack("test_hero_tank_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 220f), (StatId.HpMax, 220f),
+            (StatId.Mana, 60f), (StatId.ManaMax, 60f), (StatId.ManaRegenPerSec, 3f),
+            (StatId.Stamina, 120f), (StatId.StaminaMax, 120f), (StatId.StaminaRegenPerSec, 10f),
+            (StatId.Armor, 20f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 3.6f),
+            (StatId.MoveAccelTime, 0.20f), (StatId.TurnResponseTime, 0.18f), (StatId.AimRange, 16f),
+            (StatId.Strength, 9f), (StatId.Dexterity, 3f), (StatId.Luck, 2f),
+            (StatId.CritChance, 0.03f), (StatId.CritMultiplier, 1.5f), (StatId.HurtInvulnTime, 0.8f),
+        });
+        RegisterPack("test_hero_agile_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 90f), (StatId.HpMax, 90f),
+            (StatId.Mana, 100f), (StatId.ManaMax, 100f), (StatId.ManaRegenPerSec, 6f),
+            (StatId.Stamina, 140f), (StatId.StaminaMax, 140f), (StatId.StaminaRegenPerSec, 16f),
+            (StatId.Armor, 3f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 7.4f),
+            (StatId.MoveAccelTime, 0.06f), (StatId.TurnResponseTime, 0.05f), (StatId.AimRange, 20f),
+            (StatId.Strength, 3f), (StatId.Dexterity, 11f), (StatId.Luck, 4f),
+            (StatId.CritChance, 0.08f), (StatId.CritMultiplier, 1.6f), (StatId.HurtInvulnTime, 0.4f),
+        });
+        RegisterPack("test_hero_lucky_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 110f), (StatId.HpMax, 110f),
+            (StatId.Mana, 90f), (StatId.ManaMax, 90f), (StatId.ManaRegenPerSec, 5f),
+            (StatId.Stamina, 110f), (StatId.StaminaMax, 110f), (StatId.StaminaRegenPerSec, 12f),
+            (StatId.Armor, 5f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 5.4f),
+            (StatId.MoveAccelTime, 0.12f), (StatId.TurnResponseTime, 0.10f), (StatId.AimRange, 18f),
+            (StatId.Strength, 4f), (StatId.Dexterity, 6f), (StatId.Luck, 15f),
+            (StatId.CritChance, 0.15f), (StatId.CritMultiplier, 2.0f), (StatId.HurtInvulnTime, 0.6f),
+        });
+
+        // ── 武器行（WeaponStats 的数据来源） ──
+        // 先建武器行：技能包的**左键冷却直接取武器行的 ShotCooldown**（单一真源）。
+        // arch-ok: 以下 4 行是 Excel Weapons 表的运行时镜像，逐项与 data/excel/characters.xlsx 一致，
+        //          真源是 Excel；由 tools/data_pipeline/gen_characters_xlsx.py 生成并被回归用例钉住。
+        var pistol = new CharacterWeaponSpec("pistol_basic", 2001, 20f, 22f, 24f, 1.5f, 0.05f, 1.0f, 0.10f, 0.15f, 1); // arch-ok: 镜像 Weapons 表
+        var cannon = new CharacterWeaponSpec("cannon_heavy", 2002, 55f, 14f, 26f, 5.0f, 0.00f, 1.00f, 0.22f, 0.42f, 1); // arch-ok: 镜像 Weapons 表
+        var smg = new CharacterWeaponSpec("smg_light", 2003, 8f, 26f, 18f, 4.0f, 0.03f, 1.00f, 0.07f, 0.08f, 1); // arch-ok: 镜像 Weapons 表
+        var ricochet = new CharacterWeaponSpec("ricochet_lucky", 2004, 16f, 20f, 22f, 2.5f, 0.52f, 2.25f, 0.11f, 0.18f, 1); // arch-ok: 镜像 Weapons 表
+        Assemblies.RegisterWeapon(pistol);
+        Assemblies.RegisterWeapon(cannon);
+        Assemblies.RegisterWeapon(smg);
+        Assemblies.RegisterWeapon(ricochet);
+
+        // ── 技能包：4 个（左键槽 = FireProjectileSkill，真开火） ──
+        // 技能 id 号段（与 Excel SkillLoads 表一致，全项目唯一）：
+        //   1001 通用冲刺 / 1101 标准射击 / 1102 哥布林近战 / 1103 弓箭 / 1104 重砸 / 1105 法弹 /
+        //   1106 重型射击 / 1107 快速射击 / 1108 幸运连射 / 1201 切武器 / 130x 角色独有 / 1401 交互。
+        //
+        // 左键冷却 = 武器行的 ShotCooldown（单一真源），所以这里不重复填 0.15/0.42/0.08/0.18；
+        // 冲刺/独有技的 Cooldown 与 ManaCost 是技能包自己的属性，才在这里给数。
+        RegisterHeroKit("test_hero_kit", 1101, pistol, 1001, 1.2f, 8f, 1304, 12f, 30f);
+        RegisterHeroKit("test_hero_tank_kit", 1106, cannon, 1001, 2.0f, 10f, 1305, 16f, 35f);
+        RegisterHeroKit("test_hero_agile_kit", 1107, smg, 1001, 0.8f, 6f, 1306, 10f, 25f);
+        RegisterHeroKit("test_hero_lucky_kit", 1108, ricochet, 1001, 1.2f, 8f, 1307, 14f, 30f);
+
+        // ── 外观包 ──
+        Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_default", string.Empty, 1.00f, 1, 0, "#4FA3D9"));
+        Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_tank", string.Empty, 1.25f, 2, 1, "#D97A3F"));
+        Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_agile", string.Empty, 0.90f, 3, 2, "#5DD97A"));
+        Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_lucky", string.Empty, 1.00f, 4, 3, "#D9C64F"));
+
+        // ── 镜头包（俯视角正交相机；两台：标准 / 宽景） ──
+        // arch-ok: 这里是 Excel 的运行时镜像，数值与 data/excel/characters.xlsx 的 CameraPacks 表逐项一致；
+        //          真源是 Excel，由 tools/data_pipeline/gen_characters_xlsx.py 生成并被回归用例钉住。
+        var camStandard = new CharacterCameraPack("topdown_standard", 18f, 58f, 45f, 0.18f, 0.55f); // arch-ok: 镜像 CameraPacks 表
+        var camWide = new CharacterCameraPack("topdown_wide", 22f, 62f, 45f, 0.12f, 0.60f); // arch-ok: 镜像 CameraPacks 表
+        Assemblies.RegisterCameraPack(camStandard);
+        Assemblies.RegisterCameraPack(camWide);
+
+        // ── 手柄/输入包 ──
+        var kbmStandard = new CharacterInputPack("kbm_standard",
+            "actor_move", "actor_aim", "actor_primary_attack", "actor_dash", "actor_interact");
+        var kbmAlt = new CharacterInputPack("kbm_alt",
+            "actor_move", "actor_aim", "actor_primary_attack", "actor_dash", "actor_interact");
+        Assemblies.RegisterInputPack(kbmStandard);
+        Assemblies.RegisterInputPack(kbmAlt);
+        Assemblies.SetDefaults(camStandard, kbmStandard);
+
+        // ── 4 个变体行（= Excel Characters 表 4 行 + VariantAssembly 表 4 行）──
+        // 每个变体各自一行；差异全部在这 4 行里的数据，系统代码 0 行。
+        // 登记走 RegisterHeroVariant：一行数据同时喂 ActorDefinition 与 CharacterVariantSpec。
+        var rows = new[]
+        {
+            new HeroRow("test_hero", "测试人物", "变体 · 标准", "test_hero_base", "test_hero_kit",
+                pistol, "hero_default", camStandard, kbmStandard, CharacterModuleSet.Empty, 0.45f, 1.8f, 1),
+            new HeroRow("test_hero_tank", "测试人物", "变体 · 重甲", "test_hero_tank_base", "test_hero_tank_kit",
+                cannon, "hero_tank", camStandard, kbmStandard, CharacterModuleSet.Empty, 0.55f, 2.0f, 2),
+            new HeroRow("test_hero_agile", "测试人物", "变体 · 敏捷", "test_hero_agile_base", "test_hero_agile_kit",
+                smg, "hero_agile", camWide, kbmStandard,
+                // 敏捷型额外挂一个"快速射击"模块（示例：变体可以比装配多出模块）。
+                new CharacterModuleSet(new[] { "fire_primary_rapid" }), 0.40f, 1.7f, 3),
+            new HeroRow("test_hero_lucky", "测试人物", "变体 · 幸运", "test_hero_lucky_base", "test_hero_lucky_kit",
+                ricochet, "hero_lucky", camStandard, kbmAlt, CharacterModuleSet.Empty, 0.45f, 1.8f, 4),
+        };
+
+        // ── 装配（hero）：4 个变体共用的一批模块 ──
+        // 装配 id = 宿主按名字找的那个；变体额外模块由 AddModule 追加后与这里取并集。
+        // 覆盖：移动 + 瞄准 + 射击 + 输入 + 相机 + HUD，共 6 个模块。
+        var heroModules = new CharacterModuleSet(new[]
+        {
+            "move_standard", "aim_cursor", "fire_primary", "input_cursor",
+            "camera_ortho_topdown", "hud_character",
+        });
+
+        var hero = new CharacterAssemblySpec(HeroAssemblyId, "测试人物装配", heroModules, null);
+        Assemblies.RegisterAssembly(hero);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            RegisterHeroVariant(hero, rows[i]);
+        }
+
+        // 最后：按 id 把变体引用的各包（数值包/技能包/武器/外观/镜头/输入）全部解析一遍，
+        // 断链在构建期立刻报错，而不是留到运行期变成"人物没有外观"。
+        Assemblies.Resolve(this);
+    }
+
+    /// <summary>
+    /// 一行变体数据（= Excel 的 VariantAssembly 表的一行）。
+    /// <para>把"定义 + 变体 + 各包引用"收成一行数据，避免在注册函数里散落十几个参数；用 readonly 结构体以免分配。</para>
+    /// </summary>
+    private readonly struct HeroRow
+    {
+        public readonly string Id;
+        public readonly string DisplayName;
+        public readonly string VariantTag;
+        public readonly string BasePack;
+        public readonly string LoadoutId;
+        public readonly CharacterWeaponSpec Weapon;
+        public readonly string VisualPack;
+        public readonly CharacterCameraPack Camera;
+        public readonly CharacterInputPack Input;
+        public readonly CharacterModuleSet Modules;
+        public readonly float HitRadius;
+        public readonly float HitHeight;
+        public readonly int VisualSlot;
+
+        public HeroRow(string id, string displayName, string variantTag, string basePack, string loadoutId,
+            CharacterWeaponSpec weapon, string visualPack, CharacterCameraPack camera, CharacterInputPack input,
+            CharacterModuleSet modules, float hitRadius, float hitHeight, int visualSlot)
+        {
+            Id = id;
+            DisplayName = displayName;
+            VariantTag = variantTag;
+            BasePack = basePack;
+            LoadoutId = loadoutId;
+            Weapon = weapon;
+            VisualPack = visualPack;
+            Camera = camera;
+            Input = input;
+            Modules = modules;
+            HitRadius = hitRadius;
+            HitHeight = hitHeight;
+            VisualSlot = visualSlot;
+        }
+    }
+
+    /// <summary>
+    /// 登记一个测试人物变体（= Excel 的 Characters 表一行 + VariantAssembly 表一行）。
+    /// </summary>
+    private void RegisterHeroVariant(CharacterAssemblySpec assembly, in HeroRow row)
+    {
+        Definitions.Register(new ActorDefinition(row.Id, string.Concat("actor.", row.Id),
+            ActorKind.Player, TeamId.Player, ControlScheme.PlayerInput,
+            new StatPackageIds(row.BasePack, growth: HeroGrowthPackageId), row.LoadoutId,
+            row.HitRadius, row.HitHeight, row.VisualSlot));
+
+        Assemblies.RegisterVariant(assembly.Id, new CharacterVariantSpec(
+            id: row.Id,
+            displayName: row.DisplayName,
+            variantTag: row.VariantTag,
+            definitionId: row.Id,
+            basePackageId: row.BasePack,
+            growthPackageId: HeroGrowthPackageId,
+            equipmentPackageId: string.Empty,
+            loadoutId: row.LoadoutId,
+            weaponRowId: row.Weapon.Id,
+            visualPackId: row.VisualPack,
+            cameraPackId: row.Camera.Id,
+            inputPackId: row.Input.Id,
+            modules: row.Modules));
     }
 
     private void RegisterPack(string packId, StatLayer layer, (StatId Stat, float Value)[] entries)
@@ -298,6 +554,97 @@ public sealed class CharacterContentSet
         }
     }
 
+    /// <summary>
+    /// 登记一个"会开火"的技能包：左键槽声明为 <see cref="CharacterSkillSpec.KindFireProjectile"/>。
+    /// 其余四槽（冲刺/切武器/独有/交互）用 <see cref="CharacterSkillSpec.KindData"/> 占位。
+    /// <para>
+    /// <b>为什么这里只出数据、不 new 具体技能类</b>：数据层不许 <c>using Game.Skill</c>（AGENTS.md 规则5、规则7），
+    /// 否则数据层就反向依赖了业务层，<c>ISkillFactory</c> 也就失去意义。
+    /// 所以这里只把 5 行技能行塞进 <see cref="SkillRows"/>（键 = SkillId），实例化交给宿主。
+    /// </para>
+    /// <para>
+    /// <b>左键冷却直接取 <see cref="CharacterWeaponSpec.ShotCooldown"/></b>：这是"单一真源"——武器的射击间隔
+    /// 就是左键技能的冷却，两边各填一份数迟早会不一致（曾经出现过两份对不上的事故）。
+    /// 冲刺/独有技的冷却与消耗是技能包自己的属性，由调用方传入。
+    /// </para>
+    /// </summary>
+    private void RegisterHeroKit(
+        string loadoutId,
+        int attackSkillId,
+        CharacterWeaponSpec weapon,
+        int dashSkillId, float dashCooldown, float dashMana,
+        int signatureSkillId, float signatureCooldown, float signatureMana)
+    {
+        // 子弹外观 id：与武器 id 分开（值故意不同），避免"武器 id 兼作抛射物 id"的语义混淆。
+        string projectileId = string.Concat("proj_", weapon.Id);
+
+        var rows = new[]
+        {
+            new CharacterSkillSpec(dashSkillId, CharacterSkillSpec.KindData,
+                string.Empty, string.Concat("skill_", dashSkillId.ToString()),
+                dashCooldown, dashMana, CharacterSkillSpecs.ToSlotNumber(SkillSlot.Dash)),
+            // 左键：真开火。WeaponId = 哪把枪（查伤害/弹速/射程）；ProjectileId = 子弹外观。
+            new CharacterSkillSpec(attackSkillId, CharacterSkillSpec.KindFireProjectile,
+                weapon.Id, projectileId,
+                weapon.ShotCooldown, 0f, CharacterSkillSpecs.ToSlotNumber(SkillSlot.PrimaryAttack)),
+            new CharacterSkillSpec(1201, CharacterSkillSpec.KindData, string.Empty, "skill_1201",
+                0f, 0f, CharacterSkillSpecs.ToSlotNumber(SkillSlot.WeaponSwap)),
+            new CharacterSkillSpec(signatureSkillId, CharacterSkillSpec.KindData,
+                string.Empty, string.Concat("skill_", signatureSkillId.ToString()),
+                signatureCooldown, signatureMana, CharacterSkillSpecs.ToSlotNumber(SkillSlot.Signature)),
+            new CharacterSkillSpec(1401, CharacterSkillSpec.KindData, string.Empty, "skill_1401",
+                0f, 0f, CharacterSkillSpecs.ToSlotNumber(SkillSlot.Interact)),
+        };
+
+        // ① 技能行按 SkillId 进字典（宿主 ISkillFactory 的输入，数据层的对外契约）。
+        for (int i = 0; i < rows.Length; i++)
+        {
+            _skillRows[rows[i].SkillId] = rows[i];
+            // 技能包 = 「槽位 → SkillId」映射（宿主工厂按它逐槽组装）。
+            RecordLoadoutSlot(loadoutId, rows[i].Slot, rows[i].SkillId);
+
+            // ② 防"武器 id 兼作子弹外观 id"回归：装配解析时记一条中文警告（不抛，v1 允许但必须可见）。
+            if (rows[i].SuspectsWeaponProjectileConflated)
+            {
+                _warnings.Add(string.Concat(
+                    "技能包 '", loadoutId, "' 的槽位 ", rows[i].Slot.ToString(),
+                    "（技能 ", rows[i].SkillId.ToString(), "）的 WeaponId 与 ProjectileId 相同（都是 '",
+                    rows[i].WeaponId, "'）：武器 id 不应兼作子弹外观 id，否则抛射物表独立时会对不上。"));
+            }
+        }
+
+        // ③ 同时保留一个占位技能包，保证"技能包能被组合、冷却与资源能被门控"这条验收点
+        //    在宿主接上工厂之前依然成立（DataSkill 是数据层自有的行投影，不依赖 Game.Skill）。
+        var skills = new ISkill[rows.Length];
+        for (int i = 0; i < skills.Length; i++)
+        {
+            CharacterSkillSpec row = rows[i];
+            row.TryGetSlot(out SkillSlot slot);
+            skills[i] = new DataSkill(row.SkillId, row.ProjectileId, slot, row.CooldownSeconds, row.ManaCost);
+        }
+        Loadouts.Register(SkillLoadout.FromSkills(loadoutId, skills));
+    }
+
+    /// <summary>
+    /// 全部技能行（键 = <see cref="CharacterSkillSpec.SkillId"/>）。宿主 <c>ISkillFactory</c>
+    /// 按 <see cref="CharacterSkillSpec.Kind"/> 决定实例化成什么实现 —— 数据层只出描述，不构造。
+    /// </summary>
+    public IReadOnlyDictionary<int, CharacterSkillSpec> SkillRows => _skillRows;
+
+    /// <summary>
+    /// 内容装配过程中发现的**非致命**数据问题（中文说明）。
+    /// <para>
+    /// 例如"武器 id 兼作子弹外观 id"这类 v1 允许、但将来会踩坑的写法。
+    /// 与解析异常不同：这些不阻止启动，但必须在日志里可见，否则就是埋雷。
+    /// 测试拿它当"内容质量总闸"——正常情况下必须是 0 条。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> Warnings => _warnings;
+
+    private readonly List<string> _warnings = new();
+
+    private readonly Dictionary<int, CharacterSkillSpec> _skillRows = new();
+
     private void RegisterLoadout(string loadoutId, (SkillSlot Slot, int SkillId, float Cooldown, float Mana)[] entries)
     {
         var skills = new ISkill[entries.Length];
@@ -306,23 +653,100 @@ public sealed class CharacterContentSet
             skills[i] = new DataSkill(
                 entries[i].SkillId, string.Concat("skill_", entries[i].SkillId.ToString()),
                 entries[i].Slot, entries[i].Cooldown, entries[i].Mana);
+
+            // 怪物/旧角色的技能行同样进字典（Kind = data），让宿主的工厂有统一的输入来源。
+            if (!_skillRows.ContainsKey(entries[i].SkillId))
+            {
+                _skillRows[entries[i].SkillId] = new CharacterSkillSpec(
+                    entries[i].SkillId, CharacterSkillSpec.KindData,
+                    string.Empty, string.Concat("skill_", entries[i].SkillId.ToString()),
+                    entries[i].Cooldown, entries[i].Mana,
+                    CharacterSkillSpecs.ToSlotNumber(entries[i].Slot));
+            }
+
+            // 技能包 = 「槽位 → SkillId」映射（宿主工厂按它逐槽组装）。
+            RecordLoadoutSlot(loadoutId, CharacterSkillSpecs.ToSlotNumber(entries[i].Slot), entries[i].SkillId);
         }
         Loadouts.Register(SkillLoadout.FromSkills(loadoutId, skills));
     }
+
+    /// <summary>记录「技能包 + 槽位号 → SkillId」（Register* 系列统一从这里维护索引）。</summary>
+    private void RecordLoadoutSlot(string loadoutId, int slotNumber, int skillId)
+    {
+        if (slotNumber < CharacterSkillSpecs.MinSlotNumber || slotNumber > CharacterSkillSpecs.MaxSlotNumber)
+        {
+            return;
+        }
+        if (!_loadoutSlots.TryGetValue(loadoutId, out int[]? table))
+        {
+            table = new int[CharacterSkillSpecs.SlotCount];
+            _loadoutSlots[loadoutId] = table;
+        }
+        table[slotNumber - CharacterSkillSpecs.MinSlotNumber] = skillId;
+    }
+
+    /// <summary>
+    /// 按「技能包 + 槽位号」查一行技能数据（**宿主 <c>ISkillFactory</c> 的主入口**）。
+    /// <para>
+    /// 数据层的契约 = 纯数据行：调用方拿到 <see cref="CharacterSkillSpec"/> 后，
+    /// 自己按 <c>Kind</c> / <c>WeaponId</c> / <c>ProjectileId</c> / 冷却 / 消耗决定 new 哪个
+    /// <see cref="ISkill"/> 并塞进 <see cref="SkillLoadout"/>，数据层不参与构造。
+    /// </para>
+    /// <para>
+    /// <b>为什么不抛异常</b>：内容是策划改的，缺一行/填错槽位是很常见的编辑态错误；
+    /// 返回 <c>null</c> 让宿主决定是兜底还是报错，比在数据层里炸掉更好定位。
+    /// </para>
+    /// </summary>
+    /// <param name="loadoutId">技能包 id，如 <c>test_hero_kit</c>。</param>
+    /// <param name="slotNumber">槽位号 1..5（1=Dash 2=PrimaryAttack 3=WeaponSwap 4=Signature 5=Interact）。</param>
+    /// <returns>技能行；技能包不存在 / 槽位越界 / 该槽留空（SkillId=0）都返回 <c>null</c>。</returns>
+    public CharacterSkillSpec? SkillRowOf(string loadoutId, int slotNumber)
+    {
+        if (string.IsNullOrEmpty(loadoutId)
+            || slotNumber < CharacterSkillSpecs.MinSlotNumber
+            || slotNumber > CharacterSkillSpecs.MaxSlotNumber
+            || !_loadoutSlots.TryGetValue(loadoutId, out int[]? table))
+        {
+            return null;
+        }
+
+        int skillId = table[slotNumber - CharacterSkillSpecs.MinSlotNumber];
+        return skillId != 0 && _skillRows.TryGetValue(skillId, out CharacterSkillSpec row) ? row : null;
+    }
+
+    /// <summary>
+    /// 按技能包取全部技能 id（**按槽位顺序 1..5**，留空槽为 0）。
+    /// <para>
+    /// 与 <see cref="SkillRowOf"/> 互补：这个给"一次性看整个包"的调用方（校验、调试面板、测试），
+    /// 那个给"逐槽组装"的宿主工厂。不存在的技能包返回空数组而不是抛异常。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<int> SkillIdsOf(string loadoutId)
+    {
+        if (!string.IsNullOrEmpty(loadoutId) && _loadoutSlots.TryGetValue(loadoutId, out int[]? table))
+        {
+            return table;
+        }
+        return Array.Empty<int>();
+    }
+
+    /// <summary>技能包 id → 5 个槽位的 SkillId（索引 = 槽位号 - 1；0 = 该槽留空）。</summary>
+    private readonly Dictionary<string, int[]> _loadoutSlots = new(StringComparer.Ordinal);
 }
 
 /// <summary>
-/// 数据驱动的技能**占位实现**：只有 id / 槽位 / 冷却 / 消耗，没有具体行为（施放时什么也不产出）。
+/// 数据层自有的技能占位实现：只携带 id / 槽位 / 冷却 / 消耗，施放不产出任何东西。
 /// <para>
-/// 为什么需要它：角色抽象这一层的验收点是"技能包能被组合、冷却与资源能被门控"，
-/// 具体技能行为（射击/冲刺/切武器/交互）属于后续战斗任务。用它可以在技能逻辑落地前
-/// 就把数据管线、槽位、冷却、法力全部跑通，且新增真实技能时只需替换这个类（规则7）。
+/// <b>为什么数据层要自带一个 <see cref="ISkill"/></b>：数据层不许 <c>using Game.Skill</c>（规则5、规则7）。
+/// 但"技能包能被组合、冷却与资源能被门控"这条能力属于数据层自己的验收范围，
+/// 需要一个不依赖业务层的实现来跑通门控，所以在数据层内提供一个最小行投影。
+/// 真正会开火的技能由宿主 <c>ISkillFactory</c> 按 <c>Kind</c> 实例化，与本类无关。
 /// </para>
-/// <para>注意：它<u>不会</u>生成任何东西 —— 施放成功但不产生效果，是有意为之，避免测试误以为"技能已实现"。</para>
+/// <para><u>重要</u>：本类的 <c>Cast</c> 永远返回成功但**不产生任何效果**，所以"能倒计时"≠"能开火"。</para>
 /// </summary>
 public sealed class DataSkill : ISkill
 {
-    /// <summary>构造。</summary>
+    /// <summary>构造一行技能占位。</summary>
     public DataSkill(int id, string defId, SkillSlot slot, float cooldownSeconds, float manaCost)
     {
         Id = id;

@@ -149,7 +149,7 @@ Game.UI                  ─▶ Game.Core（只读视图）         ✗ 不得 u
 | `Health` | ☞ core.ecs | `float Current; float Max` | ECS 内核 | `DamageResolutionSystem`（唯一写入方） |
 | `StatLayerSlots` | ☞ core.ecs | `int BaseId; int GrowthId; int EquipmentId; int BuffId; int TemporaryId`（指向 `Game.Data.StatPackage` 的不可变快照槽位，§4.3） | ECS 内核 | 伤害/装备/夺舍系统 |
 | `Rigid` | ☞ core.ecs | ☞ 标记（物理体型、质量） | ECS 内核 | 生成系统 |
-| `Projectile` | ☞ combat | `DefId DefId; float Damage; Entity Source; float RemainingDistance` | `scripts/core/ecs/components/`（Combat 专属组件也可落 `scripts/combat/components/`，见 `ARCHITECTURE.md`） | 开火/抛射物系统 |
+| `Projectile` | ☞ combat | `int ShooterIndex; int ShooterGeneration; TeamId Team; float Damage; float Radius; float Speed; float RangeMeters; bool Critical; int WeaponId; DamageType DamageType; float Traveled; bool Spent`（唯一真源 `Game.Combat.Projectile`，落在 `scripts/combat/CombatComponents.cs`；`scripts/core/ecs/components/` 里曾有的同名示例组件已删除） | `scripts/combat/` | 开火技能 / `ProjectileSystem` / `HitDetectionSystem` |
 | `TakeoverState` | ☞ core.ecs | `Entity Self; Entity Target; float Remaining; int SnapshotSlot` | ECS 内核 | 夺舍系统 |
 | `View` | ☞ **host 旁路** | `int ViewId`（→ `ViewRegistry`） | `ViewRegistry` | `VisualBridge` |
 | `Hurtbox` | ☞ combat | `float Radius`（命中形状的 v1 简化；后续可拆 `ColliderShape`） | ECS 内核 | 生成系统 |
