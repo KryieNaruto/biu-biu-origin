@@ -66,6 +66,23 @@
     <CharacterSourceGlob2>..\scripts\skill\SkillCastSystem.cs</CharacterSourceGlob2>
     <CharacterSourceGlob3>..\scripts\data\StatPackageRepository.cs</CharacterSourceGlob3>
     <CharacterSourceGlob4>..\scripts\data\CharacterContentSet.cs</CharacterSourceGlob4>
+
+    <!--
+      ★ 2026-11-06 基础物件抽象任务：数据层绑定器（ContentBinder / ValueRefParser）。
+      它们只依赖 Game.Core.Content + Game.Core.Actors（零 Godot、零 Resource），因此和 core 一起
+      编译；这样「Excel → 运行时对象」这条链可以拿真 xlsx 在没有引擎的进程里被证明。
+      若这里出现 `using Godot`，本工程会直接编译失败 —— 与 CharacterSourceGlob 同一道守卫。
+    -->
+    <ContentSourceGlob>..\scripts\data\Content\**\*.cs</ContentSourceGlob>
+
+    <!--
+      ★ 2026-11-06 基础物件抽象任务：战斗系统族（组件 / 熔炉 / 寄存器 / 铸造系统 / 工厂 / 弹道推进）。
+      它们只依赖 Game.Core + Game.Core.Content + Game.Core.Ecs + Game.Core.Actors（零 Godot、零 Game.Host），
+      所以能和 core 一起在本工程里编译并裸测 —— 「工厂造出的实体长什么样」「熔炉选谁」这些断言
+      不需要启动引擎就能被证明。若这里出现 `using Godot`，本工程会直接编译失败，
+      与 CharacterSourceGlob / ContentSourceGlob 是同一道守卫（比人工审查更硬）。
+    -->
+    <CombatSourceGlob>..\scripts\combat\**\*.cs</CombatSourceGlob>
   </PropertyGroup>
 
   <ItemGroup>
@@ -75,6 +92,8 @@
     <Compile Include="$(CharacterSourceGlob2)" Link="Game.Skill\%(Filename)%(Extension)" />
     <Compile Include="$(CharacterSourceGlob3)" Link="Game.Data\%(Filename)%(Extension)" />
     <Compile Include="$(CharacterSourceGlob4)" Link="Game.Data\%(Filename)%(Extension)" />
+    <Compile Include="$(ContentSourceGlob)" Link="Game.Data.Content\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="$(CombatSourceGlob)" Link="Game.Combat\%(RecursiveDir)%(Filename)%(Extension)" />
 
     <!--
       No generated code is expected inside scripts/core yet. If a future change adds a

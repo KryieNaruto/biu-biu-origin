@@ -115,6 +115,67 @@ public enum StatId : ushort
     Stamina = 1020,
     StaminaMax = 1021,
     StaminaRegenPerSec = 1022,
+
+    // ★ 2026-11-05 基础物件抽象：武器号段（追加区，接在 1022 之后保持递增）。
+    //   这一组是**武器物件身上的数值**：投射物要继承武器属性时，Def 里的
+    //   ValueRef.OfWeaponStat(StatId.WeaponXxx) 就是去发射它的那把武器身上读这几个 id
+    //   —— 这就是「子弹具有武器属性」在数据层的基础。注意它们只是**标识**，
+    //   具体数值仍由 Excel 的 StatDefs / 数值包给（代码里没有射速、伤害的常量）。
+
+    /// <summary>开火间隔的倒数（射速）。子弹继承武器时会读到它 → 「子弹具有武器属性」的数据基础。</summary>
+    WeaponFireRate = 1030,
+
+    /// <summary>武器基础伤害。子弹的 Damage 规则写成 <c>OfWeaponStat(WeaponDamage)</c> 即可继承发射者的伤害。</summary>
+    WeaponDamage = 1031,
+
+    /// <summary>投射物初速（米/秒）。投射物 Def 用它作为默认速度来源。</summary>
+    WeaponProjectileSpeed = 1032,
+
+    /// <summary>一次发射的弹数（散射 / 扇形弹幕的数量来源）。</summary>
+    WeaponProjectileCount = 1033,
+
+    /// <summary>散布角度（度）。</summary>
+    WeaponSpread = 1034,
+
+    /// <summary>有效射程（米）。</summary>
+    WeaponRange = 1035,
+
+    /// <summary>穿透次数（穿过 N 个目标后结束）。</summary>
+    WeaponPierce = 1036,
+
+    /// <summary>击退力度（手感层，交给移动系统按质量换算位移）。</summary>
+    WeaponKnockback = 1037,
+
+    /// <summary>后坐力（对发射者的反冲量）。</summary>
+    WeaponRecoil = 1038,
+
+    /// <summary>蓄力时间（秒，仅蓄力类武器有效）。</summary>
+    WeaponChargeTime = 1039,
+
+    /// <summary>武器暴击率（与角色 <see cref="CritChance"/> 分开：词条可以只加武器暴击）。</summary>
+    WeaponCritChance = 1040,
+
+    /// <summary>武器暴击倍率（与角色 <see cref="CritMultiplier"/> 分开，同上）。</summary>
+    WeaponCritMultiplier = 1041,
+
+    // ★ 投射物号段（追加区）。300~399 是投射物号段，但「已发布枚举不得插入中间」，
+    //   所以新增成员只能落在追加区 1050+，保持递增。它们同样是「投射物物件身上的数值」，
+    //   投射物 Def 里以 OfWeaponStat / OfStat 混合组合出「继承武器 + 自身特性」的最终值。
+
+    /// <summary>投射物存活时长（秒）。</summary>
+    ProjectileLifeTime = 1050,
+
+    /// <summary>投射物碰撞半径（命中判定厚度）。</summary>
+    ProjectileRadius = 1051,
+
+    /// <summary>反弹次数（弹墙 / 弹怪）。</summary>
+    ProjectileBounce = 1052,
+
+    /// <summary>追踪转速（度/秒），追踪弹的核心手感参数。</summary>
+    ProjectileHomingSpeed = 1053,
+
+    /// <summary>投射物受到的重力加速度（抛掷 / 坠落弹用）。</summary>
+    ProjectileGravity = 1054,
 }
 
 /// <summary><see cref="StatId"/> 的号段查询：给数据生成器与单测做构建期校验用。</summary>

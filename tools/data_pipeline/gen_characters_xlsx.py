@@ -28,17 +28,22 @@ TYPE_FILL = PatternFill("solid", fgColor="F2F2F2")
 
 
 def sheet(wb, title: str, rows: list[tuple[str, str, str, str]], data: list[list]):
+    """写一张表：4 行表头（字段名/类型/中文名/备注）+ `#data` 标记行 + 数据行。
+
+    ★ 2026-11-05 修复：`rows` 是**每列一条**的四元组列表 → 表头是 4 行 × N 列。
+    旧实现把四元组当行 append，结果是「表头横躺、列数 = 4」，任何按四行表头解析的消费者都会读错。
+    """
     ws = wb.create_sheet(title)
-    for r, row in enumerate(rows, start=1):
-        ws.append(list(row))
-        for c in range(1, len(row) + 1):
-            cell = ws.cell(row=r, column=c)
+    for r in range(1, 5):
+        for c, column in enumerate(rows, start=1):
+            cell = ws.cell(row=r, column=c, value=column[r - 1])
             cell.fill = HEADER_FILL if r == 1 else (TYPE_FILL if r == 2 else NOTE_FILL)
             cell.font = Font(bold=(r == 1), color="FFFFFF" if r == 1 else "000000", size=10)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
-    ws.append(["#data"] + [""] * (len(rows) - 1))  # 数据起始标记行，便于人眼阅读
-    for row in data:
-        ws.append(list(row))
+    ws.cell(row=5, column=1, value="#data")  # 数据起始标记行，便于人眼阅读
+    for i, row in enumerate(data):
+        for c, value in enumerate(row, start=1):
+            ws.cell(row=6 + i, column=c, value=value)
     for c in range(1, len(rows) + 1):
         ws.column_dimensions[ws.cell(row=1, column=c).column_letter].width = 22
     ws.freeze_panes = "A6"

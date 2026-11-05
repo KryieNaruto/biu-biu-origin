@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v4  最后更新: 2026-11-05  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v5  最后更新: 2026-11-06  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -40,7 +40,8 @@
 | 架构守卫 | `tools/check_architecture.ps1`（检查项 GS001~GS007）+ `tools/check_all.ps1`（四步一键：build ×2 → 守卫 → 测试 → 200-seed 地牢性质校验） |
 | 目录骨架 | `scripts/ scenes/ data/ shaders/ native/ addons/ tools/ tests/ docs/` |
 | 完成定义 | 6 步检查表见 `docs/rules/07-definition-of-done.md`，最后一步必是**覆盖更新本文件** |
-| 当前阶段 | **v3：ECS 骨架 + 房间/地牢系统已落地**（地牢四层抽象 + 200-seed 性质校验 + 可跑调试场景）；战斗/技能/数值由**并行任务**在填充，素材层当前为 Box 白模（用户已确认先白模后换资源），Excel 数据层未落地 |
+| 开发期工具 | `tools/asset_viewer/` **素材快查看器**：独立 Win32 exe（CMake+MSVC+D3D11/D2D，**零第三方依赖**），双击扫全量 371 个 `.glb`/`.fbx` 看缩略图与动画，**不进游戏**（见 §16） |
+| 当前阶段 | **v5：ECS 骨架 + 房间/地牢 + 角色抽象 + 素材查看器 + 基础物件抽象（武器/子弹/怪物同源 + 熔炉组合）均已落地**（174 测试全绿；素材查看器全量 371/371 验收通过）；战斗/技能的具体实现在填充，素材层当前为 Box 白模（用户已确认先白模后换资源），已落地的是「数据 + 契约 + 工厂」，碰撞/伤害结算仍待下一任务 |
 
 **一句话**：C# 写逻辑、Excel 出数值、C++ 兜性能、GDScript 只碰 UI、每个任务收工就回来改这份文件。
 
@@ -242,6 +243,13 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 | `Game.Native` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — |
 | **`Game.Host`** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅（唯二） |
 | **`Game.Core.Ecs`** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+> **`Game.Core.Content`（2026-11-06 新增，`scripts/core/Content/`）是 `Game.Core` 的子命名空间**，
+> 与 `Game.Core.Ecs` 同级：**谁都可以用它**（`Game.Data` / `Game.Combat` / `Game.Actor` / UI 只读视图），
+> 它自己只依赖 `Game.Core`（`StatId`/`DamageType`/`TeamId`/`IRandomProvider`）与 `Game.Core.Actors`（`StatPackageIds`）。
+> 因此 `Game.Data` 读 Excel 绑出 `ObjectArchetype`/`WeaponContract` 是**合法方向**（Data → Core），
+> 而 `Game.Combat` 铸造时也只读这些契约、**不反向依赖 Game.Data**（契约全在 Core，工厂吃 `ContentIndex`）。
+> 这也解释了为什么 `tests/` 能在无引擎进程里直接测「Excel → 契约 → 铸造」整条链（§17.6）。
 
 **两条 ECS 专属硬约束（`Game.Host` 与 `Game.Core.Ecs`，2026-11-03 定稿）：**
 
@@ -1041,6 +1049,8 @@ user://saves/<slot>.json
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-06 | v5 | **基础物件抽象（武器/子弹/怪物同源 + 熔炉组合）落地** | **新增 §17 基础物件抽象**：人物/怪物/武器/子弹**不是四个类**，而是同一个 `ObjectArchetype`（= `combat.xlsx` 的 `Objects` 一行）——差异只在 ① `ObjectCapability` 能力位（`[Flags]`：Actor/Weapon/Projectile/Emitter/Trigger/Consumable/Structure，可任意组合）② 四个 `ContentRef` 引用（Weapon/Projectile/Actor/Effect，**谁都可以指向任何 Objects.Id**）③ 位矩阵 + 规则值。① **规则值 `ValueRef`**（10 种来源：Literal/Stat/WeaponStat/Flags/ChainDepth/ChainCount/ViableCount/Perf/RandomRange/RandomScaled）+ `ValueSet`（容量4，`Σabs×(1+Σpercent)` 层叠）——**「子弹继承武器属性」= 表里写 `wstat:WeaponDamage(5)`，代码 0 行**；② **熔炉 `ForgeRules`**：64 位配方字 × 簇内加权轮盘，纯静态只吃 `ReadOnlySpan`，**1000 次迭代 0 字节托管分配**（用例断言）；`ContentRegistry` 按「簇+槽位名」编址，`Purge(generation)` 回到不可变 `InitialDefId`；③ **工厂等价性**：武器射子弹 / 武器射怪物 / 子弹炸开再射子弹 / 子弹变成怪物，在 `EcsObjectFactory.TryCast` 里是**同一段代码**，差别只有契约里哪个引用非空 + `Delivery`/`OnExpire` 两个枚举（4 条端到端用例读真表钉住）；④ **策划可改（需求②）**：`combat.xlsx` 6 Sheet（Tags/Objects/Weapons/Projectiles/StatPacks/_Meta）+ `validate_content_xlsx.py` **2217 项构建期检查**（外键闭合、能力位一致、TagIndex 连续/BitMask 唯一、规则值语法真解析、**同簇能力位一致**、ClusterWeight>0）+ 零第三方包 `XlsxReader` 读真 xlsx 的绑定回归（「改表 → 运行期行为变」可证）；⑤ **明确不做**：碰撞/空间划分/伤害结算（游戏逻辑，`ProjectileAdvanceSystem` 只做积分+寿命，未实现分支显式计数不静默）；⑥ **修 6 个静默失效 bug**（记入 §17.8）：FNV-1a32 有符号哈希被当"空引用"判据（同一错误出现 3 处）、`Purge` 回不到初始态、`Projectiles` 行主键与引用列口径不一致致**所有枪静默打不出子弹**、`tag.projectile` 物件拿不到契约、`characters.xlsx` 表头被生成器转置。**测试 101 → 174 全绿**；架构守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/core/Content/**`（ValueContext/ObjectArchetype/ObjectBitMatrix/WeaponContract/ProjectileContract/ContentWorld/ContentIndex/WeaponAimKind）、`scripts/core/StatId.cs`（+17 成员：武器 1030~1041、投射物 1050~1054）、`scripts/combat/**`（CombatComponents/ForgeRules/ContentRegistry/CastQueue/CastSystem/ProjectileAdvanceSystem/Factory）、`scripts/data/Content/**`（ContentBinder/ValueRefParser）、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`（表头修复）、`tools/data_pipeline/{gen_combat_xlsx,validate_content_xlsx}.py`、`tools/data_pipeline/README.md`、`tests/Content/**`、`tests/BiuBiuOrigin.Tests.csproj` |
+| 2026-11-05 | v4 | **素材快查看器（Asset Viewer）落地** | **新增 §16 素材快查看器**：独立 Win32 桌面程序（**不进游戏、不是 GDExtension**），CMake + MSVC + D3D11/Direct2D，**零第三方依赖**。① **边界**：加载器只吐 `ModelData` 纯数据、**不碰 D3D**，渲染器不碰文件格式 —— 故 `thumb_sheet` 能在无窗口环境复用同一套加载代码。② **格式**：自研 glTF 2.0（`.glb`）与 FBX 7.2/7.4/7.5 解析器，**自带 DEFLATE 解压器**（不为 FBX 压缩数组引 zlib）。③ **构建**：`av_core`/`av_ui` 静态库 + `asset_viewer`(WIN32) + `loader_smoke`/`ui_selftest`/`thumb_sheet`(CONSOLE) + `av_sheet` 自定义 target；`AV_STATIC_RUNTIME=ON` 走 `/MT` 免装 VC++ 运行库。④ **修复 8 处实打实缺陷**，全部写进 §16.5 教训表：Inflater 无输出上限致 42GB OOM、畸形 count 直接喂 `resize()`、FBX 子网格材质归一化口径不一致致死循环、`WM_NCCREATE` 期 `hwnd_` 未赋值致 `CreateWindowExW` 失败(errno=1400)、cmd 批处理中文参数变 `??`、`windows.h` 的 `DrawText` 宏污染 `d2d1.h`、多 slot 顶点布局触发 `0x80070057`、`MakeLookAt` z 轴取反致模型不可见。⑤ **验收**：`loader_smoke` 371/371、`thumb_sheet` 371/371（wall 4.56s @16 线程）、`ui_selftest` 77/77、`--shot=` 出图成功。⑥ **交付** `dist/` 单文件绿色版 + 中文启动器 + 使用说明 | `tools/asset_viewer/**`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v4 | **角色抽象（Character）落地** | **新增 §15 角色抽象**：角色 = 「数值包组合 + 技能包 + 阵营/控制标签」的 ECS 实体，玩家与怪物**同一组件集合**，差异只在数据。① **数值**：`StatId` 追加 法力(1000 段)/护甲(1003 段)/力量·敏捷·幸运(1010 段)，五项基础资源 Hp/Mana/Armor + 三项属性 + 三项资源回复；`StatPackageRepository.Compose` 严格按规则6 折叠——Base 层**绝对值**、其余四层**差量叠加**，`GetLayerValue` 保留单层读取。② **技能**：`SkillSlot` 五个固定槽位（Dash=Shift / PrimaryAttack=左键 / WeaponSwap=Q / Signature=R / Interact=F），`SkillLoadout` 定长表按槽存技能并各自计冷却；`SkillCastSystem` 每帧只消费**一个**槽（意图优先级由 `IntentRules` 决定），门控顺序 `CanCast → Cast → 扣法力 → 起冷却`。③ **组合**：`ActorSpawnRequest(DefinitionSlot, Position, TeamOverride?, ControlOverride?)` 是唯一的造人入口——**夺舍 = 改 `ControlOverride`/`TeamOverride` 两个字段**，不需要任何新类型；`ActorIdentity` 只存槽位号（J2），不存引用。④ **策划可改**：`data/excel/characters.xlsx`（Characters / StatPacks / SkillLoads 三表，四行表头规范）为唯一真源；`CharacterContentSet` 提供与表逐项一致的运行时副本兜底，`CharacterContentRegressionTests` 用 9 条用例把「表 ↔ 运行时」钉死（每个角色都必须能真装配出来、玩家技能包五槽齐全、怪物与玩家同机制）。⑤ **引擎边界**：`PlayerInputIntentSource`（`scripts/host/control/`）把 InputMap action 翻成 `InputIntent`（Q16 定点方向），是唯一碰 `Input` 的地方；技能逻辑只认意图，故 AI/回放/玩家共用同一条代码路径。**测试 101 全绿**（新增 25 例） | `docs/architecture/ARCHITECTURE.md`、`scripts/core/{ActorKind,SkillSlot,StatId}.cs`、`scripts/core/{Actors,Skills}/**`、`scripts/actor/{ActorComponents,ActorRegistries,ActorIntentSystem,ActorAssemblySystem}.cs`、`scripts/skill/SkillCastSystem.cs`、`scripts/data/{StatPackageRepository,CharacterContentSet}.cs`、`scripts/host/control/**`、`scripts/host/DungeonDebugScene.cs`、`project.godot`、`data/excel/characters.xlsx`、`tools/data_pipeline/gen_characters_xlsx.py`、`tests/Characters/**` |
 | 2026-11-04 | v3 | **房间与地牢系统（场景抽象）**，另含 4 处基础设施修复 | **新增 §14 房间与地牢**：四层切分（L1 值词汇 / L2 规划 / L3 生成 / L4 表现）、`IDungeonPlanner.Plan(config,seed,generation) → DungeonLayout` 的「一次掷骰、全链只读」模型、`RoomCategory` 七类（Start/Combat/Special/Hidden/Prototype/Boss/Safe）、6 条可执行不变式、与 ECS 的边界（房间不产生实体、L3 只走 `CommandBuffer`、`World→Node` 单向）。**落地**：`scripts/spawn/rooms/`（契约 + `BranchDungeonPlanner` + `GridContentPlanner` + `DefaultRoomContentSpawner` + `DungeonValidation`）、`scripts/host/Dungeon*`（`DungeonOptions`/`DungeonSceneBuilder`/`DungeonRoomView`/`DungeonDecorCatalog`/`DungeonDebugScene`）、`scenes/main/DungeonDebug.tscn`、`tools/dungeon_check/`（200-seed 性质校验）、`tools/decor_catalog/`（素材→装饰目录）。**基础设施修复**：① `BiuBiuOrigin.csproj` 的 `DefaultItemExcludes` 新增 `**/obj/**;**/bin/**;tools/**;tmp/**;build/**;out/**`——修掉「Godot.NET.Sdk 默认 glob 把 `.godot/mono/temp/obj/**/*.AssemblyInfo.cs` 当源码编进来」导致的 CS0579 自举式重复（本轮最贵的坑）；② `LifetimeSystem` 与 `VisualBridge` 把 `Query<Entity, T>` 改为 `Query<T>`、实体号改从组件 `[Identity] Owner` 取——`Entity` 是句柄不是组件列（J1），旧写法会让 `Register<Entity>()` 抛异常且 `SystemBase` 留在「半死」状态；③ `config/architecture-rules.json` 移除无源头的 `tools/decor_catalog/**` 放行、`.gd` 探针统一收进 `tools/probes/`；④ `tools/probes/` 目录此前只存在于白名单、实际未创建，本次补建。**未改架构**：GS005 清理（39 条 → 0，做法是把真·表现数值收进 `DungeonOptions`、把几何常量改成语义推导，而非加注释糊过去） | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/**`、`scripts/host/**`、`scripts/actor/LifetimeSystem.cs`、`scripts/host/bridge/VisualBridge.cs`、`scenes/main/DungeonDebug.tscn`、`BiuBiuOrigin.csproj`、`config/architecture-rules.json`、`config/decor_catalog.json`、`tools/dungeon_check/**`、`tools/decor_catalog/**`、`tools/probes/**`、`tests/Rooms/**`、`docs/artifacts/decor_catalog.md` |
 | 2026-11-03 | v1 | 立规矩（规则体系建立） | 建立 7 条开发规矩与架构骨架：C# 主逻辑（`Game.*` 七层命名空间）、C++ GDExtension 于 `native/`、UI 层允许 GDScript、Excel 为数值唯一真源、架构守卫 GS001~GS007、完成定义 6 步检查表；本节所有「已落地」项均为空 | `docs/architecture/ARCHITECTURE.md`、`docs/rules/01-gdscript-ban.md`、`docs/rules/02-tech-selection.md`、`docs/rules/03-abstract-first.md`、`docs/rules/04-data-driven.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md`、`docs/rules/07-definition-of-done.md`、`tools/check_architecture.ps1`、`tools/env.ps1`、`docs/prompts/task-prompt-template.md`、`.gitignore`、`AGENTS.md` |
@@ -1377,3 +1387,288 @@ data/excel/characters.xlsx
 ③ AI 意图源（`scripts/actor/` 的 `AiIntentSource`），让怪物真正用上自己的技能包；
 ④ 数值快照查询入口（`StatsOf(actorId)` 目前返回 `null`），供技能计算伤害与 HUD 显示；
 ⑤ 升级/装备/增益对 Growth/Equipment/Buff 层的写入路径。
+
+---
+
+## 16. 素材快查看器（Asset Viewer，2026-11-05 落地）
+
+> 本章回答一个问题：**「美术导入的模型长什么样、规格对不对」怎么快速自查？**
+> 答案：一个独立的 Win32 桌面程序 `tools/asset_viewer/`，**不依赖引擎、不依赖第三方库**，
+> 双击即用，全量 371 个模型 4.6 秒扫完。
+
+### 16.1 为什么是独立程序（而不是编辑器插件）
+
+| 约束 | 结论 |
+|---|---|
+| 素材全部是 `.glb` / `.fbx` | 需要 glTF 2.0 + FBX 7.2/7.4/7.5 的二进制解析 |
+| 本机 **vcpkg 的 godot-cpp 只有 4.4**，与引擎 4.7.2 不匹配（见 §6） | 走 GDExtension 要额外引 SDK，代价大于收益 |
+| 需求是「扫一遍看缩略图」，不进游戏 | **不该**进 `addons/`，也不该被 Godot 的导入流程拖慢 |
+| 用户明确要求「单独程序 + CMake + MSVC」 | 独立 exe，与游戏工程解耦，可随时单独重编 |
+
+因此放在 `tools/asset_viewer/`，是**开发期工具**，不是运行时组成。
+
+### 16.2 技术选型：零第三方依赖
+
+| 层 | 用什么 | 为什么 |
+|---|---|---|
+| 窗口 / 输入 | **Win32 原生** | 不需要任何 UI 框架 |
+| 三维渲染 | **Direct3D 11**（`d3d11` + `dxgi` + `d3dcompiler`） | 系统自带 |
+| 二维 UI / 文字 | **Direct2D + DirectWrite** | 系统自带，负责列表、信息面板、搜索框 |
+| 图片解码 / 编码 | **WIC / Windowscodecs** | 读贴图、压 PNG 都用它 |
+| glTF 解析 | **自研**（`glb_loader.cpp`） | 只需要读，不需要完整一致性 |
+| FBX 解析 | **自研**（`fbx_loader.cpp`，含自带 **DEFLATE 解压器**） | FBX 压缩数组是 zlib，不想为它引 zlib |
+| 矩阵 / 数学 | 自研 `mat::` 命名空间 | 约 200 行，够用 |
+
+链接库：`d3d11 dxgi d2d1 dwrite windowscodecs d3dcompiler ole32 uuid shell32 shlwapi
+comctl32 comdlg32 user32 gdi32 advapi32 oleaut32` —— **全是 Windows SDK 自带**。
+
+### 16.3 模块契约（谁实现什么）
+
+`tools/asset_viewer/src/model_data.h` 是**唯一共享契约**，所有模块只认它：
+
+```text
+Vertex     32B：pos(3f) + normal(3f) + uv(2f)           ← 与 D3D 输入布局一一对应
+MeshData   顶点/索引 + materialIndex
+Bone       名字、父索引、逆绑定矩阵、局部绑定变换
+Clip       名字、时长、关键帧轨道（位置/旋转/缩放/时间）
+TextureInfo 宽高 + BGRA 像素 + 来源路径 + 是否已解码
+ModelData  网格列表 + 骨骼 + 动画片段 + 贴图 + 包围盒 + 统计（三角面/顶点/骨骼数）
+namespace mat::  行优先 float[16]、行向量×矩阵、y-up 右手系
+LoadGLB / LoadFBX / LoadModel ← 唯一加载入口（按扩展名分发）
+RenderThumbnail               ← 离屏渲染一张缩略图（CPU 光栅，供批量出图）
+```
+
+**关键决定**：加载器**不碰 D3D**，只吐 `ModelData` 纯数据；渲染器不碰文件格式。
+这条边界让 `thumb_sheet`（控制台批量出图）能复用同一套加载代码而不需要窗口。
+
+### 16.4 构建目标一览（`CMakeLists.txt`）
+
+| 目标 | 类型 | 作用 |
+|---|---|---|
+| `av_core` | STATIC | 加载器 + 数学 + 缩略图渲染（无窗口、无 D3D 依赖） |
+| `av_ui` | STATIC | 窗口、D3D11 渲染、D2D 界面 |
+| `asset_viewer` | **WIN32 exe** | 主程序 |
+| `loader_smoke` | CONSOLE | 批量加载自检（不开窗口） |
+| `ui_selftest` | CONSOLE | UI 逻辑自检（扫描 / 缓存 / 选择） |
+| `thumb_sheet` | CONSOLE | 批量渲染缩略图，拼成 8×6 拼版 PNG + `index.txt` |
+| `av_sheet` | 自定义 target | 一条命令跑 `thumb_sheet` 全量 |
+
+**开关 `AV_STATIC_RUNTIME`（默认 OFF）**：置 ON 则 `/MT` 静态链接 MSVC 运行库，
+产物**免装 VC++ Redistributable**，可单文件分发 —— `dist/` 里的正式版就是用它编的。
+
+### 16.5 血泪教训（改动这里之前必读）
+
+这几条都是**实际导致过崩溃/卡死**的，不是理论风险：
+
+| 症状 | 根因 | 修法 |
+|---|---|---|
+| 全量 FBX 崩溃，进程内存涨到 **42GB** | `Inflater` 解码出错时产生海量「复制」符号，输出缓冲无限增长 | 按 **zlib 最大压缩比 1032:1** 由输入长度反算 `outLimit_`，`inflateBlock` / `inflateStored` 每个字节都校验 |
+| 同上（第二道闸） | 畸形 `count` 直接喂给 `resize()` | `kMaxArrayElems = 16M` 硬上限 + 解压后 `raw.size() == count*elemSize` **严格相等** |
+| FBX 子网格阶段**死循环**，卡在 `[MARK] 1174` | 材质索引归一化（`-1`→`0`）后比较口径不一致，`endTri` 一次不前进 | 两侧统一走 `normMat` lambda，且 `endTri` 初始化为 `t + 1` |
+| `CreateWindowExW` 返回失败，`errno=1400` | `WM_NCCREATE` 里 `hwnd_` 尚未赋值就被 `HandleMessage` 使用 | `WM_NCCREATE` 分支**独占**：赋值 `hwnd_` 后直接 `return DefWindowProcW(...)`；其余消息仅在 `self->hwnd_ == hwnd` 时才走自定义处理 |
+| 中文路径全部打不开 | `cmd` 批处理传给程序的参数会按代码页丢失中文（变成 `??`） | 程序侧用 `CommandLineToArgvW(GetCommandLineW())`；**验证时必须用 PowerShell `Start-Process` 传参，不要用 cmd 批处理** |
+| `windows.h` 的 `#define DrawText` 污染 `d2d1.h` | 宏与 `ID2D1HwndRenderTarget::DrawTextW` 撞名 | `viewer_app.h` 里 `#undef DrawText` / `#undef DrawTextEx` |
+| D3D 报 `0x80070057`（参数无效） | 顶点跨多个 slot | 单一 slot 0、64 字节交错顶点 |
+| 模型不可见（只有背景） | `MakeLookAt` 的 z 轴取反 | `z = normalize(center - eye)`（指向观察方向） |
+
+### 16.6 验收基线（回归时对这些数字）
+
+| 验收项 | 结果 |
+|---|---|
+| `loader_smoke` 全量 | **371 ok / 0 fail**，avg 1.46ms；GLB 301/301、FBX 70/70 |
+| `thumb_sheet` 全量（16 线程） | **371 ok / 0 fail**，parse avg 4.02ms / thumb avg 8.27ms，wall **4.56s** |
+| `ui_selftest` | **77 通过 / 0 失败**（含 371 条目扫描、缓存命中 371/371） |
+| `asset_viewer.exe --shot=` | 成功导出 PNG（2282×1564）|
+| 规模核对 | 88.3 万三角形 / 132.5 万顶点；9 个带骨骼动画模型全部正确解析 |
+
+### 16.7 交付形态
+
+```text
+tools/asset_viewer/dist/
+├─ asset_viewer.exe         ← 单文件绿色版（607KB，/MT 静态运行库，无外部依赖）
+├─ 启动素材查看器.bat        ← 双击即用；素材文件夹可拖到 bat 上切换目录
+└─ 使用说明.md              ← 中文操作说明
+```
+
+`dist/` 整体被 `.gitignore` 的 `tools/*/dist/` 忽略 —— **产物不进版本库**，
+任何时候用 `-DAV_STATIC_RUNTIME=ON` 重编即可。
+
+### 16.8 扩展点（加一种格式要改几个文件？）
+
+| 需求 | 改哪里 | 文件数 |
+|---|---|---|
+| 加一种模型格式（如 `.obj`） | ① `model_data.h` 声明 `LoadOBJ`；② 新写 `obj_loader.cpp`；③ `LoadModel` 里加一个 `if` | **3** |
+| 加一种贴图格式 | `wic_decode.cpp` 的格式映射表 | **1** |
+| 改缩略图配色 / 尺寸 | `ThumbOptions`（`bgTop`/`bgBottom` 等，已参数化） | **0** |
+| 改界面布局 | `viewer_app.cpp` 的 `Layout` 结构体 | **1** |
+
+---
+
+## 17. 基础物件抽象：物体原型 + 熔炉组合（2026-11-06 落地）
+
+> 本章回答一个问题：**「一把武器 / 一颗子弹 / 一个怪物」到底是什么？**
+> 答案：它们**都不是四个类**，而是同一个 `ObjectArchetype` **同一张 Excel 表**的不同行；
+> 差异只在 ① 能力位（`ObjectCapability`）② 挂在它身上的四个引用（武器/子弹/怪物/特效）
+> ③ 位矩阵（属性 × 标签）与规则值（数值引用）里填了什么。
+> **于是「武器射怪物 / 子弹是怪物 / 子弹带武器属性 / 武器带子弹属性」全部是填表，
+> 运行时走的是同一段铸造代码。**
+
+### 17.1 一句话结论与扩展性实测
+
+| 我想做 | 改哪里 | 文件数 |
+|---|---|---|
+| 加一把武器 / 一颗子弹 / 一只怪 | `combat.xlsx`（Objects + Weapons 或 Projectiles + StatPacks 各加行） | **1** |
+| 让"武器射出怪物" | `Weapons.Delivery=SpawnActor` + `ActorRef=某 Objects.Id` | **0** |
+| 让"子弹炸开再射子弹 / 变成怪物" | `Projectiles.OnExpire=SpawnProjectile/SpawnActor` + `OnExpireProjectile/OnExpireActor` | **0** |
+| 让"子弹继承武器的伤害/速度" | `Weapons.InheritWeaponStats=true`，规则值写 `wstat:WeaponDamage(5)` | **0** |
+| 让"武器也带子弹属性"（自身可飞行） | Objects 行的 `Tags` 同时勾 `tag.weapon,tag.projectile`，能力位自动变 `Weapon|Projectile` | **0** |
+| 新增一个"熔炉簇"（同类可互换的候选池） | `Objects.Cluster` + `ClusterWeight` 两列 | **0** |
+| 新增一种规则值（第 10 种数值来源） | ① `ValueSource` 加枚举 ② `ValueResolver` 加一支 ③ 表解析加一支 | **3**（详见 §17.3） |
+
+### 17.2 数据形状：一个 Archetype，四个引用，两个矩阵
+
+```text
+                ┌──────────────── ObjectArchetype（= Excel Objects 一行）───────────────┐
+                │ Id / IdHash(FNV-1a32)  DisplayKey  Tags(位集)  ClusterSlot  ClusterWeight │
+                │ StatPackageIds（五层数值包，和角色共用同一套）   Radius/Height/RenderId    │
+                │ Weapon:ContentRef   Projectile:ContentRef   Actor:ContentRef   Effect:ContentRef
+                └─────────┬───────────────┬───────────────────┬────────────────────┬─────┘
+                          │               │                   │                    │
+              ┌───────────▼──┐   ┌────────▼────────┐  ┌───────▼────────┐  ┌────────▼───────┐
+              │ WeaponContract│   │ProjectileContract│  │  Actor 能力位  │  │  纯表现物件    │
+              │ Trigger/Delivery│  │ Motion/HitPolicy │  │ Hurtbox+Health │  │ Capsability=None│
+              │ Aim/DamageType │  │ OnExpire(→子弹/怪)│  │ +ActorIdentity │  │                │
+              │ 13 个 ValueSet │  │ 9 个 ValueSet    │  └────────────────┘  └────────────────┘
+              │ 2 个位矩阵     │  │ 1 个位矩阵       │
+              └────────────────┘  └──────────────────┘
+```
+
+**为什么是「引用」而不是继承**：`ContentRef` 只存目标 id 的稳定哈希 + 权重（`DefId`/`Weight`/`HasTarget`），
+所以「A 引用 B、B 又引用 A」（子弹射出枪、枪发射自己打的子弹）**不会在装配期形成环**；
+组件里也能存（J2），热路径只做一次字典命中（装配期已转成 int 槽位号）。
+
+**为什么能力位是 `[Flags]` 而不是枚举**：`Actor|Weapon`（会开枪的怪）、`Weapon|Projectile`（自己飞出去的枪）
+都是合法的表取值；系统永远只问「你有 Weapon 位吗」，**全工程没有一处 `switch (kind)`**（J3）。
+
+**两个位矩阵**：`ObjectBitMatrix`（行 = 物件，列 = 表 `Tags` Sheet 里的 tag）由策划在表里用
+`Objects.Tags` 列勾出来；**代码里不出现任何具体 tag 名** —— 「哪些 tag 构成 Actor / Weapon / Projectile 能力位」
+由 `Tags.Group` 列（`ObjectKind` 组）数据化映射。同一份矩阵被弹道、熔炉、规则值（`flags:xxx`）三处复用。
+
+### 17.3 规则值 `ValueRef`：让"数值"也能拼装（用户需求①的数值半边）
+
+**问题**：如果 `Weapons.BaseDamage` 是一个 float，那"子弹继承武器的伤害"就只能靠代码特判。
+**做法**：所有玩法数值列都存**规则值字符串**，装配期解析成 10 种来源之一的 `ValueRef`：
+
+| 表里写 | `ValueSource` | 含义 | 为什么需要它 |
+|---|---|---|---|
+| `12.5` | `Literal` | 字面量 | 大多数情况 |
+| `stat:Dexterity` / `stat:Damage+30%` | `Stat` | 读**持有者**数值包的最终值 / 加百分比层 | 「武器数值 = 角色属性」 |
+| `wstat:WeaponDamage(5)` | `WeaponStat` | 读**链上来源武器**的这个数值；来源缺失回落括号默认值 | **「子弹具有武器属性」的唯一实现** |
+| `flags:tag.split` | `Flags` | 位矩阵该 tag 位 → 1/0 | 「弹幕因为带了 split 标签而分裂」 |
+| `chain:depth` / `chain:count` | `ChainDepth/ChainCount` | 熔炉链深 / 本帧已链数 | 熔炉防无限自激 |
+| `viable:count` / `perf` | `ViableCount/Perf` | 候选数 / 命中率 | 让数值感知"池子有多大、多能命中" |
+| `rand:2~3` / `rand:10+0.5` | `RandomRange/RandomScaled` | 随机区间 / 基础值±抖动 | 手感随机，且走注入的 `IRandomProvider`（可回放） |
+
+`ValueSet` 是容量 4 的定长集合，按 `Σabs × (1 + Σpercent)` 层叠 —— 于是一条武器数值可以由
+「字面量 + 角色属性 + 武器继承 + 随机」四路叠加而成，**全部是数据，代码 0 行**。
+求值只依赖 `ValueContext`（读 `IValueWorld` 的原始值 + `StatPackageIds`），稳态**零托管分配**（有断言钉住）。
+
+### 17.4 熔炉 `ForgeRules` + 寄存器 `ContentRegistry`：高性能工厂的核心
+
+「熔炉」= 给定**一条配方**（`ulong`，64 位，每位 = 一个 tag）与**一簇候选**，
+在候选里挑出「命中配方 ∩ 可用 ∩ 加权随机」的那一个，产出 `ForgeResult(Outcome, SelectedDefId, Perf, MatchedCount)`。
+
+```text
+配置期（装配期，允许分配）                             运行期（每帧，零分配）
+Excel Objects.Cluster / ClusterWeight    ─┐
+Tags.BitMask → 64 位配方字               ─┼▶  ClusterCandidates{int[] objectSlots,
+ContentBinder 摊平成扁平 int[]/float[]   ─┘        float[] weights, int[] viableCounts}
+                                                          │
+                                          ┌───────────────▼──────────────────┐
+                                          │ ForgeRules.Evaluate(             │  ← 纯静态、无状态、
+                                          │   recipeTag, defIds, tagMasks,   │    只吃 ReadOnlySpan
+                                          │   weights, viableCounts, ctx)    │    （不 new ForgeCandidate[]）
+                                          └───────────────┬──────────────────┘
+                                                          ▼
+                                          ContentRegistry.ResolveWithRegister(slotId, ctx, recipeTag, out result)
+                                                          ▼
+                                          EcsObjectFactory → ContentSpawner → World.Create(三张预建组件表)
+```
+
+| 设计点（用户需求③「工厂必须高性能，用对象池减少 GC」） | 落点 |
+|---|---|
+| 稳态**零托管分配** | `ForgeRules` 纯函数只吃 `ReadOnlySpan`；`CastSystem` 的暂存/环形缓冲**构造期一次预分配**；用例断言 1000 次迭代 `GC.GetAllocatedBytesForCurrentThread()` 增量为 **0** |
+| 「对象池」在本层指**结构化缓冲池 + ECS 原型列式** | ECS 实体本身不是 Node，创建走 `World.Create`（chunk 复用）；`CastQueue` / `LastProjectiles` 定长环形缓冲；`ContentSpawner` 的**三张预建组件表**随实体复用，不每发子弹重新拼结构。真正的 Node 侧 GC 在宿主层 `ViewRegistry`（另一任务） |
+| 字符串不进热路径 | 所有 `id → int` 在装配期解析：`ObjectArchetype.IdHash`（FNV-1a32）、`ContentIndex` 槽位号、`ContentRef.DefId`；热路径只有数组下标 |
+| 每个实体一份"寄存器" | `ContentRegistry` 按「簇 + 槽位名」编址（如 `weapon.slot.primary`），`TryBind` 装默认件，`ResolveWithRegister` 开炉覆盖，`Purge(generation)` 整代回收回**不可变的 `InitialDefId`** |
+
+### 17.5 一帧内的铸造顺序（怎么接进 §6 / §13.2 的七阶段）
+
+```text
+PreUpdate   CastSystem      消费 CastQueue → ValueContext → Resolve/Forge → EcsObjectFactory.TryCast
+                            （CastRequest 由技能/输入/事件投递；本帧产物写进 LastProjectiles 环形缓冲）
+FixedUpdate ProjectileAdvanceSystem   位置积分 + 寿命递减 + OnExpire 到期 → 再投递一次铸造
+            （**本轮不做**）碰撞/伤害/命中特效 —— 明确属于游戏逻辑，见 §17.7
+```
+
+**四个"组合玩法"在代码里是同一段**：`EcsObjectFactory.TryCast` 只问「契约里哪个引用非空 +
+`Delivery`/`OnExpire` 是什么」，于是
+
+| 玩法 | 表 | 运行时 |
+|---|---|---|
+| 武器射子弹 | `Weapons.ProjectileRef` 非空 | `ContentSpawner.TrySpawnProjectile` |
+| 武器射怪物 | `Weapons.ActorRef` 非空 + `Delivery=SpawnActor` | `ContentSpawner.TrySpawnActor`（产物带 `Hurtbox/Health`，**无** `ProjectileState`） |
+| 子弹炸开再射子弹 | `Projectiles.OnExpire=SpawnProjectile` | `EcsObjectFactory.TrySpawnDeath`（`ChainDepth+1`） |
+| 子弹变成怪物 | `Projectiles.OnExpire=SpawnActor` | `EcsObjectFactory.TrySpawnDeath`（产物是角色） |
+
+### 17.6 策划怎么改（需求②）：两张表 + 一个校验器
+
+```text
+data/excel/
+├─ characters.xlsx   ← 角色（Characters / StatPacks / SkillLoads）——见 §15
+└─ combat.xlsx       ← 物件（Tags / Objects / Weapons / Projectiles / StatPacks / _Meta）
+   ├─ Tags          ← 位矩阵的"列定义"：TagId / TagIndex / Category / Group / BitMask
+   ├─ Objects       ← ★唯一的物体原型表：人物/怪物/武器/子弹/特效全在这里
+   │                   Id / Tags / Cluster / ClusterWeight / StatPacks / Weapon / Projectile / Actor / Effect
+   ├─ Weapons       ← 武器契约（8 行 × 28 列，13 个规则值列）
+   ├─ Projectiles   ← 子弹契约（7 行 × 20 列，8 个规则值列）
+   └─ StatPacks     ← 武器/子弹自己的五层数值包（与 characters.xlsx 同构，合并进同一个仓库）
+```
+
+- 生成器 `tools/data_pipeline/gen_combat_xlsx.py` 保证四行表头（字段名/类型/中文名/备注）+ `#data` 标记行合规；
+- **构建期闸门 `tools/data_pipeline/validate_content_xlsx.py`**：2217 项检查 —— 四行表头、类型、外键闭合
+  （四个引用必须指向 `Objects.Id`）、能力位一致（`tag.weapon ⇔ 被 Weapons 引用`、`tag.projectile ⇔ 被 Projectiles 引用`、
+  `tag.actor ⇔ Base 包非空`）、`TagIndex` 连续 + `BitMask` 唯一、**规则值语法真解析**、
+  `StatPacks` 唯一性、**同簇能力位一致**（防"熔炉把子弹换成枪"）、`ClusterWeight>0`。exit≠0 即中止构建；
+- **闭环证明**：`ContentBinderTests` / `ValueRefParserTests` / `ContentPlayLoopTests` 直接用**零第三方包**的
+  `XlsxReader` 读**真 xlsx** → 绑定 → 真 `CastSystem` 铸造成实体，验证"武器射出怪物""子弹到期生成子弹"
+  "子弹变成怪物""改 `BaseDamage`/`ClusterWeight` 后运行期行为随之改变"。**运行期代码不读 xlsx**（§4.8 不变）。
+
+### 17.7 边界与明确不做（本轮）
+
+| 明确不做 | 归属 |
+|---|---|
+| 碰撞检测 / 空间划分 / BVH、伤害结算、命中特效、击退 | **游戏逻辑**，下一任务；本轮 `ProjectileAdvanceSystem` 只做位置积分 + 寿命，`Explode`/`SpawnEffect` 到期行为**显式返回"未实现"并计入 `RejectCount`**，不静默吞 |
+| Node 视图池与 `ViewRegistry` 绑定（"对象池减少 Node GC"的 Node 侧） | 宿主层任务 |
+| 武器法力消耗列（`Weapons.ManaCost`） | ⚠️ 已知退化：`CastSystem` 暂以 `weapon.Count` 求值代替门控，表补列后改一行 |
+| `Objects.ClusterWeight` 之外的分项权重（按 tag 加权的复杂熔炉） | 扩展点：`ForgeRules` 只吃加权数组，加权重来源 = 换 `ClusterCandidates` 的填充 |
+
+**约束**：① 契约层（`Game.Core.Content`）**零 `using Godot`、零上层依赖**；② 组件只存 int/值类型（J2），
+所有 id 在装配期解析成 int 槽位号；③ 铸造**只能**在系统循环里发生，结构化变更走队列/命令缓冲（J3/J5）；
+④ 新增物件**不得**改 `scripts/combat/**` —— 改不动它才是抽象成功的标志。
+
+### 17.8 本轮踩到的 6 个真 bug（都是"静默失效"，改动这里前必读）
+
+| # | 症状 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | 策划改了表，游戏里一半物件"查不到" | `ContentRef.DefId` 是 **FNV-1a32 有符号哈希**，近一半是负数；用 `DefId < 0` 判空 → 那些物件被当成空引用 | 判空**只认** `ContentRef.HasTarget` / `.IsEmpty`，永不看符号 |
+| 2 | 熔炉簇内互换全部失效、`ClusterOf` 恒空 | `ContentIndex.ObjectSlotOfHash` 前置判了 `hash >= 0` | 去掉符号判断，直接查字典 |
+| 3 | 绑过一身装备后，`Purge` 回收不到装配初始态 | `Purge` 恢复到 `DefaultDefId`，而 `TryBind` 会覆写它 | `RegisterSlot` 增不可变 `InitialDefId`，`Purge` 恢复它 |
+| 4 | **所有射击武器运行时静默打不出子弹** | `Projectiles` 行主键是 `proj_bullet_201`，但所有引用列填的是**物件 id** `bullet_201` → `ProjectileSlotOf` 恒 -1 → 工厂 `return false` | 契约 `DefId` 统一用 **`ObjectId`**；行主键只留表校验/调试 |
+| 5 | 带 `tag.projectile` 的物件拿不到 `ProjectileContract` | 只认 `Objects.Projectile` 显式列，而 `bullet_101` 那列留空（靠 `Projectiles.ObjectId` 反向关联） | 双来源都认 + 加正向用例「每个 `tag.projectile` 物件都必须可达契约」 |
+| 6 | `characters.xlsx` 的表头"横躺"，C# 读不了 | 生成器把「每列一条」的四元组当**行** `ws.append()` 写进去（转置） | 按列填格子；生成后用 openpyxl 打印第 1 行确认是 N 个字段名 |
+
+> 共同教训：**数据层/契约层的错误不会抛异常，只会让功能静默失效**。所以宁可多写"正向可达性"用例
+> （「每个 X 都必须能查到 Y」），也不要只写"负向会报错"用例。
+
+加载器**只产出 `ModelData`**，所以新增格式不会波及渲染与 UI —— 这是 §16.3 那条边界带来的收益。
