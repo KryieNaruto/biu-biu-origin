@@ -1,5 +1,5 @@
 # BiuBiuOrigin ECS 架构（数据导向实现）
-☞☞☞ 状态: v1 | 最后更新: 2026-11-03 | 维护规则: 与 `docs/architecture/ARCHITECTURE.md` **同事务**就地覆盖更新（见 §11） | 版本: ECS-v1
+☞☞☞ 状态: v2 | 最后更新: 2026-11-06 | 维护规则: 与 `docs/architecture/ARCHITECTURE.md` **同事务**就地覆盖更新（见 §11） | 版本: ECS-v2
 
 > **本文件是什么**：`ARCHITECTURE.md` 的**下游章节**，专门承载 ECS（实体-组件-系统）实现层的全部形状。
 > `ARCHITECTURE.md` 仍是唯一入口与总真源；本文件只被 `ARCHITECTURE.md` 的 ECS 相关小节引用。
@@ -28,14 +28,16 @@
 
 | # | 模块 | 位置 | 状态 | 任务 |
 |---|---|---|---|---|
-| 1 | 数值/枚举/事件/随机/容器 | `scripts/core/` | ☐ 未落地 | `ecs-core` |
-| 2 | ECS 内核（Entity/World/Archetype/Query/CommandBuffer/Pipeline） | `scripts/core/ecs/` | ☐ 未落地 | `ecs-kernel` |
-| 3 | 官方组件 | `scripts/core/ecs/components/` | ☐ 未落地 | `ecs-kernel` |
-| 4 | 宿主（WorldHost / FixedFrame 管线 / 命令提交） | `scripts/host/` | ☐ 未落地 | `ecs-host` |
-| 5 | Transform 桥 / 视图桥 | `scripts/host/bridge/` | ☐ 未落地 | `ecs-host` |
-| 6 | 冒烟场景 | `scenes/debug/` | ☐ 未落地 | `ecs-host` |
-| 7 | 测试工程 | `tests/` | ☐ 未落地 | `ecs-tests` |
+| 1 | 数值/枚举/事件/随机/容器 | `scripts/core/` | ✅ 已落地 | `ecs-core` |
+| 2 | ECS 内核（Entity/World/Archetype/Query/CommandBuffer/Pipeline） | `scripts/core/ecs/` | ✅ 已落地 | `ecs-kernel` |
+| 3 | 官方组件 | `scripts/core/ecs/components/` | ✅ 已落地 | `ecs-kernel` |
+| 4 | 宿主（WorldHost / FixedFrame 管线 / 命令提交） | `scripts/host/` | ✅ 已落地 | `ecs-host` |
+| 5 | Transform 桥 / 视图桥 | `scripts/host/bridge/` | ✅ 已落地 | `ecs-host` |
+| 6 | 冒烟场景 | `scenes/debug/` | ✅ 已落地 | `ecs-host` |
+| 7 | 测试工程 | `tests/` | ✅ 已落地（174 用例） | `ecs-tests` |
 | 8 | C++ 批量 job 扩展骨架 | `native/` | ☐ 未落地（本轮只登记契约） | `ecs-native` |
+| 9 | **内容契约**（`ObjectArchetype`/`WeaponContract`/`ProjectileContract`/`ValueRef`/`ForgeRules`） | `scripts/core/Content/`、`scripts/combat/` | ✅ 已落地（见 ARCHITECTURE §17） | `object-archetype` |
+| 10 | **空间划分 / 宽相**（命中检测从 O(n·m) → O(n)） | `scripts/combat/`（尚未创建） | ☐ 未落地（§12 #4，属游戏逻辑） | `broadphase` |
 
 ---
 
@@ -499,6 +501,7 @@ public interface IEcsBatchSolver
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-06 | ECS-v2 | 基础物件抽象（ARC §17） | **组件表扩容 + 铸造工厂的零分配约定**：① 新增内容域契约 `Game.Core.Content`（`ObjectArchetype` / `WeaponContract` / `ProjectileContract` / `ValueRef` / `ObjectBitMatrix`）——它们是**纯数据、进不进 chunk 都可**（目前放仓库、组件只存 int 槽位号，符合 J2）；② 新增战斗域组件 `WeaponState` / `ProjectileState` / `CastState`（`scripts/combat/CombatComponents.cs`，unmanaged、`[Identity]` 首字段、无方法）；③ **工厂约定**：结构化生成走 `CastQueue`（帧内队列）→ `CastSystem`(PreUpdate) → `EcsObjectFactory`；**稳态零托管分配**由 `GC.GetAllocatedBytesForCurrentThread()` 用例钉住（J6 的具体化：不 new `List`/不 LINQ/不装箱，`IReadOnlyList<Entity>` 用定长环形缓冲 + struct 枚举器实现）；④ §0.1 补第 9/10 行（内容契约 ✅、空间划分/宽相 ☐ 仍未做）；⑤ 判空纪律补一条：**`ContentRef` 的空引用判据是 `HasTarget`，不是 `DefId < 0`**（FNV-1a32 有符号哈希近一半为负，用符号判空会让近半内容静默消失，见 ARCHITECTURE §17.8 bug#1） | `docs/architecture/ECS.md`、`docs/architecture/ARCHITECTURE.md`、`scripts/core/Content/**`、`scripts/combat/**` |
 | 2026-11-03 | ECS-v1 | ECS 架构立骨架（Lead 定稿） | 建立 ECS 技术路线与全部形状：自研数据导向 ECS（`Game.Core.Ecs`，archetype 列式存储 + unmanaged 组件 + chunk 迭代）、`SystemBase`+`SystemPipeline` 分组执行、`CommandBuffer` 帧末唯一结构化提交、`Game.Host` 宿主层（唯一 `using Godot` 处）、`ViewRegistry` 视图旁路、七条判定 J1~J7、§4.2 官方组件 v1 表、§6 一帧顺序、§9 性能四路线 + `IEcsBatchSolver` C++ 扩展契约；`IActor.Id: ActorId → ActorHandle` 记为**破坏性变更**（实现由 `Game.Host/Handles` 提供） | `docs/architecture/ECS.md`、`docs/architecture/ARCHITECTURE.md`、`docs/rules/03-abstract-first.md`、`docs/rules/06-extensibility.md`、`docs/rules/07-definition-of-done.md`、`config/architecture-rules.json`、`AGENTS.md` |
 
 ---
@@ -510,7 +513,7 @@ public interface IEcsBatchSolver
 | 1 | Source Generator 生成 `Query.ForEach` 重载（现在手写 T0..T3） | 系统数量 > 15 或重载数不够时 |
 | 2 | 确定性 chunk 排序 + 固定并行分块（回放/日种子榜） | 第一次做回放时 |
 | 3 | 存档序列化（原型签名 + 组件值；带 schema 版本） | 第一条 `SaveService` 任务 |
-| 4 | 空间哈希 / 宽相（命中检测从 O(n·m) 降为 O(n)） | 100+ 敌人同屏实测后 |
+| 4 | 空间哈希 / 宽相（命中检测从 O(n·m) 降为 O(n)） | **下一步就做**：物件契约已就位（`ProjectileState.Radius` / `Hurtbox.Radius` / 位矩阵），宽相只需要再加一个系统，不改契约 |
 | 5 | `IEcsBatchSolver` 的 C++ 实现 | 达到 §9.4 下沉判据时 |
 | 6 | 编辑器调试面板（原型/组件/系统计时可视化，`[Tool]`） | 第一次性能实测时 |
 | 7 | 多世界（房间预加载/关卡流式） | 肉鸽流程落地后 |
