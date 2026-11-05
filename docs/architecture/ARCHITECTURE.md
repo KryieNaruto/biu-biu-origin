@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v5  最后更新: 2026-11-05  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v6  最后更新: 2026-11-05  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1072,6 +1072,7 @@ user://saves/<slot>.json
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-05 | v6 | **素材快查看器 v2：修复用户实测的 4 个 bug** | **用户第一轮实测报的 4 个 bug 全部修完并逐条验收**。① **滚轮后点击错位**（点到的资源不是点的那一个）：`CellRect()` 是绘制与命中的唯一真源，但 `RebuildFilter()` 会把 `scrollY_` 一起重置，导致重建后绘制偏移与命中偏移两个口径分叉 —— 改为**筛选重建时不重置滚动**（另有分支做钳制）。`probe_hit` 断言 14 个滚动位置 × 316 单元格 = **100.00% 命中，零错位**。② **模型不在面板正中 / 显示不全**：`CameraState::distance` 2.5→1.0 并按包围盒自适应；实测真 GUI 模型中心 (849,433) vs 预览区中心 (850,430)，**误差 3px**。③ **模型没有纹理**（见 §16.5 教训表该行，两个独立根因：贴图预览写死 32px 且 UV 只占图集 7.24% → 角色贴图只剩 8×9 像素；另有 123 个模型 `baseColorFactor` 极暗被"黑底兜底"换成随机灰）——修法：`kPreviewMaxEdge` **32→256** + 96MB 预算分级降级，黑底兜底阈值 0.02→0.0005，D3D 与 CPU 两条渲染路径各加**自适应曝光**。④ **没有动画与动画列表**（见 §16.5 该行：FBX 80 字符截断使 clip 名退化为 `Dea`/`Pun`/空串）——`NormalizeName` 改写为取中间完整非噪音段 + 新增 `StripDupSuffix`，Anne 的 14 条 clip 全名恢复；`probe_anim` 证明每个 clip 驱动 49~57 根骨骼、蒙皮覆盖 84.2% 顶点。**共享契约变更（详见新增 §16.9）**：`Vertex` 32→48 B（顶点色）、`GpuVertex` 64→80 B、`TextureInfo::preview` 32→256 px。**另修一个只在 `/MT` 静态版复现的堆破坏崩溃**（`printf` 里两个 `std::string` 临时量，`exit=0xC0000374`，稳定停在 `Bird.glb`）。**验收**：`loader_smoke` 371/371（`/MD` 与 `/MT` 双版）、`ui_selftest` 77/77、`render_regress` 301/301 可见、`thumb_sheet` 371/371 wall 21.61s @256px。`dist/` 已刷新（619KB，MD5 与构建产物一致） | `tools/asset_viewer/src/{model_data.h,glb_loader.cpp,fbx_loader.cpp,texture.h,texture.cpp,d3d_renderer.cpp,d3d_renderer.h,thumb_renderer.cpp,viewer_app.cpp,viewer_app.h}`、`tools/asset_viewer/tests/{loader_smoke.cpp,ui_selftest.cpp}`、`tools/asset_viewer/dist/**`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v5 | **角色真源证真：xlsx 直读比对** | **补上「Excel 唯一真源」缺失的自动证据**：新增 `tests/Characters/CharacterXlsxParityTests`（5 用例）——直接解析 `data/excel/characters.xlsx`，与内置副本**逐字段、逐数值**比对（Characters 9 列 + StatPacks 全部属性 + 能否装配成实体）。新增 `tests/Characters/CharacterXlsxBinder.cs`（复用既有 `XlsxReader`，零第三方依赖，报错带 Excel 真实行号）。`CharacterContentSet` 新增 `RegisterPackRow/RegisterCharacterRow/RegisterLoadoutRow/FlushStatPacks/FlushLoadouts`，使 xlsx 读取与内置副本**走同一代码路径**。**注入验证**：把表中 `player_base.Hp` 改为 999，测试精确报出「预期 120、实际 999」→ 证明不是假守护。修正 `CharacterContentRegressionTests` 里「与 xlsx 逐行对应」的**虚假注释**（它从不读 xlsx），改为显式声明只能证明"内置副本自洽"。§4.1 重写现状 + 新增 §4.1.1 证据链表与「假守护」教训。**发现待决问题**：`StatPackageRepository` 以包 id 为键，同包跨层会互相覆盖（当前数据未触发）。测试 174 → 179，守卫 0 error | `tests/Characters/CharacterXlsxParityTests.cs`、`tests/Characters/CharacterXlsxBinder.cs`、`tests/Characters/CharacterContentRegressionTests.cs`、`scripts/data/CharacterContentSet.cs`、`docs/architecture/ARCHITECTURE.md`
 | 2026-11-06 | v5 | **基础物件抽象（武器/子弹/怪物同源 + 熔炉组合）落地** | **新增 §17 基础物件抽象**：人物/怪物/武器/子弹**不是四个类**，而是同一个 `ObjectArchetype`（= `combat.xlsx` 的 `Objects` 一行）——差异只在 ① `ObjectCapability` 能力位（`[Flags]`：Actor/Weapon/Projectile/Emitter/Trigger/Consumable/Structure，可任意组合）② 四个 `ContentRef` 引用（Weapon/Projectile/Actor/Effect，**谁都可以指向任何 Objects.Id**）③ 位矩阵 + 规则值。① **规则值 `ValueRef`**（10 种来源：Literal/Stat/WeaponStat/Flags/ChainDepth/ChainCount/ViableCount/Perf/RandomRange/RandomScaled）+ `ValueSet`（容量4，`Σabs×(1+Σpercent)` 层叠）——**「子弹继承武器属性」= 表里写 `wstat:WeaponDamage(5)`，代码 0 行**；② **熔炉 `ForgeRules`**：64 位配方字 × 簇内加权轮盘，纯静态只吃 `ReadOnlySpan`，**1000 次迭代 0 字节托管分配**（用例断言）；`ContentRegistry` 按「簇+槽位名」编址，`Purge(generation)` 回到不可变 `InitialDefId`；③ **工厂等价性**：武器射子弹 / 武器射怪物 / 子弹炸开再射子弹 / 子弹变成怪物，在 `EcsObjectFactory.TryCast` 里是**同一段代码**，差别只有契约里哪个引用非空 + `Delivery`/`OnExpire` 两个枚举（4 条端到端用例读真表钉住）；④ **策划可改（需求②）**：`combat.xlsx` 6 Sheet（Tags/Objects/Weapons/Projectiles/StatPacks/_Meta）+ `validate_content_xlsx.py` **2217 项构建期检查**（外键闭合、能力位一致、TagIndex 连续/BitMask 唯一、规则值语法真解析、**同簇能力位一致**、ClusterWeight>0）+ 零第三方包 `XlsxReader` 读真 xlsx 的绑定回归（「改表 → 运行期行为变」可证）；⑤ **明确不做**：碰撞/空间划分/伤害结算（游戏逻辑，`ProjectileAdvanceSystem` 只做积分+寿命，未实现分支显式计数不静默）；⑥ **修 6 个静默失效 bug**（记入 §17.8）：FNV-1a32 有符号哈希被当"空引用"判据（同一错误出现 3 处）、`Purge` 回不到初始态、`Projectiles` 行主键与引用列口径不一致致**所有枪静默打不出子弹**、`tag.projectile` 物件拿不到契约、`characters.xlsx` 表头被生成器转置。**测试 101 → 174 全绿**；架构守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/core/Content/**`（ValueContext/ObjectArchetype/ObjectBitMatrix/WeaponContract/ProjectileContract/ContentWorld/ContentIndex/WeaponAimKind）、`scripts/core/StatId.cs`（+17 成员：武器 1030~1041、投射物 1050~1054）、`scripts/combat/**`（CombatComponents/ForgeRules/ContentRegistry/CastQueue/CastSystem/ProjectileAdvanceSystem/Factory）、`scripts/data/Content/**`（ContentBinder/ValueRefParser）、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`（表头修复）、`tools/data_pipeline/{gen_combat_xlsx,validate_content_xlsx}.py`、`tools/data_pipeline/README.md`、`tests/Content/**`、`tests/BiuBiuOrigin.Tests.csproj` |
 | 2026-11-05 | v4 | **素材快查看器（Asset Viewer）落地** | **新增 §16 素材快查看器**：独立 Win32 桌面程序（**不进游戏、不是 GDExtension**），CMake + MSVC + D3D11/Direct2D，**零第三方依赖**。① **边界**：加载器只吐 `ModelData` 纯数据、**不碰 D3D**，渲染器不碰文件格式 —— 故 `thumb_sheet` 能在无窗口环境复用同一套加载代码。② **格式**：自研 glTF 2.0（`.glb`）与 FBX 7.2/7.4/7.5 解析器，**自带 DEFLATE 解压器**（不为 FBX 压缩数组引 zlib）。③ **构建**：`av_core`/`av_ui` 静态库 + `asset_viewer`(WIN32) + `loader_smoke`/`ui_selftest`/`thumb_sheet`(CONSOLE) + `av_sheet` 自定义 target；`AV_STATIC_RUNTIME=ON` 走 `/MT` 免装 VC++ 运行库。④ **修复 8 处实打实缺陷**，全部写进 §16.5 教训表：Inflater 无输出上限致 42GB OOM、畸形 count 直接喂 `resize()`、FBX 子网格材质归一化口径不一致致死循环、`WM_NCCREATE` 期 `hwnd_` 未赋值致 `CreateWindowExW` 失败(errno=1400)、cmd 批处理中文参数变 `??`、`windows.h` 的 `DrawText` 宏污染 `d2d1.h`、多 slot 顶点布局触发 `0x80070057`、`MakeLookAt` z 轴取反致模型不可见。⑤ **验收**：`loader_smoke` 371/371、`thumb_sheet` 371/371（wall 4.56s @16 线程）、`ui_selftest` 77/77、`--shot=` 出图成功。⑥ **交付** `dist/` 单文件绿色版 + 中文启动器 + 使用说明 | `tools/asset_viewer/**`、`docs/architecture/ARCHITECTURE.md` |
@@ -1494,22 +1495,29 @@ RenderThumbnail               ← 离屏渲染一张缩略图（CPU 光栅，供
 | `windows.h` 的 `#define DrawText` 污染 `d2d1.h` | 宏与 `ID2D1HwndRenderTarget::DrawTextW` 撞名 | `viewer_app.h` 里 `#undef DrawText` / `#undef DrawTextEx` |
 | D3D 报 `0x80070057`（参数无效） | 顶点跨多个 slot | 单一 slot 0、64 字节交错顶点 |
 | 模型不可见（只有背景） | `MakeLookAt` 的 z 轴取反 | `z = normalize(center - eye)`（指向观察方向） |
+| **静态版 `/MT` 全量崩溃**（`exit=0xC0000374` 堆破坏，稳定停在 `Bird.glb`），动态版 `/MD` 一切正常 | `loader_smoke.cpp` 一行 `printf` 里同时写了 `ToLocal(...).c_str()` 与 `Utf8ToLocal(md.error).c_str()` —— **两个 `std::string` 临时量**，实参求值与析构顺序都未指定，指针悬垂。`/MD` 的堆布局侥幸没被覆盖，`/MT` 一换分配器就必崩 | 临时量先落到具名变量（`const std::string localName = ...`）。**教训：只要 `printf` 里出现 ≥2 个返回 `std::string` 的调用，就必须先具名** |
+| **「模型没有纹理」**（用户报的 4 个 bug 之一） | ① 贴图预览被写死压到 **最长边 32px**（`kPreviewMaxEdge = 32`），而素材库 74 张贴图里有 **71 张是 1024×1024**；模型 UV 又只用到图集的一小块 —— Anne 只占 **7.24%**，压到 32px 后角色实际可用贴图只剩 **8×9 像素**，整张角色贴图 72 个像素，必然糊成一片纯色。② 另有 123/371 个模型的 `baseColorFactor` 极暗（`Armor Leather` = sRGB(0.110,0.060,0.041) → 线性(0.011,0.004,0.002)），灯光再足也只剩黑点 | ① `kPreviewMaxEdge` **32 → 256**（面积 64 倍，单张 256KB），并加 `kPreviewBudgetBytes = 96MB` 进程级预算，逼近上限时自动逐级降到 128/64/32。② D3D `PSMain` 与 CPU `thumb_renderer` 各加一段**自适应曝光**：线性亮度 < 0.16 时按亮度放大到 0.16（gain 上限 24），**只放大量、不动色相与相对明暗** |
+| 动画列表名字显示成 `Dea` / `Pun` / `Swo` / 空串 | FBX 帧名有 **80 字符长度限制**，FBX2glTF 拼接后整条名字恰好 81 字符被截断，**最后一段全是残段**。原 `NormalizeName` 取"最后一个非空段"正好取到残段 | 改为**取中间那个完整的非噪音段**（跳过 `CharacterArmature` / `*Armature` / `Root` / `Mixamo` 等骨架名），并新增 `StripDupSuffix` 去掉 Blender 的 `.001` 后缀。修复后 Anne 的 14 条 clip 全部为 `Death/Duck/HitReact/Idle/Jump_Idle/Jump_Land/Jump/No/Punch/Run/Sword/Walk/Wave/Yes` |
 
 ### 16.6 验收基线（回归时对这些数字）
 
 | 验收项 | 结果 |
 |---|---|
-| `loader_smoke` 全量 | **371 ok / 0 fail**，avg 1.46ms；GLB 301/301、FBX 70/70 |
-| `thumb_sheet` 全量（16 线程） | **371 ok / 0 fail**，parse avg 4.02ms / thumb avg 8.27ms，wall **4.56s** |
+| `loader_smoke` 全量（`/MD` 与 `/MT` 双版） | **371 ok / 0 fail**，avg 1.84~1.87ms；GLB 301/301、FBX 70/70 |
 | `ui_selftest` | **77 通过 / 0 失败**（含 371 条目扫描、缓存命中 371/371） |
+| `probe_hit`（bug 1 滚轮命中回归） | 14 个滚动位置 × 316 个单元格中心点，**命中率 100.00%，零错位** |
+| `probe_anim`（bug 4 动画链路） | Anne 60 骨骼 / 14 clip，每 clip 驱动 **49~57 根骨骼**、135~533 个关键帧，蒙皮覆盖 **84.2%** 顶点；Pirate Captain 92.6%、Skeleton 86.6% |
+| `render_regress`（全量可见性） | 301 个 glb 全部渲染出画面，`invisible(<1%)=2`（均为 Arrow/Claymore 类细长模型，属正常） |
 | `asset_viewer.exe --shot=` | 成功导出 PNG（2282×1564）|
-| 规模核对 | 88.3 万三角形 / 132.5 万顶点；9 个带骨骼动画模型全部正确解析 |
+| 真实 GUI 像素统计 | 窗口 1415×937，全窗 **4413** 种颜色；主预览区模型中心 **(849,433)** vs 区域中心 **(850,430)**，**居中误差 3px** |
+| 规模核对 | 88.3 万三角形 / 132.5 万顶点；**12** 个带动画模型全部正确解析 |
+| 贴图信息量（bug 3 修复佐证） | 74 张贴图中 71 张为 1024×1024；Anne 的 UV 只占图集 7.24%，32px 预览下角色可用贴图仅 **8×9 px**，256px 下为 **64×73 px**（**64 倍**） |
 
 ### 16.7 交付形态
 
 ```text
 tools/asset_viewer/dist/
-├─ asset_viewer.exe         ← 单文件绿色版（607KB，/MT 静态运行库，无外部依赖）
+├─ asset_viewer.exe         ← 单文件绿色版（619KB，/MT 静态运行库，无外部依赖）
 ├─ 启动素材查看器.bat        ← 双击即用；素材文件夹可拖到 bat 上切换目录
 └─ 使用说明.md              ← 中文操作说明
 ```
@@ -1525,6 +1533,28 @@ tools/asset_viewer/dist/
 | 加一种贴图格式 | `wic_decode.cpp` 的格式映射表 | **1** |
 | 改缩略图配色 / 尺寸 | `ThumbOptions`（`bgTop`/`bgBottom` 等，已参数化） | **0** |
 | 改界面布局 | `viewer_app.cpp` 的 `Layout` 结构体 | **1** |
+
+### 16.9 共享契约：顶点与材质（2026-11-05 v2 修订）
+
+**改这几个结构前必须同步所有加载器与两个渲染器**（`glb_loader` / `fbx_loader` / `d3d_renderer` / `thumb_renderer`）。
+
+| 结构 | 字段变化 | 说明 |
+|---|---|---|
+| `av::Vertex` | **32 → 48 字节**，在 `u,v` 之后追加 `float r,g,b,a` | 顶点色。加载器在模型无 `COLOR_0` / `LayerElementColor` 时填 `(1,1,1,1)`，所以渲染端**无条件相乘**是安全的（乘法单位元） |
+| `GpuVertex`（`d3d_renderer.cpp` 内部） | **64 → 80 字节**，`COLOR` 绑在 **slot 0 offset 32**（`R32G32B32A32_FLOAT`），`BLENDINDICES`/`BLENDWEIGHT` 顺延到 48 / 64 | 输入布局仍是单一 slot 交错顶点 |
+| `av::TextureInfo::preview` | 最长边 **32 → 256**（`kPreviewMaxEdge`），新增预算 `kPreviewBudgetBytes = 96MB` 与 `PreviewBytesInUse()` | D3D 与 CPU 缩略图**都**读这份 preview，改一处两边同时生效 |
+
+颜色合成顺序（D3D `PSMain` 与 CPU `RasterTri` **必须一致**）：
+
+```text
+base = baseColorFactor × 贴图(若有) × 顶点色 → pow(2.2) 转线性 → 自适应曝光 → 光照 → pow(1/2.2)
+```
+
+三条容易踩的坑：
+
+1. **必须先把 sRGB 空间的三个因子乘完再统一做 gamma**，否则暗部会被压两次。
+2. **`Vertex{}` 聚合初始化会把顶点色清成 0（黑）**，凡是手搓 `Vertex` 的地方（如内置占位立方体）都要显式填 `(1,1,1,1)`。
+3. 「中性提亮」逻辑只对**既无贴图又无顶点色且 baseColor 为纯灰**的模型生效；一旦有顶点色就绝不能提亮，否则会把配色洗白。
 
 ---
 

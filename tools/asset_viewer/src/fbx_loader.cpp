@@ -450,6 +450,9 @@ private:
                     if (!readN(p, 4, &count) || !readN(p + 4, 4, &enc)) return false;
                     p += 8;
                     size_t elemSize = (type == 'f' || type == 'i') ? 4u : (type == 'b' ? 1u : 8u);
+                    // 元素数硬上限：真实 FBX 最大数组也就几十万量级，16M 足以覆盖极端资产，
+                    // 同时拦住误解析出来的天文 count 直接喂给 resize() 造成一次性数 GB 分配。
+                    if (count > kMaxArrayElems) return false;
                     if (enc == 0) {
                         if (count * elemSize > data_.size() || p + count * elemSize > data_.size()) return false;
                         clen = 0;
@@ -465,7 +468,8 @@ private:
                             prop.kind = FProp::Blob;
                             prop.blob = std::move(raw);
                         } else {
-                            if (raw.size() < count * elemSize) return false;
+                            // 解压后必须严格等于 count*elemSize：既防越界读，也防 count 失真
+                            if (raw.size() != (size_t)count * elemSize) return false;
                             if (!decodeArray(type, raw.data(), (size_t)count, &prop)) return false;
                         }
                         p += (size_t)clen;
@@ -488,6 +492,9 @@ private:
         *out = std::move(node);
         return true;
     }
+
+    // 单个属性的元素数上限（约 128MB @8 字节），见 parseNode 中 'f'/'d'/'i'/'l'/'b' 分支
+    static constexpr uint64_t kMaxArrayElems = 16u * 1024u * 1024u;
 
     bool decodeArray(char type, const unsigned char* src, size_t count, FProp* prop) {
         switch (type) {
@@ -765,6 +772,11 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
         bool hasMatIdx = false;
         std::string normalLayer;   // ByPolygonVertex / ByVertex
         std::string uvLayer;
+        // 顶点色：Synty POLYGON 的 FBX 同样靠顶点色上色（LayerElementColor）。
+        std::vector<double> vcolors;          // RGBA 平铺
+        std::vector<int32_t> vcolorIdx;      // 可选的 IndexToDirect 映射
+        bool hasVColor = false;
+        std::string vcolorLayer;
     };
     struct FbxMaterial {
         int64_t uid = 0;
@@ -867,6 +879,19 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
                             g.hasMatIdx = !g.matIdx.empty();
                         }
                     }
+                }
+                // 顶点色：与 UV 完全同构（Colors / ColorIndex / MappingInformationType）
+                if (const FNode* lc = obj->child("LayerElementColor")) {
+                    if (const FNode* v = lc->child("Colors")) {
+                        if (!v->props.empty() && v->props[0].kind == FProp::ArrF64) g.vcolors = v->props[0].ad;
+                        else if (!v->props.empty() && v->props[0].kind == FProp::ArrF32)
+                            g.vcolors.assign(v->props[0].af.begin(), v->props[0].af.end());
+                        g.hasVColor = g.vcolors.size() >= 3;
+                    }
+                    if (const FNode* mp = lc->child("ColorIndex")) {
+                        if (!mp->props.empty() && mp->props[0].kind == FProp::ArrI32) g.vcolorIdx = mp->props[0].ai32;
+                    }
+                    if (const FNode* mt = lc->child("MappingInformationType")) g.vcolorLayer = mt->propStr(0);
                 }
                 geomsById[uid] = std::move(g);
             } else if (obj->is("Material")) {
@@ -1147,6 +1172,9 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
             // 法线（FBX 的 Normal 有独立索引，ByPolygonVertex）
             v.nx = v.ny = v.nz = 0.0f;
             v.u = v.v = 0.0f;
+            // 顶点色：FBX 的 LayerElementColor 走 UV 同款的 corner 映射，
+            // 在下面「按 corner 展开顶点」时填充；这里先置白色（乘法单位元）。
+            v.r = v.g = v.b = v.a = 1.0f;
             md.mesh.vertices.push_back(v);
         }
 
@@ -1209,6 +1237,27 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
                 *v = (float)g.uv[(size_t)ui * 2 + 1];
                 return true;
             };
+            // 顶点色：与 uvAt 同构，但每条是 RGBA 四分量
+            auto colorAt = [&](int32_t corner, uint32_t vidx, float* out4) -> bool {
+                if (!g.hasVColor || g.vcolors.size() < 3) return false;
+                int32_t ci = -1;
+                if (!g.vcolorIdx.empty() && corner >= 0 && (size_t)corner < g.vcolorIdx.size()) {
+                    int32_t t = g.vcolorIdx[(size_t)corner];
+                    if (t >= 0) ci = t;
+                } else if (g.vcolorLayer == "ByPolygonVertex" && corner >= 0 &&
+                           (size_t)corner * 4 + 2 < g.vcolors.size()) {
+                    ci = corner;
+                } else if ((size_t)vidx * 4 + 2 < g.vcolors.size()) {
+                    ci = (int32_t)vidx;
+                }
+                if (ci < 0 || (size_t)ci * 4 + 2 >= g.vcolors.size()) return false;
+                out4[0] = (float)g.vcolors[(size_t)ci * 4 + 0];
+                out4[1] = (float)g.vcolors[(size_t)ci * 4 + 1];
+                out4[2] = (float)g.vcolors[(size_t)ci * 4 + 2];
+                out4[3] = ((size_t)ci * 4 + 3 < g.vcolors.size())
+                              ? (float)g.vcolors[(size_t)ci * 4 + 3] : 1.0f;
+                return true;
+            };
 
             for (size_t t = 0; t < tris.size(); ++t) {
                 uint32_t vidx = tris[t];
@@ -1219,8 +1268,10 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
                 bool okN = normalAt(corner, vidx, nn);
                 float uu = 0.0f, vv = 0.0f;
                 bool okU = uvAt(corner, vidx, &uu, &vv);
+                float cc[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+                bool okC = colorAt(corner, vidx, cc);
 
-                if (okN || okU) {
+                if (okN || okU || okC) {
                     uint64_t key = cornerKey(vidx, corner);
                     auto it = splitMap.find(key);
                     if (it == splitMap.end()) {
@@ -1231,6 +1282,7 @@ bool LoadFBX(const std::string& utf8Path, ModelData* out) {
                         Vertex nv = md.mesh.vertices[globalV];
                         if (okN) { nv.nx = nn[0]; nv.ny = nn[1]; nv.nz = nn[2]; }
                         if (okU) { nv.u = uu; nv.v = vv; }
+                        if (okC) { nv.r = cc[0]; nv.g = cc[1]; nv.b = cc[2]; nv.a = cc[3]; }
                         uint32_t idx = (uint32_t)md.mesh.vertices.size();
                         md.mesh.vertices.push_back(nv);
                         it = splitMap.emplace(key, idx).first;

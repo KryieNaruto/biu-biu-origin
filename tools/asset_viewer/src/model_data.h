@@ -17,8 +17,13 @@ struct Vertex {
     float px, py, pz;
     float nx, ny, nz;
     float u, v;
+    // 顶点色（RGBA，线性 0..1）。Synty POLYGON 系列大量模型**不放贴图**，
+    // 颜色烘在顶点上（glTF 的 COLOR_0 / FBX 的 LayerElementColor）。
+    // 不保留这一项，这类模型就只能显示成灰色 —— 这正是「没有纹理」的根因。
+    // 加载器在无 COLOR_0 时填 (1,1,1,1)，着色器用 `base *= vColor` 即可统一处理。
+    float r, g, b, a;
 };
-static_assert(sizeof(Vertex) == 32, "Vertex must be 32 bytes (D3D11 interleaved)");
+static_assert(sizeof(Vertex) == 48, "Vertex must be 48 bytes (D3D11 interleaved)");
 
 struct Material {
     std::string name;

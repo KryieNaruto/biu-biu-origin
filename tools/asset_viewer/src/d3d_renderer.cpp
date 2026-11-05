@@ -4,6 +4,7 @@
 #include <d3dcompiler.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -23,10 +24,11 @@ struct GpuVertex {
     float px, py, pz;
     float nx, ny, nz;
     float u, v;
+    float r, g, b, a;          // 顶点色（COLOR0），无顶点色时加载器填 1,1,1,1
     uint32_t boneIdx[4];
     float    weight[4];
 };
-static_assert(sizeof(GpuVertex) == 64, "GpuVertex must be 64 bytes");
+static_assert(sizeof(GpuVertex) == 80, "GpuVertex must be 80 bytes");
 
 // ---------------------------------------------------------------------------
 // 着色器源码（内嵌，避免运行期依赖 .hlsl 文件路径）
@@ -52,6 +54,7 @@ struct VSIn {
     float3 pos : POSITION;
     float3 nrm : NORMAL;
     float2 uv  : TEXCOORD0;
+    float4 col : COLOR0;
     uint4  bones : BLENDINDICES;
     float4 weights : BLENDWEIGHT;
 };
@@ -61,6 +64,7 @@ struct VSOut {
     float3 nrm : NORMAL;
     float3 worldPos : TEXCOORD1;
     float2 uv : TEXCOORD0;
+    float4 col : COLOR0;
 };
 
 VSOut VSMain(VSIn i) {
@@ -85,7 +89,11 @@ VSOut VSMain(VSIn i) {
     o.worldPos = p.xyz;
     o.pos = mul(float4(p.xyz, 1.0), gViewProj);
     o.nrm = n;
-    o.uv = i.uv;
+    // TextureInfo::preview 是 RGBA8 行从上到下存储，而 glTF/FBX 的 UV 原点在左下（v 向上）。
+    // CPU 参考实现 tex::SampleRgba 内部做了 fv = 1 - v 的翻转，D3D 采样器必须同样翻转，
+    // 否则整张贴图上下颠倒、UV 落到图集空白区 → 看上去就是"没有纹理"。
+    o.uv = float2(i.uv.x, 1.0 - i.uv.y);
+    o.col = i.col;
     return o;
 }
 )";
@@ -123,7 +131,11 @@ float3 ShadeBRDF(float3 N, float3 V, float3 L, float3 lc, float3 base, float rou
 }
 
 float4 PSMain(float4 pos : SV_Position, float3 nrm : NORMAL,
-              float3 worldPos : TEXCOORD1, float2 uv : TEXCOORD0) : SV_Target {
+              float3 worldPos : TEXCOORD1, float2 uv : TEXCOORD0,
+              float4 vcol : COLOR0) : SV_Target {
+    // 顶点色是否「真正有效」：加载器无顶点色时填纯白 (1,1,1,1)，
+    // 所以三者都不小于 0.999 就视为「无顶点色」，用于关闭中性提亮逻辑。
+    bool hasVColor = !(vcol.r >= 0.999 && vcol.g >= 0.999 && vcol.b >= 0.999);
     float3 N = normalize(nrm);
     if (!all(isfinite(N)) || length(N) < 0.001) N = float3(0.0, 1.0, 0.0);
     float3 V = normalize(gEye - worldPos);
@@ -135,7 +147,35 @@ float4 PSMain(float4 pos : SV_Position, float3 nrm : NORMAL,
         float4 t = gDiffuse.Sample(gSamp, uv);
         base *= t.rgb;
     }
+    // 顶点色：Synty POLYGON 系列大量模型**不放贴图**，颜色烘在顶点上（COLOR_0）。
+    // 加载器在模型没有顶点色时填 (1,1,1,1)，所以这里无条件相乘是安全的乘法单位元。
+    // 注意乘法顺序：baseColor 与贴图/顶点色都是 sRGB 空间的量，
+    // 必须先乘完再统一做 sRGB→线性，否则暗部会被压两次。
+    base *= vcol.rgb;
     base = pow(saturate(base), 2.2);   // sRGB -> 线性
+    // 中性保持：只有当「既无贴图又无顶点色」且 baseColor 为纯灰时才提亮成白模，
+    // 否则 faceted 低模在 3 灯 + 2.2 gamma 下会暗成"没有材质"。
+    // 一旦有顶点色，绝不能再提亮 —— 那会把配色洗白，正是"没纹理"观感的一部分。
+    if (gHasTex == 0 && !hasVColor &&
+        abs(base.r - base.g) < 0.02 && abs(base.g - base.b) < 0.02 && base.r > 0.02) {
+        float lum = base.r;
+        base *= (0.78 / max(lum, 0.12));
+        base = saturate(base);
+    }
+    // 自适应曝光（暗材质可见性）：素材库里 123/371 个模型的 baseColorFactor 极暗
+    // （如 Armor Leather = sRGB(0.110,0.060,0.041) → 线性(0.011,0.004,0.002)），
+    // 灯光再足也只剩下黑点，用户看到的就是"没有材质/没有纹理"。
+    // 这里不篡改色相关系：按亮度放大到目标亮度再夹住，色相与相对明暗原样保留。
+    // 只对「线性亮度偏低」的材质生效，亮材质不动。
+    {
+        float lum = dot(base, float3(0.2126, 0.7152, 0.0722));
+        if (lum > 0.0005 && lum < 0.16) {
+            // 目标亮度 0.16：暗色皮革/金属被拉到能看清的程度，仍是暗调
+            float gain = 0.16 / lum;
+            gain = min(gain, 24.0);          // 上限，防纯黑噪点被炸成全白
+            base = saturate(base * gain);
+        }
+    }
 
     float3 col = base * gAmbient;
     col += ShadeBRDF(N, V, -gLightKeyDir,  gLightKeyColor,  base, gRoughness);
@@ -271,6 +311,7 @@ void MakeFallbackModel(ModelData* out) {
             const int vi = (int)faces[f][k];
             Vertex v{};
             v.px = pos[vi][0]; v.py = pos[vi][1]; v.pz = pos[vi][2];
+            v.r = v.g = v.b = v.a = 1.0f;   // 顶点色默认白色（v{} 会把它们零初始化）
             v.nx = norms[f][0]; v.ny = norms[f][1]; v.nz = norms[f][2];
             v.u = (k == 1 || k == 2) ? 1.0f : 0.0f;
             v.v = (k >= 2) ? 1.0f : 0.0f;
@@ -394,14 +435,16 @@ bool D3DRenderer::CreateShaders() {
 
     if (SUCCEEDED(hr)) {
         // 全部属性放在同一个顶点缓冲 slot 0：
-        //   pos(0..11) nrm(12..23) uv(24..31) boneIdx uint4(32..47) weight float4(48..63)
-        // 蒙皮属性使用独立的 GPU 缓冲（kGpuVertex = 64 字节），避免 slot 1 的偏移一致性校验失败。
+        //   pos(0..11) nrm(12..23) uv(24..31) color RGBA(32..47) boneIdx uint4(48..63) weight float4(64..79)
+        // 蒙皮属性与顶点色合并进同一个 80 字节交错结构（kGpuVertex），
+        // 避免跨 slot 的偏移一致性校验失败。
         D3D11_INPUT_ELEMENT_DESC layout[] = {
             {"POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT,       0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,  0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
-            {"BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,  0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
         hr = device_->CreateInputLayout(layout, _countof(layout), vsBlob->GetBufferPointer(),
                                         vsBlob->GetBufferSize(), &inputLayout_);
@@ -586,14 +629,22 @@ bool D3DRenderer::SetModel(const ModelData& model) {
 
     // 顶点缓冲：把 av::Vertex 与 av::SkinInfluences 合并成 64 字节 GPU 顶点
     std::vector<GpuVertex> gpuVerts(vertexCount_);
-    const bool hasSkin = !model.skin.empty() && model.skin.size() == mesh.vertices.size();
+    // 注意：skin 数组只对**带蒙皮的子网格**追加（见 glb_loader.cpp:1302），
+    // 所以当一个模型既有蒙皮部件又有非蒙皮部件时，
+    //     model.skin.size() < mesh.vertices.size()
+    // 是正常的。旧条件要求两者**严格相等**，于是这类模型（实测「Pirate Captain」7511 顶点 vs
+    // 6957 个蒙皮影响）被整体判为静态网格：顶点权重全填 0，着色器跳过蒙皮，
+    // 动画数据完全正确却一动不动。正确判据是"skin 至少覆盖到用到的顶点"，
+    // 超出的顶点按权重 0 处理（着色器 wsum 门控会自然地不蒙皮）。
+    const bool hasSkin = !model.skin.empty() && model.skin.size() <= mesh.vertices.size();
     for (uint32_t i = 0; i < vertexCount_; ++i) {
         const Vertex& src = mesh.vertices[i];
         GpuVertex& dst = gpuVerts[i];
         dst.px = src.px; dst.py = src.py; dst.pz = src.pz;
         dst.nx = src.nx; dst.ny = src.ny; dst.nz = src.nz;
         dst.u = src.u;   dst.v = src.v;
-        if (hasSkin) {
+        dst.r = src.r; dst.g = src.g; dst.b = src.b; dst.a = src.a;
+        if (hasSkin && i < model.skin.size()) {
             const SkinInfluences& si = model.skin[i];
             for (int k = 0; k < 4; ++k) {
                 dst.boneIdx[k] = si.boneIndex[k];
@@ -659,9 +710,33 @@ bool D3DRenderer::SetModel(const ModelData& model) {
 
     // 纹理（预览小图）
     textureSrv_.assign(model.textures.size(), (ID3D11ShaderResourceView*)nullptr);
+    size_t srvOk = 0;
     for (size_t i = 0; i < model.textures.size(); ++i) {
         int w = 0, h = 0;
-        CreateTextureFromPreview(model.textures[i], &textureSrv_[i], &w, &h);
+        if (CreateTextureFromPreview(model.textures[i], &textureSrv_[i], &w, &h)) ++srvOk;
+    }
+
+    // 诊断（仅当 AV_RENDER_TRACE 指向一个文件路径时写一行，平时零开销）
+    if (::GetEnvironmentVariableW(L"AV_RENDER_TRACE", nullptr, 0) > 0) {
+        static FILE* sDiag = nullptr;
+        static bool sInit = false;
+        if (!sInit) {
+            sInit = true;
+            wchar_t p[MAX_PATH * 2] = {};
+            if (::GetEnvironmentVariableW(L"AV_RENDER_TRACE", p, MAX_PATH * 2) > 0) _wfopen_s(&sDiag, p, L"a");
+        }
+        if (sDiag) {
+            size_t withTex = 0;
+            for (size_t i = 0; i < materials_.size(); ++i) {
+                const int d = materials_[i].diffuseTex;
+                if (d >= 0 && (size_t)d < textureSrv_.size() && textureSrv_[(size_t)d]) ++withTex;
+            }
+            ::fprintf(sDiag, "SetModel name=%s verts=%u indices=%u subMeshes=%zu mats=%zu textures=%zu srvOk=%zu matsWithTex=%zu radius=%.4f center=(%.3f,%.3f,%.3f)\n",
+                      model.name.c_str(), vertexCount_, indexCount_, subMeshes_.size(), materials_.size(),
+                      model.textures.size(), srvOk, withTex, modelRadius_, modelCenter_[0],
+                      modelCenter_[1], modelCenter_[2]);
+            ::fflush(sDiag);
+        }
     }
 
     // 包围球
@@ -686,12 +761,20 @@ bool D3DRenderer::SetModel(const ModelData& model) {
         mx[0] = mx[1] = mx[2] = 1.0f;
     }
     for (int k = 0; k < 3; ++k) modelCenter_[k] = (mn[k] + mx[k]) * 0.5f;
-    float maxExt = 0.0f;
-    for (int k = 0; k < 3; ++k) {
-        const float e = (mx[k] - mn[k]) * 0.5f;
-        if (e > maxExt) maxExt = e;
+    // 真实包围球半径：AABB 8 个角到中心的最大距离。
+    // 旧实现用「AABB 最大半边 * 1.4142」，对细长模型会大出近 2 倍，
+    // 相机按它取景 → 模型在预览区里只占一半不到，看起来"没居中/显示不全"。
+    {
+        float r2 = 0.0f;
+        for (int c = 0; c < 8; ++c) {
+            const float dx = ((c & 1) ? mx[0] : mn[0]) - modelCenter_[0];
+            const float dy = ((c & 2) ? mx[1] : mn[1]) - modelCenter_[1];
+            const float dz = ((c & 4) ? mx[2] : mn[2]) - modelCenter_[2];
+            const float d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 > r2) r2 = d2;
+        }
+        modelRadius_ = (r2 > 1e-10f) ? std::sqrt(r2) : 1.0f;
     }
-    modelRadius_ = maxExt > 1e-5f ? maxExt * 1.4142f : 1.0f;
 
     stats_.drawCalls = (uint32_t)subMeshes_.size();
     stats_.triangles = indexCount_ / 3;
@@ -750,9 +833,21 @@ void D3DRenderer::SetSkinMatrices(const std::vector<float>* skinMatrices) {
     skinDirty_ = true;
 }
 
+// 取景距离基数：让半径 r 的球刚好填满画面所需距离的倍数。
+// 由 FitDistance() 在「视口尺寸已知」时用真实 FOV 算出并缓存到 fitDistBase_，
+// 视口尺寸未知（未 Resize 过）时退化为 40° 竖直 FOV。
+float D3DRenderer::FitDistance() const {
+    const float aspect = (width_ > 0 && height_ > 0) ? (float)width_ / (float)height_ : 1.0f;
+    const float halfV = 0.698f * 0.5f;                 // 竖直半 FOV = 20°
+    const float halfH = std::atan(std::tan(halfV) * aspect);
+    const float halfFov = (halfH < halfV) ? halfH : halfV;   // 取较窄的一侧，保证两轴都装得下
+    return modelRadius_ / std::sin(halfFov);
+}
+
 void D3DRenderer::UpdateCameraMatrices(float* outView, float* outProj, float* outViewProj) {
     const float r = modelRadius_;
-    const float dist = camera_.distance;
+    // distance=1.0 表示「刚好把包围球框满画面」，留 8% 边距。
+    const float dist = camera_.distance * FitDistance() * 1.08f;
     const float cx = modelCenter_[0] + camera_.target[0];
     const float cy = modelCenter_[1] + camera_.target[1];
     const float cz = modelCenter_[2] + camera_.target[2];
@@ -760,9 +855,9 @@ void D3DRenderer::UpdateCameraMatrices(float* outView, float* outProj, float* ou
     const float cp = std::cos(camera_.pitch), sp = std::sin(camera_.pitch);
     const float cyw = std::cos(camera_.yaw), syw = std::sin(camera_.yaw);
     const float eye[3] = {
-        cx + dist * r * cp * syw * 2.0f,
-        cy + dist * r * sp * 2.0f,
-        cz + dist * r * cp * cyw * 2.0f,
+        cx + dist * cp * syw,
+        cy + dist * sp,
+        cz + dist * cp * cyw,
     };
     const float at[3] = {cx, cy, cz};
     const float up[3] = {0.0f, 1.0f, 0.0f};
@@ -799,12 +894,15 @@ bool D3DRenderer::RenderFrame() {
     FrameCBData fcb{};
     std::memcpy(fcb.viewProj, viewProj, sizeof(viewProj));
     {
-        const float r = modelRadius_, d = camera_.distance;
+        // gEye 必须与 UpdateCameraMatrices 里的 eye 完全一致，否则 V 向量错 → 高光/双面法线翻转都会错。
+        const float r = modelRadius_;
+        const float dist = camera_.distance * FitDistance() * 1.08f;
         const float cp = std::cos(camera_.pitch), sp = std::sin(camera_.pitch);
         const float cyw = std::cos(camera_.yaw), syw = std::sin(camera_.yaw);
-        fcb.eye[0] = modelCenter_[0] + d * r * cp * syw * 2.0f;
-        fcb.eye[1] = modelCenter_[1] + d * r * sp * 2.0f;
-        fcb.eye[2] = modelCenter_[2] + d * r * cp * cyw * 2.0f;
+        fcb.eye[0] = modelCenter_[0] + camera_.target[0] + dist * cp * syw;
+        fcb.eye[1] = modelCenter_[1] + camera_.target[1] + dist * sp;
+        fcb.eye[2] = modelCenter_[2] + camera_.target[2] + dist * cp * cyw;
+        (void)r;
     }
     fcb.camDir[0] = 0; fcb.camDir[1] = 0; fcb.camDir[2] = 1;
     // 三光源：key 顶部前方 / fill 侧后 / rim 背后
@@ -828,7 +926,25 @@ bool D3DRenderer::RenderFrame() {
         if (SUCCEEDED(context_->Map(cbSkin_, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) {
             const size_t n = skinMatrices_.size() / 16;
             const size_t copyBones = n > (size_t)kMaxBones ? (size_t)kMaxBones : n;
-            std::memcpy(ms.pData, skinMatrices_.data(), copyBones * 16 * sizeof(float));
+            if (copyBones > 0) {
+                std::memcpy(ms.pData, skinMatrices_.data(), copyBones * 16 * sizeof(float));
+            } else {
+                // 没有蒙皮矩阵（静态网格，或动画尚未采样）时，cbuffer 里必须放**单位阵**，
+                // 不能留全 0：
+                //   - 全 0 矩阵会把每个顶点映射到原点 → 整个模型塌成一个点 → 屏幕上什么都没有
+                //     （实测「史蒂夫」这类带骨骼的模型非背景像素 = 0.00%）。
+                //   - 着色器里的哨兵判断是 gSkin[0][0][0] != -12345.0，而 -12345 从来没被写入过，
+                //     所以它挡不住全 0；这里把哨兵值真正写进 [0][0][0]，让 shader 明确跳过蒙皮
+                //     （wsum 门控是另一道保险，但骨骼模型的 wsum > 0，必须靠这一条）。
+                float* dst = (float*)ms.pData;
+                const size_t total = (size_t)kMaxBones * 16;
+                for (size_t i = 0; i < total; ++i) dst[i] = 0.0f;
+                for (size_t b = 0; b < (size_t)kMaxBones; ++b) {
+                    float* m = dst + b * 16;
+                    m[0] = m[5] = m[10] = m[15] = 1.0f;
+                }
+                dst[0] = -12345.0f;   // 哨兵：告诉 VS 不要做蒙皮
+            }
             context_->Unmap(cbSkin_, 0);
         }
         skinDirty_ = false;
@@ -899,7 +1015,12 @@ bool D3DRenderer::RenderFrame() {
 }
 
 bool D3DRenderer::Readback(std::vector<uint32_t>* outPixels, int* w, int* h) {
+    // 失败路径也要把 w/h 置成 0：旧实现只在末尾赋值，调用方拿到的是未初始化值，
+    // 会把栈上的垃圾当成尺寸去索引 → 崩溃/漏判。
+    if (w) *w = 0;
+    if (h) *h = 0;
     if (!outPixels || !rtTexture_ || !context_ || !device_) return false;
+    outPixels->clear();
     D3D11_TEXTURE2D_DESC td{};
     rtTexture_->GetDesc(&td);
     td.Usage = D3D11_USAGE_STAGING;

@@ -1,8 +1,9 @@
-﻿// texture.cpp —— 贴图解码 + 预览纹理烘焙（32px 盒式多级下采样）
+// texture.cpp —— 贴图解码 + 预览纹理烘焙（最长边 kPreviewMaxEdge 的盒式多级下采样）
 // OWNER: glb-loader
 #include "texture.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <utility>
@@ -12,7 +13,24 @@ namespace tex {
 
 namespace {
 
+// 进程级已烘焙预览图字节数（多个加载线程并发写，用原子量）
+std::atomic<size_t> gPreviewBytes{0};
+
 inline float Clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+
+// 依据剩余预算决定本次烘焙的最长边：预算充足用 kPreviewMaxEdge，
+// 逼近上限时逐级降到 128 / 64 / 32，保证不把内存吃穿。
+int PickMaxEdge() {
+    const size_t used = gPreviewBytes.load(std::memory_order_relaxed);
+    const size_t maxEdge = (size_t)kPreviewMaxEdge;
+    // 256x256x4 = 256KB
+    if (used + maxEdge * maxEdge * 4 <= kPreviewBudgetBytes) return kPreviewMaxEdge;
+    const int mid = std::max(32, kPreviewMaxEdge / 2);
+    if (used + (size_t)mid * (size_t)mid * 4 <= kPreviewBudgetBytes) return mid;
+    const int low = std::max(32, kPreviewMaxEdge / 4);
+    if (used + (size_t)low * (size_t)low * 4 <= kPreviewBudgetBytes) return low;
+    return 32;
+}
 
 // 2x2 平均下采样（硬件双线性的近似，速度快、不产生棋盘噪点）
 void Downsample2x(const unsigned char* src, int sw, int sh,
@@ -50,18 +68,19 @@ bool BakeFromBitmap(const img::Bitmap& src, TextureInfo* out) {
     }
     out->ok = true;
 
-    // 目标尺寸：最长边 32，保持长宽比；非常窄/扁的图至少 1px
+    // 目标尺寸：最长边按剩余预算取（默认 256），保持长宽比；非常窄/扁的图至少 1px
+    const int maxEdge = PickMaxEdge();
     int W = src.width, H = src.height;
     int dw, dh;
     if (W >= H) {
-        dw = std::min(kPreviewMaxEdge, W);
+        dw = std::min(maxEdge, W);
         dh = std::max(1, (int)std::lround((double)H * dw / (double)W));
     } else {
-        dh = std::min(kPreviewMaxEdge, H);
+        dh = std::min(maxEdge, H);
         dw = std::max(1, (int)std::lround((double)W * dh / (double)H));
     }
-    dw = std::min(dw, kPreviewMaxEdge);
-    dh = std::min(dh, kPreviewMaxEdge);
+    dw = std::min(dw, maxEdge);
+    dh = std::min(dh, maxEdge);
 
     // 多级 2x 下采样到接近目标尺寸，再单步缩放到目标（避免直接大跨度采样时的走样）
     img::Bitmap cur;
@@ -109,6 +128,7 @@ bool BakeFromBitmap(const img::Bitmap& src, TextureInfo* out) {
         }
     }
     out->baked = true;
+    gPreviewBytes.fetch_add(out->preview.size(), std::memory_order_relaxed);
     return true;
 }
 
@@ -205,6 +225,8 @@ void FallbackColorForName(const std::string& name, float outRGB[3]) {
     outRGB[1] = c[1];
     outRGB[2] = c[2];
 }
+
+size_t PreviewBytesInUse() { return gPreviewBytes.load(std::memory_order_relaxed); }
 
 } // namespace tex
 } // namespace av

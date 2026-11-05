@@ -154,6 +154,7 @@ struct MatShade {
 // 单三角形光栅（相机空间坐标，全部 z >= nearZ）
 // ---------------------------------------------------------------------------
 void RasterTri(const Camera& cam, const V3 cp[3], const V3 wn[3], const float uv[3][2],
+               const float vcolor[3][3],
                int matIdx, const ModelData& model, const std::vector<MatShade>& matColors,
                const Light lights[3], int W, int H, float* color, float* depth) {
     float sx3[3], sy3[3];
@@ -220,6 +221,12 @@ void RasterTri(const Camera& cam, const V3 cp[3], const V3 wn[3], const float uv
             float u = (w0 * uv[0][0] + w1 * uv[1][0] + w2 * uv[2][0]);
             float v = (w0 * uv[0][1] + w1 * uv[1][1] + w2 * uv[2][1]);
 
+            // 顶点色插值（COLOR_0）：Synty POLYGON 系列靠顶点色上色，
+            // 与 D3D 主预览保持同一套合成顺序：baseColor × 贴图 × 顶点色。
+            float vcr = w0 * vcolor[0][0] + w1 * vcolor[1][0] + w2 * vcolor[2][0];
+            float vcg = w0 * vcolor[0][1] + w1 * vcolor[1][1] + w2 * vcolor[2][1];
+            float vcb = w0 * vcolor[0][2] + w1 * vcolor[1][2] + w2 * vcolor[2][2];
+
             // 基础色
             float br = ms.r, bg = ms.g, bb = ms.b;
             if (tex) {
@@ -229,13 +236,32 @@ void RasterTri(const Camera& cam, const V3 cp[3], const V3 wn[3], const float uv
                 bg *= srgbDecode(tc[1]);
                 bb *= srgbDecode(tc[2]);
             }
-            // 退化情况：全黑材质 → 用兜底色
-            if (br + bg + bb < 0.02f) {
+            br *= srgbDecode(vcr);
+            bg *= srgbDecode(vcg);
+            bb *= srgbDecode(vcb);
+            // 退化情况：真正全黑（无任何色彩信息）→ 用兜底色
+            // 注意阈值必须极小：素材库里 123/371 个模型是「暗色皮革/金属」，
+            // 例如 Armor Leather 线性只有 (0.0106, 0.0043, 0.0007)，和为 0.0156。
+            // 原来阈值 0.02 会把这类真实暗材质整体替换成随机灰调色板，
+            // 用户看到的就是「没有材质/没有纹理」。
+            if (br + bg + bb < 0.0005f) {
                 float fb[3];
                 tex::FallbackColorForName(model.mesh.materials.empty() ? std::string("m")
                                                                        : model.mesh.materials[(size_t)std::max(0, matIdx)].name,
                                           fb);
                 br = srgbDecode(fb[0]); bg = srgbDecode(fb[1]); bb = srgbDecode(fb[2]);
+            }
+            // 自适应曝光（与 d3d_renderer 的 PSMain 保持一致）：
+            // 暗材质按亮度放大到目标亮度，色相与相对明暗原样保留，亮材质不动。
+            {
+                float lum = 0.2126f * br + 0.7152f * bg + 0.0722f * bb;
+                if (lum > 0.0005f && lum < 0.16f) {
+                    float gain = 0.16f / lum;
+                    if (gain > 24.0f) gain = 24.0f;
+                    br = std::min(1.0f, br * gain);
+                    bg = std::min(1.0f, bg * gain);
+                    bb = std::min(1.0f, bb * gain);
+                }
             }
 
             // 着色：法线朝向相机修正（双面）
@@ -409,7 +435,10 @@ bool RenderThumbnail(const ModelData& model, const ThumbOptions& optIn, std::vec
             continue;   // 近平面部分裁剪：缩略图相机距离远大于半径，实际不会触发
         }
         float uvs[3][2] = {{vs[0]->u, vs[0]->v}, {vs[1]->u, vs[1]->v}, {vs[2]->u, vs[2]->v}};
-        RasterTri(cam, cp, wn, uvs, triMat[t / 3], model, matColors, lights, W, H,
+        float vcols[3][3] = {{vs[0]->r, vs[0]->g, vs[0]->b},
+                             {vs[1]->r, vs[1]->g, vs[1]->b},
+                             {vs[2]->r, vs[2]->g, vs[2]->b}};
+        RasterTri(cam, cp, wn, uvs, vcols, triMat[t / 3], model, matColors, lights, W, H,
                   color.data(), depth.data());
     }
 

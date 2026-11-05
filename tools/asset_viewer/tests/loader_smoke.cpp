@@ -196,14 +196,21 @@ int main(int argc, char** argv) {
             st->verts += md.mesh.vertices.size();
             st->tris += md.mesh.indices.size() / 3;
 
+            // 注意：ToLocal/Utf8ToLocal 返回 std::string 临时量。原来在一行 printf 里
+            // 同时写 ToLocal(...).c_str() 与 Utf8ToLocal(md.error).c_str()，多个临时量的
+            // 析构时机与实参求值顺序都未指定 → 悬垂指针。在 /MD 下堆布局侥幸躲过，
+            // 切到 /MT（静态运行库，dist 用）就稳定崩在 Bird.glb（exit=0xC0000374 堆破坏）。
+            // 修法：先把临时量落到具名变量，保证 printf 期间存活。
+            const std::string localName = ToLocal(BaseNameNoExt(full));
+            const std::string localErr = md.error.empty() ? std::string() : Utf8ToLocal(md.error);
             std::printf("%-34s %7u tris %7u verts  m=%-2u b=%-3u c=%-3u t=%-4zu %7.2fms %s%s%s\n",
-                        ToLocal(BaseNameNoExt(full)).c_str(),
+                        localName.c_str(),
                         (unsigned)(md.mesh.indices.size() / 3),
                         (unsigned)md.mesh.vertices.size(),
                         md.materialCount, md.boneCount, md.clipCount, md.textures.size(), dt,
                         ok ? "OK" : "FAIL",
-                        md.error.empty() ? "" : " | ",
-                        md.error.empty() ? "" : Utf8ToLocal(md.error).c_str());
+                        localErr.empty() ? "" : " | ",
+                        localErr.empty() ? "" : localErr.c_str());
             return ok;
         };
 
@@ -214,8 +221,9 @@ int main(int argc, char** argv) {
 
         auto report = [](const char* label, const Stat& s) {
             double avg = s.total > 0 ? s.totalMs / s.total : 0.0;
+            const std::string worst = ToLocal(s.worstFile);   // 具名，避免临时量悬垂
             std::printf("\n[%s] total=%d ok=%d fail=%d  avg=%.2fms worst=%.2fms (%s)  verts=%llu tris=%llu\n",
-                        label, s.total, s.ok, s.fail, avg, s.worstMs, ToLocal(s.worstFile).c_str(),
+                        label, s.total, s.ok, s.fail, avg, s.worstMs, worst.c_str(),
                         (unsigned long long)s.verts, (unsigned long long)s.tris);
         };
         report("GLB", sGlb);

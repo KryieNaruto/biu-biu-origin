@@ -130,6 +130,7 @@ private:
     void OnWorkerMessage(UINT msg, WPARAM wp, LPARAM lp);
     void ApplyWorkerData();
     void RebuildFilter();
+    void ScrollToFilteredIndex(int fi);
     void SelectItem(int index);
     void SelectByOffset(int delta);
     void LoadDetailFor(int itemIndex);
@@ -256,8 +257,14 @@ private:
     bool   draggingScroll_ = false;
     float  scrollGrabY_ = 0.0f;
     bool   scrollbarVisible_ = false;
+    // 注意：scrollTrack_ 只在 DrawList() 里赋值。若点击早于首次绘制，它就是空的
+    // （全 0 矩形→Contains 永假，反而安全）；不要把它当成"已初始化"来用。
     Rect   scrollThumb_;
     Rect   scrollTrack_;
+
+    // 缩略图"孤儿暂存区"：kMsgThumbReady 早于 kMsgScanDone 到达时先存这里，
+    // ApplyWorkerData() 建好 items_ 后并回去（像素是取走即删的，丢了就要重算）。
+    std::vector<ThumbResult> pendingThumbs_;
 
     // 状态
     std::wstring statusText_;

@@ -33,12 +33,16 @@ namespace av {
 struct CameraState {
     float yaw = 0.61f;      // 弧度（绕 Y 轴）
     float pitch = 0.35f;    // 弧度（绕 X 轴）
-    float distance = 2.5f;  // 相对包围球半径的倍数
+    // distance 是「刚好把包围球框满」这一基准距离的倍数（见 D3DRenderer::FitDistance）。
+    // 必须与 FitDistance 的语义一致：FitDistance 已经包含了半径与 FOV，
+    // 所以 1.0 = 恰到好处的取景。旧值 2.5 会让默认视角缩到画面的 ~1/2.7，
+    // 这正是「模型没在正中心 / 显示不全」的观感来源（实测模型只占预览区 2.4%）。
+    float distance = 1.0f;
     float target[3] = {0, 0, 0};
     void Reset() {
         yaw = 0.61f;
         pitch = 0.35f;
-        distance = 2.5f;
+        distance = 1.0f;
         target[0] = target[1] = target[2] = 0.0f;
     }
 };
@@ -117,6 +121,7 @@ private:
     bool CreateTextureFromPreview(const TextureInfo& tex, ID3D11ShaderResourceView** out, int* w, int* h);
     void BuildFallbackGeometry();
     void ComputeBounds();
+    float FitDistance() const;
     void UpdateCameraMatrices(float* outView, float* outProj, float* outViewProj);
 
 private:

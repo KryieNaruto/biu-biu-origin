@@ -630,8 +630,16 @@ void SampleTRS(const TrackSampler& s, double t, float out[4], bool* has) {
 }
 
 void NormalizeName(std::string* s) {
-    // 去掉 FBX2glTF 常见的 "Armature|Armature|Armature|Idle" 前缀重复，保留最后一节并去重
-    // 例："CharacterArmature|CharacterArmature|CharacterArmature|Idle" → "Idle"
+    // FBX2glTF 导出的动画名有两类脏数据，都要处理：
+    //
+    // ① 前缀重复："CharacterArmature|CharacterArmature|CharacterArmature|Idle"
+    //    → 真正的名字在最后一个非空段。
+    //
+    // ② **80 字符硬截断**（FBX 的帧名长度限制留下的）：源名字被砍到 80 字符，
+    //    再被 FBX2glTF 拼成 "…|Death|CharacterArmature|Dea"，最后的 "Dea" 是残段。
+    //    实测 Anne.glb 的全部 14 条 clip 名字都恰好 81 字符，最后一段全是垃圾：
+    //    Death→"Dea"、Punch→"Pun"、Sword→"Swo"、HitReact→""。
+    //    因此不能盲取最后一段 —— 要么取「中间那个完整段」，要么干脆不取。
     std::vector<std::string> parts;
     size_t start = 0;
     while (true) {
@@ -643,11 +651,51 @@ void NormalizeName(std::string* s) {
         parts.push_back(s->substr(start, pos - start));
         start = pos + 1;
     }
-    if (parts.size() > 1) {
-        std::string last = parts.back();
-        if (!last.empty()) *s = last;
+    if (parts.size() <= 1) {
+        if (s->empty()) *s = "clip";
+        return;
+    }
+
+    // 骨架/角色根节点名：这类段是 FBX2glTF 的前缀噪音，不是动画名
+    auto isNoise = [](const std::string& p) -> bool {
+        if (p.empty()) return true;
+        static const char* kNames[] = {"CharacterArmature", "Armature", "Root", "Skeleton",
+                                       "Scene", "Object", "Mixamo", "Hips"};
+        for (const char* n : kNames) {
+            if (p == n) return true;
+        }
+        // 以 Armature 结尾的都当噪音（CharacterArmature / GameArmature …）
+        if (p.size() > 8 && p.compare(p.size() - 8, 8, "Armature") == 0) return true;
+        return false;
+    };
+
+    // 候选：所有非噪音段。取中间那一段——它才是原始动画名，
+    // 没有被 80 字符限制切过（切到的是最后拼接上去的那一段）。
+    const size_t last = parts.size() - 1;
+    for (size_t i = 0; i < last; ++i) {
+        if (isNoise(parts[i])) continue;
+        *s = parts[i];
+        return;
+    }
+    // 全部是噪音或为空：退回原串（不要切成残段）
+    for (size_t i = parts.size(); i > 0; --i) {
+        if (!parts[i - 1].empty() && !isNoise(parts[i - 1])) {
+            *s = parts[i - 1];
+            return;
+        }
     }
     if (s->empty()) *s = "clip";
+}
+
+// 去掉 Blender 风格的重复后缀 ".001" / ".002" …（Anne 的 36 条 clip 里有一半是这种）
+void StripDupSuffix(std::string* s) {
+    size_t dot = s->rfind('.');
+    if (dot == std::string::npos || dot + 1 >= s->size()) return;
+    for (size_t i = dot + 1; i < s->size(); ++i) {
+        if (!std::isdigit((unsigned char)(*s)[i])) return;
+    }
+    if (dot == 0) return;
+    s->resize(dot);
 }
 
 } // namespace
@@ -1171,6 +1219,15 @@ bool LoadGLB(const std::string& utf8Path, ModelData* out) {
             int ui = uJ->integer(-1);
             if (ui >= 0 && (size_t)ui < accCount) ReadAccessor(ctx, ui, &uv, &uvNc);
         }
+        // 顶点色 COLOR_0：Synty POLYGON 系列大量模型不放贴图、颜色烘在顶点上。
+        // glTF 允许 VEC3 或 VEC4，且可以是 float / ubyte normalized / ushort normalized；
+        // ReadAccessor 统一按 float 读出（与 NORMAL/TEXCOORD 同一路径），此处只处理通道数。
+        std::vector<float> vcol;
+        int vcolNc = 0;
+        if (const JsonValue* cJ = attr->get("COLOR_0")) {
+            int ci = cJ->integer(-1);
+            if (ci >= 0 && (size_t)ci < accCount) ReadAccessor(ctx, ci, &vcol, &vcolNc);
+        }
         // 骨骼权重
         std::vector<float> joints, weights;
         int jNc = 0, wNc = 0;
@@ -1318,6 +1375,15 @@ bool LoadGLB(const std::string& utf8Path, ModelData* out) {
             } else {
                 v.u = v.v = 0.0f;
             }
+            // 顶点色：无色则填白色（乘法单位元，着色器可直接 base *= vColor）
+            v.r = v.g = v.b = v.a = 1.0f;
+            if (vcolNc >= 3 && (k * (size_t)vcolNc + 2) < vcol.size()) {
+                v.r = vcol[k * (size_t)vcolNc + 0];
+                v.g = vcol[k * (size_t)vcolNc + 1];
+                v.b = vcol[k * (size_t)vcolNc + 2];
+                if (vcolNc >= 4 && (k * (size_t)vcolNc + 3) < vcol.size())
+                    v.a = vcol[k * (size_t)vcolNc + 3];
+            }
             md.mesh.vertices.push_back(v);
 
             if (sb.hasSkin) {
@@ -1413,6 +1479,8 @@ bool LoadGLB(const std::string& utf8Path, ModelData* out) {
             Clip clip;
             clip.name = anim.get("name") ? anim.get("name")->string("") : std::string("clip" + std::to_string(ai));
             NormalizeName(&clip.name);
+            StripDupSuffix(&clip.name);
+            if (clip.name.empty()) clip.name = "clip" + std::to_string(ai);
             clip.tracks.resize(md.bones.size());
 
             const JsonValue* chans = anim.get("channels");

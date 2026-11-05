@@ -212,7 +212,9 @@ void TestD3D(const std::string& outDir) {
     r.Zoom(120.0f);
     Check(r.GetCamera().distance < c0.distance, "滚轮放大减小距离");
     r.ResetCamera();
-    CheckNear(r.GetCamera().distance, 2.5f, 1e-3f, "复位相机");
+    // distance 是「刚好框满包围球」这一基准距离的倍数（见 D3DRenderer::FitDistance），
+    // 默认 1.0 = 恰到好处的取景。旧断言钉的是 2.5（把模型缩到画面的 1/2.7，观感"显示不全"）。
+    CheckNear(r.GetCamera().distance, 1.0f, 1e-3f, "复位相机");
 
     const bool drew = r.RenderFrame();
     Check(drew, "RenderFrame 成功");

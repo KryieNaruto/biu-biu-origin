@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <shlobj.h>
 #include <shellapi.h>
 #include <shobjidl.h>
@@ -198,12 +199,27 @@ bool ViewerApp::Initialize(HINSTANCE hInstance, const std::wstring& cliRoot) {
         fatalError_ = L"素材目录不存在：" + root;
     }
 
-    // 缓存目录：<exe目录>/cache
-    wchar_t exePath[MAX_PATH] = {0};
-    ::GetModuleFileNameW(hInstance_, exePath, MAX_PATH);
-    std::wstring exeDir = avu::ParentDir(exePath);
-    if (exeDir.empty()) exeDir = L".";
-    cacheDir_ = exeDir + L"\\cache";
+    // 缓存目录：%LOCALAPPDATA%\BiuBiuAssetViewer\cache
+    // 注意：**不要**放在 exe 旁边。放在 dist\ 里会让「绿色版」目录被缩略图缓存污染
+    // （实测约 40MB），拷给别人时也要连缓存一起带；而缓存本来就是可随时重建的派生物。
+    {
+        wchar_t* localAppData = nullptr;
+        size_t n = 0;
+        if (::_wdupenv_s(&localAppData, &n, L"LOCALAPPDATA") == 0 && localAppData) {
+            cacheDir_ = std::wstring(localAppData) + L"\\BiuBiuAssetViewer\\cache";
+            std::free(localAppData);
+        }
+        // 回退：万一没有 LOCALAPPDATA，落到 %TEMP%
+        if (cacheDir_.empty()) {
+            wchar_t* tmp = nullptr;
+            size_t tn = 0;
+            if (::_wdupenv_s(&tmp, &tn, L"TEMP") == 0 && tmp) {
+                cacheDir_ = std::wstring(tmp) + L"\\BiuBiuAssetViewer\\cache";
+                std::free(tmp);
+            }
+        }
+        if (cacheDir_.empty()) cacheDir_ = L".\\av_cache";
+    }
 
     StartScan(root);
     LayoutChanged();
@@ -406,6 +422,7 @@ void ViewerApp::StartScan(const std::wstring& root) {
     }
     items_.clear();
     filtered_.clear();
+    pendingThumbs_.clear();
     selectedItem_ = -1;
     selectedFiltered_ = -1;
     scrollY_ = 0.0f;
@@ -438,6 +455,9 @@ void ViewerApp::OnWorkerMessage(UINT msg, WPARAM wp, LPARAM lp) {
         scanDone_ = true;
         scanTotal_ = worker_->Total();
         scanMs_ = worker_->ScanMs();
+        // 扫描线程一旦结束，缩略图线程立刻开始生产（缓存命中时几毫秒内就能出一批），
+        // 这些 kMsgThumbReady 可能早于 kMsgScanDone 被处理。此时 items_ 还是空的，
+        // 那批缩略图只好进"孤儿暂存区"，等这里建好表格后并回去，避免无谓的重算。
         ApplyWorkerData();
         return;
     }
@@ -465,7 +485,18 @@ void ViewerApp::OnWorkerMessage(UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == kMsgThumbReady) {
         const size_t idx = (size_t)wp;
-        if (idx >= items_.size()) return;
+        // items_ 还没建好（kMsgScanDone 尚未处理）时，缩略图也可能已经好了。
+        // 旧实现直接 return，把像素连同 TakeThumb 权限一起丢掉，结果卡片永远停在"生成中…"。
+        // 这里先取回来放进暂存区，ApplyWorkerData() 建表时会并回去。
+        if (idx >= items_.size()) {
+            ThumbResult tr;
+            if (worker_->TakeThumb(idx, &tr) && tr.width > 0 && tr.height > 0 &&
+                tr.pixels.size() >= (size_t)tr.width * tr.height) {
+                if (pendingThumbs_.size() <= idx) pendingThumbs_.resize(idx + 1);
+                pendingThumbs_[idx] = std::move(tr);
+            }
+            return;
+        }
         ThumbResult tr;
         if (worker_->TakeThumb(idx, &tr) && tr.width > 0 && tr.height > 0 &&
             tr.pixels.size() >= (size_t)tr.width * tr.height) {
@@ -499,6 +530,17 @@ void ViewerApp::OnWorkerMessage(UINT msg, WPARAM wp, LPARAM lp) {
 void ViewerApp::ApplyWorkerData() {
     if (!worker_) return;
     const size_t n = worker_->Count();
+    // 重建 items_ 时必须先释放旧的设备相关位图（每个 ListItem 都持有 ID2D1Bitmap* 裸指针），
+    // 否则这里既泄漏 D2D 位图，又留下旧尺寸的缩略图：
+    // 缩略图 worker 已把像素交给 UI，重建后 thumbPixels 为空且不会再发一次 kMsgThumbReady，
+    // 结果列表里整片卡片永远停在占位图上。
+    for (size_t i = 0; i < items_.size(); ++i) {
+        if (items_[i].thumbBitmap) {
+            items_[i].thumbBitmap->Release();
+            items_[i].thumbBitmap = nullptr;
+        }
+    }
+    // 重建 items_ 会丢掉已经到达的缩略图像素 → 重建后逐条重新取回（见下面 TakeThumb）
     items_.clear();
     items_.resize(n);
     for (size_t i = 0; i < n; ++i) {
@@ -525,7 +567,32 @@ void ViewerApp::ApplyWorkerData() {
                 it.clipNames.push_back(avu::Wide(meta.clipNames[c]));
         }
         it.thumbState = worker_->GetThumbState(i);
+        // 优先用"孤儿暂存区"里已经到达的像素（kMsgThumbReady 早于 kMsgScanDone 的情形）
+        if (i < pendingThumbs_.size() && pendingThumbs_[i].width > 0) {
+            it.thumbPixels.swap(pendingThumbs_[i].pixels);
+            it.thumbW = pendingThumbs_[i].width;
+            it.thumbH = pendingThumbs_[i].height;
+            pendingThumbs_[i] = ThumbResult();
+            continue;
+        }
+        // 缩略图可能在 kMsgScanDone 之前就已生成完（缓存命中时是毫秒级），
+        // 而像素是"取走即删"的：重建前若已经取走过，重建后就再也拿不到，
+        // 卡片会永远停在"生成中…"。这里把它重新要回来。
+        if (it.thumbState != kThumbPending) {
+            ThumbResult tr;
+            it.thumbPixels.clear();
+            if (worker_->TakeThumb(i, &tr) && tr.width > 0 && tr.height > 0 &&
+                tr.pixels.size() >= (size_t)tr.width * tr.height) {
+                it.thumbPixels.swap(tr.pixels);
+                it.thumbW = tr.width;
+                it.thumbH = tr.height;
+            } else if (it.thumbState == kThumbReady) {
+                // 像素已被取走（上一轮 items_ 里）→ 重建后会丢，标回 pending 让 worker 重发
+                it.thumbState = kThumbPending;
+            }
+        }
     }
+    pendingThumbs_.clear();
     RebuildFilter();
 
     // 优先生产当前可见区域的缩略图
@@ -567,8 +634,27 @@ void ViewerApp::RebuildFilter() {
         selectedFiltered_ = 0;
         LoadDetailFor(selectedItem_);
     }
-    scrollY_ = 0.0f;
+    // 注意：这里**不要**重置 scrollY_。
+    // RebuildFilter 会在三处被调用：① 扫描完成 ② 每次改搜索词 ③ ApplyWorkerData。
+    // 旧实现在这里无条件 scrollY_ = 0，于是「用户滚动 → 后台扫描/元数据回来 → 视图跳回顶部」，
+    // 而 D2D 只在收到 InvalidateRect 后重绘，中间那一帧屏幕上还是旧的卡片位置，
+    // 于是点击命中的是 HitTestItem 用「新 scrollY_=0」算出来的条目，而不是屏幕上看到的那张卡。
+    // 滚动位置归零只应发生在真正换数据源的时候（StartScan）。
+    ClampScroll();
     if (layoutValid_) scrollbarVisible_ = ContentHeight() > layout_.list.H();
+}
+
+void ViewerApp::ScrollToFilteredIndex(int fi) {
+    if (!layoutValid_ || layout_.columns < 1 || fi < 0) return;
+    const float rowH = RowHeight();
+    if (rowH < 1) return;
+    const int row = fi / layout_.columns;
+    const float top = row * rowH;
+    const float viewH = layout_.list.H();
+    // 目标行整体不在可视区时才滚动，避免每次选中都抖一下
+    if (top < scrollY_) scrollY_ = top;
+    else if (top + RowHeight() > scrollY_ + viewH) scrollY_ = top + RowHeight() - viewH;
+    ClampScroll();
 }
 
 void ViewerApp::SelectItem(int itemIndex) {
@@ -577,14 +663,11 @@ void ViewerApp::SelectItem(int itemIndex) {
     selectedItem_ = itemIndex;
     SyncHighlightToSelection();
     // 保证可见：滚动到选中项
-    if (selectedFiltered_ >= 0 && layoutValid_) {
-        const Rect r = CellRect(selectedFiltered_);
-        const float top = layout_.list.t + kPad * scale_;
-        const float bottom = layout_.list.b - kPad * scale_;
-        if (r.t < top) scrollY_ -= (top - r.t);
-        else if (r.b > bottom) scrollY_ += (r.b - bottom);
-        ClampScroll();
-    }
+    // 旧实现用 CellRect(selectedFiltered_) 拿到的是**已经减过 scrollY_ 的屏幕坐标**，
+    // 再用它去和 layout_.list.t/b 比较并调整 scrollY_，等于拿平移后的坐标去算平移量，
+    // 方向合法但每次都会多滚/少滚，目视就是"选中后列表位置乱跳"。
+    // 这里改成用行号算，不依赖屏幕坐标。
+    if (selectedFiltered_ >= 0) ScrollToFilteredIndex(selectedFiltered_);
     LoadDetailFor(itemIndex);
     ::InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -819,13 +902,16 @@ void ViewerApp::EnsureThumbBitmaps() {
 // 绘制
 // ===========================================================================
 void ViewerApp::Render() {
-    // 一次性诊断（仅在 AV_UI_TRACE 环境变量存在时写文件）
+    // 可选诊断：只有把 AV_UI_TRACE 设成一个**文件路径**时才写，平时一行日志都不产生。
+    // 这样既保留了排障能力，又不会在用户工作目录里凭空多出日志文件。
     static int sTrace = -1;
     static FILE* sLog = nullptr;
     if (sTrace < 0) {
-        wchar_t env[8] = {};
-        sTrace = ::GetEnvironmentVariableW(L"AV_UI_TRACE", env, 8) > 0 ? 1 : 0;
-        if (sTrace && !sLog) ::fopen_s(&sLog, "av_ui_trace.log", "w");
+        wchar_t env[MAX_PATH * 2] = {};
+        const DWORD n = ::GetEnvironmentVariableW(L"AV_UI_TRACE", env, MAX_PATH * 2);
+        sTrace = (n > 0) ? 1 : 0;
+        if (sTrace) _wfopen_s(&sLog, env, L"w");
+        if (!sLog) sTrace = 0;
     }
     auto TR = [&](const char* what, long long a, long long b) {
         if (!sLog) return;
@@ -1000,15 +1086,6 @@ bool ViewerApp::SaveScreenshot(const std::wstring& pngPath) {
 }
 
 bool ViewerApp::RunCaptureMode(const std::wstring& pngPath) {
-    FILE* log = nullptr;
-    ::fopen_s(&log, "av_ui_trace.log", "w");
-    auto LOG = [&](const char* s, int a) {
-        if (!log) return;
-        ::fprintf(log, "%s %d\n", s, a);
-        ::fflush(log);
-    };
-    LOG("enter", 0);
-
     int sw = ::GetSystemMetrics(SM_CXSCREEN);
     int sh = ::GetSystemMetrics(SM_CYSCREEN);
     if (sw < 1200) sw = 1200;
@@ -1016,14 +1093,13 @@ bool ViewerApp::RunCaptureMode(const std::wstring& pngPath) {
     const int ww = (sw * 3) / 5;
     const int wh = (sh * 3) / 4;
     ::MoveWindow(hwnd_, (sw - ww) / 2, (sh - wh) / 2, ww, wh, TRUE);
-    LOG("moved", ww);
 
     const DWORD kDeadline = ::GetTickCount() + 12000;
     int frames = 0;
     while (::GetTickCount() < kDeadline) {
         MSG msg;
         while (::PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) { LOG("quit", frames); if (log) ::fclose(log); return false; }
+            if (msg.message == WM_QUIT) return false;
             ::TranslateMessage(&msg);
             ::DispatchMessageW(&msg);
         }
@@ -1031,10 +1107,7 @@ bool ViewerApp::RunCaptureMode(const std::wstring& pngPath) {
         ++frames;
         ::Sleep(16);
     }
-    LOG("pumped", frames);
     const bool ok = SaveScreenshot(pngPath);
-    LOG("shot", ok ? 1 : 0);
-    if (log) ::fclose(log);
     return ok && frames > 10;
 }
 
@@ -1493,10 +1566,14 @@ LRESULT CALLBACK ViewerApp::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         CREATESTRUCTW* cs = (CREATESTRUCTW*)lp;
         self = (ViewerApp*)cs->lpCreateParams;
         ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)self);
-    } else {
-        self = (ViewerApp*)::GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        // 创建期消息必须整个交给 DefWindowProcW：此时 hwnd_ 还没有被 CreateWindowExW 的返回值
+        // 赋值，若冒进 HandleMessage 会在空句柄上操作，导致窗口创建失败（表现为 errno=1400）。
+        if (self) self->hwnd_ = hwnd;
+        return ::DefWindowProcW(hwnd, msg, wp, lp);
     }
-    if (self) return self->HandleMessage(msg, wp, lp);
+    self = (ViewerApp*)::GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    // 只有 hwnd_ 已经指向本窗口时才走自定义消息处理
+    if (self && self->hwnd_ == hwnd) return self->HandleMessage(msg, wp, lp);
     return ::DefWindowProcW(hwnd, msg, wp, lp);
 }
 
