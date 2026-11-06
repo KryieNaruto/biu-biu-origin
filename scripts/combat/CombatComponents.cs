@@ -1,6 +1,7 @@
 using System;
 using Game.Core;
 using Game.Core.Ecs;
+using NVector3 = System.Numerics.Vector3;
 
 namespace Game.Combat;
 
@@ -133,6 +134,38 @@ public struct ProjectileState
     /// <summary>已命中/待销毁标记：置位后不再参与命中判定。</summary>
     public bool Spent;
 
+    // ── 以下四个是「弹道运动学」的运行时状态（见 ProjectileMotion） ──
+    // 为什么把运动参数放组件而不是每次查契约：弹道系统每固定步都要求值一次，
+    // 而契约里的 ValueSet 解析要建 ValueContext、可能掷随机数（rand:），每步重算会让
+    // 「速度/角度」逐帧漂移 —— 随机项必须只在发射瞬间定一次。这不是缓存优化，是语义正确性。
+    //
+    // 与上面 hero-1 的弹道快照字段是**两组正交数据**，同组件共存、互不覆盖：
+    // · hero-1 那组是「命中/伤害链」要的自足快照（Speed/RangeMeters/Critical/WeaponId/
+    //   DamageType/Traveled/Spent），由 FireProjectileSkill 在开火瞬间填；
+    // · 下面这组是「运动学」要的轨迹参数（Motion/HomingTurn/Gravity/BaseSpeed/Age/
+    //   LaunchDirection），由 ContentSpawner 在铸发射瞬间按契约填。
+    // 走契约铸造的子弹两组都会填；走 FireProjectileSkill 的子弹只有上一组，Motion 保持 0
+    // （= Straight），运动学自然退化为匀速直线，不需要分支判断。
+    // 注意 `Speed`（hero-1，标量，方向来自 Transform3.Rotation）与 `BaseSpeed`（本组，
+    // 发射瞬间基准速率，供 Wave/Spiral 做加减）语义不同，不可合并。
+
+    /// <summary>本步的运动学（发射瞬间由契约拷入；契约被热重载也不会让在飞的子弹改变轨迹）。</summary>
+    public byte Motion;
+
+    /// <summary>追踪转速（度/秒，仅 Homing 用）。</summary>
+    public float HomingTurn;
+
+    /// <summary>重力加速度（米/秒²，仅 Falling 用；负值 = 向下）。</summary>
+    public float Gravity;
+
+    /// <summary>发射瞬间的基准速率（米/秒）——所有运动学围着它做加减，改动它等于改「弹速」。</summary>
+    public float BaseSpeed;
+
+    /// <summary>已飞行时长（秒）；Wave / Orbit / Spiral 用它算相位，Anchor 用它算淡出。</summary>
+    public float Age;
+
+    /// <summary>发射瞬间的朝向（Wave / Boomerang / Spiral 需要「原始轴」才能绕行，转向后仍要用）。</summary>
+    public NVector3 LaunchDirection;
 }
 
 /// <summary>

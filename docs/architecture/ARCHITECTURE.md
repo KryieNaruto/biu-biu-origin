@@ -1793,10 +1793,13 @@ data/excel/
 
 | 明确不做 | 归属 |
 |---|---|
-| 碰撞检测 / 空间划分 / BVH、伤害结算、命中特效、击退 | **游戏逻辑**，下一任务；本轮 `ProjectileAdvanceSystem` 只做位置积分 + 寿命，`Explode`/`SpawnEffect` 到期行为**显式返回"未实现"并计入 `RejectCount`**，不静默吞 |
+| 碰撞检测 / 空间划分 / BVH、伤害结算、命中特效、击退 | **游戏逻辑**，下一任务；`ProjectileAdvanceSystem` 只做运动学积分 + 寿命，`Explode`/`SpawnEffect` 到期行为**显式返回"未实现"并计入 `RejectCount`**，不静默吞 |
 | Node 视图池与 `ViewRegistry` 绑定（"对象池减少 Node GC"的 Node 侧） | 宿主层任务 |
 | 武器法力消耗列（`Weapons.ManaCost`） | ⚠️ 已知退化：`CastSystem` 暂以 `weapon.Count` 求值代替门控，表补列后改一行 |
 | `Objects.ClusterWeight` 之外的分项权重（按 tag 加权的复杂熔炉） | 扩展点：`ForgeRules` 只吃加权数组，加权重来源 = 换 `ClusterCandidates` 的填充 |
+| **`WeaponDelivery` 的 Instant / Beam / Melee / Aura / Throw** | 目前只有 `Projectile` 与 `SpawnActor` 被 `EcsObjectFactory` 消费；其余五种投送方式**填了也不生效**，接它们属于命中判定（游戏逻辑） |
+| **`ProjectileHitPolicy` 的运行时结算** | 契约里 `Pierce`/`Bounce` 次数已被铸造进组件，但"命中后怎么扣"属碰撞/伤害结算，本轮无碰撞系统 |
+| **`WeaponFireSystem` 在 `DungeonDebugScene` 里的注册** | 系统与测试已就绪（7 条集成用例全绿），但关卡侧尚未装配：真实场景里还没有"手持武器"的实体，接它要等角色生成链路（`SpawnCharacter` 目前零调用点） |
 
 **约束**：① 契约层（`Game.Core.Content`）**零 `using Godot`、零上层依赖**；② 组件只存 int/值类型（J2），
 所有 id 在装配期解析成 int 槽位号；③ 铸造**只能**在系统循环里发生，结构化变更走队列/命令缓冲（J3/J5）；
@@ -1817,6 +1820,67 @@ data/excel/
 > （「每个 X 都必须能查到 Y」），也不要只写"负向会报错"用例。
 
 加载器**只产出 `ModelData`**，所以新增格式不会波及渲染与 UI —— 这是 §16.3 那条边界带来的收益。
+
+### 17.9 武器触发与弹道运动学（2026-11-05 补齐）
+
+`weapon` / `projectile` 契约在 §17 建立时只是**纸面契约**：`WeaponTrigger` 仅在 `ContentBinder`
+里被*解析*、从未被*消费*；`ProjectileAdvanceSystem` 只有一行 `position += velocity * dt`，
+于是 `combat.xlsx` 里 `Homing`/`Falling`/`Wave` 三种子弹**全部按直线飞**，`Gravity=9.8`
+与 `HomingTurn=rand:180+0.25` 是死数据。本节记录补齐后的形状。
+
+#### 17.9.1 开火：`WeaponTrigger` 有了唯一消费者
+
+| 触发方式 | 行为 | 关键实现点 |
+|---|---|---|
+| `Auto` | 按住即按 `FireDelay` 节奏连射 | 读 `HeldMask` |
+| `Semi` | 边沿触发，按住只打一发 | 只读 `PressedMask`（与 Auto 的唯一区别） |
+| `Burst` | 起手边沿，串内间隔由 `BurstInterval` | 串中再次按下不重置 |
+| `Charge` | 按住累积 `ChargeElapsed`，松开才发射 | 从未蓄力就松手 = 不发 |
+| `Hold` | 按住期间持续生效 | 供光束 / 护盾 |
+| `Triggered` / `Manual` | 不响应直接输入 | 返回 `NotInputDriven`，由事件/脚本调 |
+
+**分层**：`WeaponFireRules`（静态纯函数，只做判定）+ `WeaponValues`（`ValueSet` → 标量）+
+`WeaponFireSystem`（读组件 → 调规则 → 回写组件 → 投递 `CastRequest`）。
+把判定抽成纯函数是为了让"半自动按住只打一发"这类手感断言不必跑整个 `World` 就能验证。
+
+**状态归属**：冷却 `WeaponState.CooldownRemaining` 与蓄力 `ChargeElapsed` 本来就存在于组件中
+（此前无人维护），现在由 `WeaponFireSystem` 单一写入；`SkillCastSystem` 写的是 `SkillState`，
+两者不争抢（J1）。
+
+#### 17.9.2 弹道：8 种 `ProjectileMotion` 全部落地
+
+| 运动 | 实现 | 依赖 |
+|---|---|---|
+| `Straight` | 匀速直线 | — |
+| `Homing` | 限速转向（罗德里格斯公式，度/秒） | 需目标：`Query<Hurtbox, Transform3>` 最近者 |
+| `Orbit` | 绕发射者圆周 | 需 `Source` |
+| `Wave` | 沿原始轴前进 + 垂直正弦摆动 | `Age` |
+| `Boomerang` | 按 `Age` 权重朝发射者折返 | 需 `Source` |
+| `Falling` | 竖直方向叠加 `-Gravity × dt` | — |
+| `Spiral` | 轴向推进 + 侧向螺旋外扩 | `Age` |
+| `Anchor` | 原地不动（地雷 / 延时区域） | — |
+
+**约定**：①`Velocity` 是派生量，运动学负责写完它，下游只读；②`Gravity` 填**加速度大小**
+（表里 `9.8` = 下落 9.8 m/s²），方向由系统固定为 −Y；③依赖发射者/目标的运动在缺少
+对应实体时**退化为直线**（不是报错，也不是 NaN）。
+
+**运动参数在发射瞬间定一次**（`ContentSpawner` 写入 `ProjectileState` 的
+`Motion/HomingTurn/Gravity/BaseSpeed/Age/LaunchDirection`），而不是每步重算契约值——
+否则 `rand:` 随机项会让速度与角度逐帧漂移。
+
+#### 17.9.3 本轮踩到的 bug：struct 执行器写不回结果
+
+`ISpanAction` 的执行器是 **struct，按值传入 `Query.ForEach`**。我最初把追踪扫描的
+`Best`/`Found` 存在执行器自己身上，`Execute` 里改的是那份**副本**，调用方读到的
+永远是构造时的初值 → `TryFindHomingTarget` 恒返回 `false` → 追踪弹全部退化为直线，
+而**所有既有测试仍然全绿**（它们只用 `Straight`）。
+
+修法：把扫描结果存到**系统的字段**上（引用类型，跨调用可见），执行器只持有 `_owner`。
+`ProjectileAdvanceSystem` 里另有一处 `PendingDeath` 缓冲用的是同一思路（定长数组 + 计数）。
+
+> 教训与 §17.8 一致：**这类错误不抛异常，只会静默降级**。因此本轮的测试不写"不崩溃"，
+> 而是写"**行为必须不同**"——`DifferentMotions_ProduceDifferentTrajectories` 收集 8 种运动的落点，
+> 断言至少 6 条互不相同；哪个枚举值退化成直线，它会指名道姓地失败。
 
 ## 18. 第一个可玩人物（`test_hero`，2026-11-05 落地）
 
