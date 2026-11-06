@@ -32,6 +32,7 @@ internal static class Program
         int samplesCount = 6;
         bool benchMode = false;
         bool optionsMode = false;
+        bool propsMode = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -45,6 +46,9 @@ internal static class Program
                     break;
                 case "--options":
                     optionsMode = true;
+                    break;
+                case "--props":
+                    propsMode = true;
                     break;
                 case "--gallery" when i + 1 < args.Length:
                     if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out gallery))
@@ -77,6 +81,8 @@ internal static class Program
                     Console.WriteLine("  --map         只跑 2D 字符地图的连通性体检（栅格化 + BFS），并打印统计");
                     Console.WriteLine("  --gallery N   地图模式下额外打印前 N 张字符画");
                     Console.WriteLine("  --bench       只测「规划 + 栅格化 + 体检」单次耗时（调试面板拖滑条会不会卡）");
+                    Console.WriteLine("  --props       跑物件摆放体检（建筑/奖励/可破坏/不可破坏），验「摆完东西通路仍通」");
+                    Console.WriteLine("  --options     用 3D 实机那套 DungeonOptions 默认值跑（与 --map / --props 配合）");
                     return 0;
                 default:
                     Console.Error.WriteLine("未知参数: " + args[i]);
@@ -88,6 +94,12 @@ internal static class Program
         {
             Console.Error.WriteLine("--seeds 必须为正数。");
             return 2;
+        }
+
+        if (propsMode)
+        {
+            DungeonConfig dungeon = optionsMode ? DungeonOptionsDefaults() : BuildConfig();
+            return PropCheck.Run(seeds, new DungeonMapConfig(), new DungeonPropConfig(), dungeon, gallery);
         }
 
         if (benchMode)
@@ -374,9 +386,9 @@ internal static class Program
 
     private static DungeonConfig BuildConfig() => new DungeonConfig
     {
-        GridWidth = 9,
-        GridHeight = 24,
-        RoomSide = 3,
+        GridWidth = 13,
+        GridHeight = 30,
+        RoomSide = 4,
         StartRoomSide = 5,
         BossRoomSide = 5,
         TargetRoomCount = 9,

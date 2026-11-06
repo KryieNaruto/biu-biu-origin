@@ -270,9 +270,12 @@ try {
     # -----------------------------------------------------------------------
     if (-not $SkipDungeon) {
         $reportPath = Join-Path $RootFull 'tools\dungeon_check\report.md'
-        $argList = @('run', '--project', $DungeonCsproj, '-c', 'Release',
-                     '--', '--seeds', "$DungeonSeeds", '--out', $reportPath)
+        # ★ `--no-restore` 必须出现在 `--` **之前**：`--` 之后的参数会原样传给被测程序，
+        # 追加到末尾等于把它当成 dungeon_check 自己的开关，dotnet 照样去还原 ——
+        # 离线环境下 NuGet 还原会以 0xC0000005 崩溃，整步报一个看不出原因的退出码。
+        $argList = @('run', '--project', $DungeonCsproj, '-c', 'Release')
         if ($NoRestore) { $argList += '--no-restore' }
+        $argList += @('--', '--seeds', "$DungeonSeeds", '--out', $reportPath)
         $c = Invoke-Step -Name ('4/4 tools/dungeon_check (seeds=' + $DungeonSeeds + ')') -Exe 'dotnet' -ArgList $argList
         if ($c -ne 0 -and $failCode -eq 0) { $failCode = $c }
 
@@ -285,10 +288,10 @@ try {
         #   A green step 4 must mean "the game can open", so the shipped numbers get their
         #   own pass. --options mirrors DungeonOptions' *Default constants (see the comment
         #   on DungeonOptionsDefaults() in tools/dungeon_check/Program.cs).
-        $argList = @('run', '--project', $DungeonCsproj, '-c', 'Release',
-                     '--', '--options', '--seeds', "$DungeonSeeds",
-                     '--out', (Join-Path $RootFull 'tools\dungeon_check\report-options.md'))
+        $argList = @('run', '--project', $DungeonCsproj, '-c', 'Release')
         if ($NoRestore) { $argList += '--no-restore' }
+        $argList += @('--', '--options', '--seeds', "$DungeonSeeds",
+                      '--out', (Join-Path $RootFull 'tools\dungeon_check\report-options.md'))
         $c = Invoke-Step -Name ('4b/4 tools/dungeon_check --options (3D 实机默认值)') -Exe 'dotnet' -ArgList $argList
         if ($c -ne 0 -and $failCode -eq 0) { $failCode = $c }
     }

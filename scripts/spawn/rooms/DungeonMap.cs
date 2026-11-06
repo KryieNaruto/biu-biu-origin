@@ -154,8 +154,44 @@ public readonly struct DungeonMap
     /// <summary>构建参数快照（改这些值要重新生成）。</summary>
     public DungeonMapConfig Config { get; init; }
 
+    /// <summary>
+    /// 摆在地图上的**建筑 / 奖励 / 可破坏物体 / 不可破坏物体**（由 <see cref="DungeonPropPlanner"/> 产出）。
+    /// <para>
+    /// 单独一个数组而不是写进 <see cref="Kind"/>：物件是「地毯上的家具」，格子是「地毯本身」。
+    /// 混进 <see cref="Kind"/> 会让「这是什么地面」和「这上面有什么」两个问题纠缠在一起，
+    /// 而连通性检查、渲染、内容生成需要的恰恰是前者。
+    /// 物件占的格子**仍然是 <see cref="DungeonCellKind.Floor"/>** —— 想判断某格有没有东西，
+    /// 用 <see cref="PropAt"/>。
+    /// </para>
+    /// </summary>
+    public DungeonProp[] Props { get; init; }
+
     /// <summary>总格数。</summary>
     public int CellCount => Width * Height;
+
+    /// <summary>物件数量（没有物件时返回 0，不返回 null 异常）。</summary>
+    public int PropCount => Props?.Length ?? 0;
+
+    /// <summary>取某一格上的物件下标（没有则 -1）。</summary>
+    /// <param name="x">画布格 X。</param>
+    /// <param name="z">画布格 Z。</param>
+    /// <returns>物件在 <see cref="Props"/> 里的下标；无物件或越界时 -1。</returns>
+    public int PropAt(int x, int z)
+    {
+        if (Props is null || Props.Length == 0 || !Contains(x, z))
+        {
+            return -1;
+        }
+        for (int i = 0; i < Props.Length; i++)
+        {
+            DungeonProp prop = Props[i];
+            if (x >= prop.X && x < prop.Right && z >= prop.Z && z < prop.Bottom)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
 
     /// <summary>
     /// 布局坐标 → 地图坐标的列偏移（<c>mapX = layoutX + OriginX</c>）。
@@ -251,6 +287,20 @@ public readonly struct DungeonMap
                 ? Layout.Rooms[RoomSalt[i]]
                 : default;
             sb.Append(Kind[i].SymbolFor(in room));
+            // 物件**盖在地面符号之上**：`B`（建筑）`R`（奖励）`b`（可破坏）`o`（不可破坏）。
+            // 用字母而不是符号，是因为字符画要能直接粘到 issue / 日志里不串行。
+            int prop = PropAt(x, row);
+            if (prop >= 0)
+            {
+                sb[sb.Length - 1] = Props[prop].Kind switch
+                {
+                    DungeonPropKind.Building => 'B',
+                    DungeonPropKind.Reward => 'R',
+                    DungeonPropKind.Breakable => 'b',
+                    DungeonPropKind.Solid => 'o',
+                    _ => sb[sb.Length - 1],
+                };
+            }
         }
     }
 

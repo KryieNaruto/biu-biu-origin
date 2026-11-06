@@ -45,14 +45,48 @@ public partial class DungeonMap2DDebugScene : Godot.Control
     {
         string art = _view.ExportArt();
         bool ok = _view.HasMap && art.Length > 0;
+        // 物件分类计数直接从字符画里数：这样自检验证的是「玩家真正看到的那张图」，
+        // 而不是另外再查一遍数据结构（那只能证明数据对，证明不了画对）。
+        int buildings = 0;
+        int rewards = 0;
+        int breakables = 0;
+        int solids = 0;
+        for (int i = 0; i < art.Length; i++)
+        {
+            switch (art[i])
+            {
+                case 'B':
+                    buildings++;
+                    break;
+                case 'R':
+                    rewards++;
+                    break;
+                case 'b':
+                    breakables++;
+                    break;
+                case 'o':
+                    solids++;
+                    break;
+                default:
+                    break;
+            }
+        }
         string summary = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
-            "hasMap={0} size={1}x{2} artLength={3}",
+            "hasMap={0} size={1}x{2} artLength={3} props(B={4} R={5} b={6} o={7})",
             _view.HasMap,
             _view.MapWidth,
             _view.MapHeight,
-            art.Length);
+            art.Length,
+            buildings,
+            rewards,
+            breakables,
+            solids);
         GD.Print("[DungeonMap2D 自检] " + summary);
+        if (!ok)
+        {
+            GD.PushWarning("[DungeonMap2D 自检] 没拿到地图，字符画为空");
+        }
         using FileAccess file = FileAccess.Open("user://dungeon_map2d_selfcheck.txt", FileAccess.ModeFlags.Write);
         if (file is not null)
         {

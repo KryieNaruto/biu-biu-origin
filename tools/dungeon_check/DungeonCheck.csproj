@@ -35,6 +35,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="MapCheck.cs" />
     <Compile Include="MapSamples.cs" />
+    <Compile Include="PropCheck.cs" />
     <!-- 排除本工程自己的构建产物，避免 glob 回吞（主工程踩过这个坑）。 -->
     <Compile Remove="bin\**\*.cs" />
     <Compile Remove="obj\**\*.cs" />
