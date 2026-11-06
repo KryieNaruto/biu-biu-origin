@@ -1986,6 +1986,134 @@ E:\Godot\Godot_v4.7.2-stable_mono_win64_console.exe --path . --headless --quit-a
 1. `SpawnDirectorSystem` 给每颗子弹多挂一个 `View` 组件（组件种类上限已由 16 抬到 64，故未爆但仍在浪费）。
 2. 交叉准心只有一处（HUD Drawer 画的屏幕中心），`ViewOptions.CrosshairVisible` 默认 false。
 3. Excel ↔ C# 镜像的一致性**没有**自动化 `--verify`（靠 9 条回归用例钉住）。
-4. 四个 `kind=data` 技能仍是 `NullSkill` 占位。
+4. 四个 `kind=data` 技能仍是 `NullSkill` 占位（**冲刺已实现，见 §19**；剩切武器 Q / 大招 R / 交互 F 三个）。
 5. `Behavior/Action/Control` 三类 pack 只有数据、无系统消费（BehaviorSystem / spawn director 未落地）。
 6. Spreadsheet 是手写生成脚本 `tools/data_pipeline/gen_characters_xlsx.py`，尚未接 `data/generated/`。
+
+---
+
+## 19. 冲刺技能（`dash`，2026-11-06 落地）
+
+### 19.1 一句话结论
+
+冲刺不是一个"技能类内部存计时器"的小功能，而是一条**完整的 ECS 能力链**：
+数据行声明 `kind=dash` → 工厂造 `DashSkill` → 施放往命令缓冲排一条「给施放者挂 `DashState`」→ 帧末 `Flush` 真正挂上
+→ `DashSystem` 在 `FixedUpdate` 里把 `Velocity` 顶成冲刺速度并倒计时 → 到期摘组件、速度归零。
+**状态属于实体，不属于技能实例** —— 这是"同一技能包拼出四个变体"能成立的前提。
+
+### 19.2 分层落点
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| `Game.Core` | `StatId.DashSpeedMul = 1055`、`StatId.DashDuration = 1056` | 两个数值槽（追加区，不动既有号段） |
+| `Game.Core` | `Skills/ICommandSink.Add<T>` | **门面扩展**：技能给已存在实体挂组件。带默认实现，已有 sink 实现 0 改动 |
+| `Game.Actor` | `ActorComponents.DashState` | 冲刺的"定格值"：`Remaining` / `Duration` / `Direction` / `Speed` |
+| `Game.Actor` | `DashSystem`（`[Module("dash_impulse")]`, `FixedUpdate`） | 顶速度 + 倒计时 + 到期清理 |
+| `Game.Skill` | `DashSkill : ISkill` | 预检 + 施放（只发命令，不碰世界结构） |
+| `Game.Data` | `CharacterSkillSpec.KindDash` + `CharacterSkillSpecs.KnownKinds` | 数据层的种类词表 |
+| `Game.Host` | `ContentSkillFactory.KindDash` 分支 | 「种类 → 实现类」的唯一定义点 |
+| `Game.Host` | `CharacterSession` 注册 `DashSystem` | 组合根接线 |
+| 数据 | `characters.xlsx` `SkillLoads.Kind` + `StatPacks` 两行 | 唯一的真源 |
+
+### 19.3 为什么这样切（三个真实的设计取舍）
+
+**① 状态放组件，不放技能字段。**
+`SkillLoadout` 里的 `ISkill` 实例是**被多个角色共享**的（一个技能包可以拼给任意变体）。
+若把 `Remaining` 存在 `DashSkill` 的字段上，两个角色会互相覆盖计时器 —— 恰好毁掉规则7 的「拼接」能力。
+放组件后每个实体各自持有自己的冲刺状态，天然隔离。
+
+**② 方向与速度在开冲那一刻定格。**
+`DashState.Direction` / `Speed` 是快照，`DashSystem` 每帧只按它铺速度、**不重读瞄准**。
+否则鼠标抖动会让冲刺中途拐弯，手感变成"在冰上开车"。
+方向来源优先级：**移动意图 > 瞄准方向** —— 跑着按 Shift 顺着跑的方向加速（这是玩家想要的）；
+站着按则朝准心闪。速度 = `MoveSpeed × DashSpeedMul`，倍率让敏捷型自然冲得更远，不必逐变体填绝对值。
+
+**③ `CanCast` 与 `Cast` 都要门控。**
+契约规定 `SkillCastSystem` 先 `CanCast` 再 `Cast`，但 `Cast` 是公开 API（测试、AI、将来的连招系统都会直接调）。
+第一次实现时 `Cast` 只做了"数据有效性"检查，结果**冲刺中再施放会叠加一层 `DashState`**：
+速度翻倍、`Remaining` 重置成满值 = 无限速度。测试 `CanCast_WhileAlreadyDashing_IsRejected` 抓住了它。
+结论：**门控必须由能力自己兜底**，不能依赖调用方守规矩；`Cast` 开头再问一次 `CanCast`，并按原因返回
+`Cooldown` / `NoMana` / `TargetInvalid`。
+
+### 19.4 一帧里的顺序（为什么 DashSystem 必须在 MoveAim 之后）
+
+```
+PreUpdate    InputIntentSource → ActorIntentSystem → SkillCastSystem(CanCast→Cast→Commands.Add<DashState>)
+FixedUpdate  MoveAimSystem     写 Velocity（普通走动）
+             DashSystem        ← 若身上有 DashState，覆盖 Velocity 为冲刺速度
+             MovementSystem    Position += Velocity * dt
+CommandFlush Commands.Add<DashState> 落地 → 下一帧 DashSystem 才看得见
+```
+
+`DashSystem` 与 `MoveAimSystem` 的分工是**严格单向**的：MoveAim 读意图写速度，Dash 在它之后把速度顶掉。
+冲刺结束时**不需要任何复位代码** —— MoveAim 自然重新接管。但必须做一件事：
+**把 `Velocity` 清零再摘组件**，否则 `MovementSystem` 会继续按冲刺速度积分，角色像踩在冰上滑出好几米。
+这一条也是测试逼出来的：端到端位移 2.86m vs 理论 2.06m，多出来的 0.8m 就是滑行。
+
+### 19.5 数据（真源 `data/excel/characters.xlsx`）
+
+`SkillLoads`：1001 号冲刺行的 `Kind` 从 `data` 改为 `dash`（6 个技能包同时受益：4 个 hero 变体 + `player_kit` + `chosen_kit`）。
+冷却/消耗仍是各自的行值（hero 1.2s / 8 法力）。
+
+`StatPacks` 每变体追加两行：
+
+| 变体 | `DashSpeedMul` | `DashDuration` | 冲刺距离（移速 × 倍率 × 时长） |
+|---|---|---|---|
+| `test_hero`（标准） | 2.2 | 0.18s | 5.2 × 2.2 × 0.18 ≈ **2.06 m** |
+| `test_hero_tank`（重甲） | 1.8 | 0.22s | 3.6 × 1.8 × 0.22 ≈ **1.43 m** |
+| `test_hero_agile`（敏捷） | 2.8 | 0.16s | 7.4 × 2.8 × 0.16 ≈ **3.32 m** |
+| `test_hero_lucky`（幸运） | 2.4 | 0.18s | 5.4 × 2.4 × 0.18 ≈ **2.33 m** |
+| `chosen_base`（怪物天选者） | 2.0 | 0.20s | 4.8 × 2.0 × 0.20 ≈ **1.92 m** |
+
+**同一个 `DashSkill` 类、同一行技能数据，四个变体冲出四种手感** —— 这是 §18.6「加变体只改 1 个文件」
+在"能力"维度上的兑现：冲刺参数没有新增任何 Excel 列。
+
+### 19.6 扩展成本（规则 7 实操核对，本次实测）
+
+| 我想做 | 要改的文件 | 数量 |
+|---|---|---|
+| 让某个变体冲得更远 | `characters.xlsx` 改一个 `DashDuration` 数值 | **1** |
+| 给新变体加冲刺 | 技能包 1 行（`Kind=dash`）+ 数值包 2 行 | **1** |
+| 加一种新的"有时限状态"技能（如翻滚无敌帧） | 新 `ISkill` + 新 `SystemBase` + `ContentSkillFactory` 一个 `case` | **3** |
+| 既有的 sink / 技能实现 | **0 行改动**（`ICommandSink.Add` 带默认实现） | **0** |
+
+### 19.7 验证（可复现）
+
+```powershell
+dotnet build                                          # 0 error
+.\tools\check_architecture.ps1                        # new=0 existing=0 fixed=0 errors=0 warnings=0
+cd tests; dotnet test                                 # 357/357 通过（新增 14 条冲刺用例）
+```
+
+14 条用例分四组：
+
+| 组 | 用例 | 钉住什么 |
+|---|---|---|
+| 数据/工厂 | `DataRow_TestHeroKit_DashSlotIsKindDash`、`Factory_KindDash_ProducesRealDashSkill`、`KnownKinds_IncludesDash`、`AllFourVariants_HaveUsableDashStats`、`TwoVariants_DashDifferently_FromOneSharedSkillInstance` | 数据行真的指向 `dash`；四个变体数值齐全且互相有区分度 |
+| 释放 | `Cast_PutsDashStateOnCaster_NotOnSkillInstance` | 状态落在实体上、时长/速度来自数值包 |
+| 位移 | `DashSystem_MovesEntityAlongDashDirection`、`DashSystem_EndsAndRemovesComponent_AtConfiguredDuration`、`DashSystem_IsNoOp_WhenNobodyIsDashing` | 真的走了、到点就停、没人冲时零副作用 |
+| 门控 | `CanCast_WhileAlreadyDashing_IsRejected`、`CanCast_OnCooldown_IsRejected`、`CanCast_InsufficientMana_IsRejected`、`CanCast_WithoutDashStats_IsRejected_NotSilentlyZeroSpeed` | 四种拒绝路径都不排命令 |
+| 端到端 | `EndToEnd_CastThenSystem_ProducesExpectedDisplacement` | 位移 ≈ `MoveSpeed × DashSpeedMul × Duration`（±30%） |
+
+无渲染冒烟（实测输出）：
+
+```powershell
+E:\Godot\Godot_v4.7.2-stable_mono_win64_console.exe --headless --path . -- --hero --hero-fire
+# [Hero] 技能包 test_hero_kit 实例化 5 个真技能（工厂=ContentSkillFactory）
+# [DungeonDebug] 帧 540 ... HP=130/130 法力=80 护甲减伤=6% 施放=24
+# [DungeonDebug] 退出：帧=600 实体=129
+```
+
+### 19.8 本次踩到的坑（供后来者少走）
+
+1. **`AddModule` 强制 `[Module]` 声明**：系统进模块必须在类型上写 `[Module("...")]`，
+   否则 `AddModule` 直接抛 `GameEcsException`。忘了它，Godot 侧的表现是 `_Ready` 抛异常后
+   **场景空转、进程不退出**（不是崩溃，看起来像"卡住"）—— 排查时一定要看 stderr。
+2. **`Query.ForEach<T0,T1>` 的 lambda 歧义**：`SpanAction` 委托重载与 `in ISpanAction` 重载同时存在，
+   裸 lambda 被解析到后者并报 CS1503。修法：让系统类 `implements ISpanAction<T0,T1>`，
+   构造时 `_step = this;`，稳态零分配（与 `ProjectileSystem` 同一手法）。
+3. **`ICommandSink` 曾无法"给已存在实体挂组件"**：只有 Spawn/Destroy，没有 Add。
+   这是"技能给自己挂一个有时限状态"的真实能力缺口，不是测试障碍 —— 用 default interface method 补上。
+4. **Excel 与 C# 镜像必须同步**：改了 `gen_characters_xlsx.py` 却没改 `CharacterContentSet.cs`，
+   `CharacterXlsxParityTests` 会逐字段报错（本次正是靠它发现 `chosen_base` 少两项）。
+

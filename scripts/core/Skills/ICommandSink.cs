@@ -28,6 +28,30 @@ public interface ICommandSink
 
     /// <summary>请求销毁一个实体（实体号 + 世代号，避免误杀已复用的槽位）。</summary>
     void Destroy(int actorId, int generation);
+
+    /// <summary>
+    /// 请求给<u>已存在的实体</u>挂上一个组件（例：冲刺给自己挂 <c>DashState</c>）。
+    /// <para>
+    /// <b>为什么门面需要这个方法</b>：技能施放发生在查询遍历里，此刻直接改世界结构
+    /// （加组件 = 一次原型迁移）会让 chunk 数组失效（J5）。而 <see cref="ISkillContext.Ecs"/> 又是
+    /// <u>只读</u>句柄 —— 于是"给自己加一个有时限的状态"这件事在旧门面里<u>没有合法路径</u>，
+    /// 只能靠"在技能里存一个计时器"绕过去，而那会让共享同一技能包的两个角色状态互相污染。
+    /// </para>
+    /// <para>
+    /// <b>为什么带默认实现</b>：这是接口的<u>纯增量</u>扩展。已有的测试替身（记录型 sink、旧实现）
+    /// 不需要改就能继续编译，行为退化为"什么都不做"；新的实现（真实命令缓冲、记录型替身）
+    /// 可以覆写它来真正落地/断言。规则7 的判据在这里是"新增一种技能 = 0 个已有实现改动"。
+    /// </para>
+    /// </summary>
+    /// <typeparam name="T">组件类型（必须 unmanaged，与 ECS 组件契约一致）。</typeparam>
+    /// <param name="entity">目标实体（通常是施放者自己）。</param>
+    /// <param name="value">组件初始值。</param>
+    void Add<T>(Game.Core.Ecs.Entity entity, in T value) where T : unmanaged
+    {
+        // 默认实现刻意留空：不认识的 sink 退化为"没有这个能力"，而不是编译失败。
+        _ = entity;
+        _ = value;
+    }
 }
 
 /// <summary>生成点（世界坐标 + 朝向）。为什么不用 Godot 的 Transform：Core 层零引擎依赖（J4）。</summary>

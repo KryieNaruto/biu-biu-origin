@@ -127,4 +127,14 @@ internal sealed class HostCommandSink : ICommandSink
         // 销毁走 CommandBuffer 的正式路径（scripts/core/ecs/CommandBuffer），不在这里裸调 World。
         _world.Commands.Destroy(new Entity(actorId, generation));
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// 与 <see cref="Destroy"/> 同理走命令缓冲：施放发生在查询遍历里，
+    /// 直接 <c>_world.Set</c> 会在 <c>AssertStructuralAllowed</c> 处抛异常（J5 的正确行为）。
+    /// </remarks>
+    public void Add<T>(Entity entity, in T value) where T : unmanaged
+    {
+        _world.Commands.Add(entity, value);
+    }
 }

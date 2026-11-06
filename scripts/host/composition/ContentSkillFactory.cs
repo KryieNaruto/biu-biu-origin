@@ -24,6 +24,13 @@ public sealed class ContentSkillFactory : ISkillFactory
     /// <summary>技能种类：发射一颗投射物（左键射击 / 部分独有技能）。</summary>
     public const string KindFireProjectile = "fire_projectile";
 
+    /// <summary>
+    /// 技能种类：冲刺（Shift）。参数（倍率/时长）不在技能行里，而是施放时从<u>角色数值包</u>读
+    /// （<see cref="StatId.DashSpeedMul"/> / <see cref="StatId.DashDuration"/>），
+    /// 所以同一个技能实例装在四个变体上会冲出四种手感 —— 这正是「拼接变体」要的效果。
+    /// </summary>
+    public const string KindDash = "dash";
+
     /// <inheritdoc />
     public ISkill Create(
         int skillId,
@@ -36,6 +43,11 @@ public sealed class ContentSkillFactory : ISkillFactory
         if (string.Equals(kind, KindFireProjectile, StringComparison.OrdinalIgnoreCase))
         {
             return new FireProjectileSkill(skillId, projectileId, cooldownSeconds, manaCost, slot);
+        }
+
+        if (string.Equals(kind, KindDash, StringComparison.OrdinalIgnoreCase))
+        {
+            return new DashSkill(skillId, cooldownSeconds, manaCost, slot);
         }
 
         // 其余种类（"data" 占位、以及将来新增但运行时尚未实现的）走空技能：

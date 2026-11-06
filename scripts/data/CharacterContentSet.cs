@@ -256,6 +256,7 @@ public sealed class CharacterContentSet
             (StatId.ManaRegenPerSec, 9f), (StatId.Armor, 4f), (StatId.ArmorK, 100f),
             (StatId.MoveSpeed, 4.8f), (StatId.Strength, 4f), (StatId.Dexterity, 7f), (StatId.Luck, 8f),
             (StatId.CritChance, 0.12f), (StatId.CritMultiplier, 2.0f), (StatId.HurtInvulnTime, 0.8f),
+            (StatId.DashSpeedMul, 2.0f), (StatId.DashDuration, 0.2f),
         });
 
         // ── 怪物/旧角色的技能包（v1 遗留：只有槽位 + 技能 id + 冷却/消耗，没有 Kind）──
@@ -352,6 +353,7 @@ public sealed class CharacterContentSet
             (StatId.MoveAccelTime, 0.12f), (StatId.TurnResponseTime, 0.10f), (StatId.AimRange, 18f),
             (StatId.Strength, 5f), (StatId.Dexterity, 6f), (StatId.Luck, 3f),
             (StatId.CritChance, 0.05f), (StatId.CritMultiplier, 1.75f), (StatId.HurtInvulnTime, 0.6f),
+            (StatId.DashSpeedMul, 2.2f), (StatId.DashDuration, 0.18f),
         });
         RegisterPack("test_hero_growth", StatLayer.Growth, new (StatId, float)[]
         {
@@ -366,6 +368,7 @@ public sealed class CharacterContentSet
             (StatId.MoveAccelTime, 0.20f), (StatId.TurnResponseTime, 0.18f), (StatId.AimRange, 16f),
             (StatId.Strength, 9f), (StatId.Dexterity, 3f), (StatId.Luck, 2f),
             (StatId.CritChance, 0.03f), (StatId.CritMultiplier, 1.5f), (StatId.HurtInvulnTime, 0.8f),
+            (StatId.DashSpeedMul, 1.8f), (StatId.DashDuration, 0.22f),
         });
         RegisterPack("test_hero_agile_base", StatLayer.Base, new (StatId, float)[]
         {
@@ -376,6 +379,7 @@ public sealed class CharacterContentSet
             (StatId.MoveAccelTime, 0.06f), (StatId.TurnResponseTime, 0.05f), (StatId.AimRange, 20f),
             (StatId.Strength, 3f), (StatId.Dexterity, 11f), (StatId.Luck, 4f),
             (StatId.CritChance, 0.08f), (StatId.CritMultiplier, 1.6f), (StatId.HurtInvulnTime, 0.4f),
+            (StatId.DashSpeedMul, 2.8f), (StatId.DashDuration, 0.16f),
         });
         RegisterPack("test_hero_lucky_base", StatLayer.Base, new (StatId, float)[]
         {
@@ -386,6 +390,7 @@ public sealed class CharacterContentSet
             (StatId.MoveAccelTime, 0.12f), (StatId.TurnResponseTime, 0.10f), (StatId.AimRange, 18f),
             (StatId.Strength, 4f), (StatId.Dexterity, 6f), (StatId.Luck, 15f),
             (StatId.CritChance, 0.15f), (StatId.CritMultiplier, 2.0f), (StatId.HurtInvulnTime, 0.6f),
+            (StatId.DashSpeedMul, 2.4f), (StatId.DashDuration, 0.18f),
         });
 
         // ── 武器行（WeaponStats 的数据来源） ──
@@ -580,7 +585,9 @@ public sealed class CharacterContentSet
 
         var rows = new[]
         {
-            new CharacterSkillSpec(dashSkillId, CharacterSkillSpec.KindData,
+            // 冲刺：kind=dash。倍率/时长不在这一行，而在角色的数值包
+            // （StatId.DashSpeedMul / DashDuration）—— 四个变体因此冲出四种手感，本行 0 处重复。
+            new CharacterSkillSpec(dashSkillId, CharacterSkillSpec.KindDash,
                 string.Empty, string.Concat("skill_", dashSkillId.ToString()),
                 dashCooldown, dashMana, CharacterSkillSpecs.ToSlotNumber(SkillSlot.Dash)),
             // 左键：真开火。WeaponId = 哪把枪（查伤害/弹速/射程）；ProjectileId = 子弹外观。
