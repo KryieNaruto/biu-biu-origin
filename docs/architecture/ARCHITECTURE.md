@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v7  最后更新: 2026-11-06  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v7  最后更新: 2026-11-06（§14.8.1 回归修复）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1077,6 +1077,8 @@ user://saves/<slot>.json
 | 2026-11-05 | v5 | **角色真源证真：xlsx 直读比对** | **补上「Excel 唯一真源」缺失的自动证据**：新增 `tests/Characters/CharacterXlsxParityTests`（5 用例）——直接解析 `data/excel/characters.xlsx`，与内置副本**逐字段、逐数值**比对（Characters 9 列 + StatPacks 全部属性 + 能否装配成实体）。新增 `tests/Characters/CharacterXlsxBinder.cs`（复用既有 `XlsxReader`，零第三方依赖，报错带 Excel 真实行号）。`CharacterContentSet` 新增 `RegisterPackRow/RegisterCharacterRow/RegisterLoadoutRow/FlushStatPacks/FlushLoadouts`，使 xlsx 读取与内置副本**走同一代码路径**。**注入验证**：把表中 `player_base.Hp` 改为 999，测试精确报出「预期 120、实际 999」→ 证明不是假守护。修正 `CharacterContentRegressionTests` 里「与 xlsx 逐行对应」的**虚假注释**（它从不读 xlsx），改为显式声明只能证明"内置副本自洽"。§4.1 重写现状 + 新增 §4.1.1 证据链表与「假守护」教训。**发现待决问题**：`StatPackageRepository` 以包 id 为键，同包跨层会互相覆盖（当前数据未触发）。测试 174 → 179，守卫 0 error | `tests/Characters/CharacterXlsxParityTests.cs`、`tests/Characters/CharacterXlsxBinder.cs`、`tests/Characters/CharacterContentRegressionTests.cs`、`scripts/data/CharacterContentSet.cs`、`docs/architecture/ARCHITECTURE.md`
 | 2026-11-06 | v5 | **基础物件抽象（武器/子弹/怪物同源 + 熔炉组合）落地** | **新增 §17 基础物件抽象**：人物/怪物/武器/子弹**不是四个类**，而是同一个 `ObjectArchetype`（= `combat.xlsx` 的 `Objects` 一行）——差异只在 ① `ObjectCapability` 能力位（`[Flags]`：Actor/Weapon/Projectile/Emitter/Trigger/Consumable/Structure，可任意组合）② 四个 `ContentRef` 引用（Weapon/Projectile/Actor/Effect，**谁都可以指向任何 Objects.Id**）③ 位矩阵 + 规则值。① **规则值 `ValueRef`**（10 种来源：Literal/Stat/WeaponStat/Flags/ChainDepth/ChainCount/ViableCount/Perf/RandomRange/RandomScaled）+ `ValueSet`（容量4，`Σabs×(1+Σpercent)` 层叠）——**「子弹继承武器属性」= 表里写 `wstat:WeaponDamage(5)`，代码 0 行**；② **熔炉 `ForgeRules`**：64 位配方字 × 簇内加权轮盘，纯静态只吃 `ReadOnlySpan`，**1000 次迭代 0 字节托管分配**（用例断言）；`ContentRegistry` 按「簇+槽位名」编址，`Purge(generation)` 回到不可变 `InitialDefId`；③ **工厂等价性**：武器射子弹 / 武器射怪物 / 子弹炸开再射子弹 / 子弹变成怪物，在 `EcsObjectFactory.TryCast` 里是**同一段代码**，差别只有契约里哪个引用非空 + `Delivery`/`OnExpire` 两个枚举（4 条端到端用例读真表钉住）；④ **策划可改（需求②）**：`combat.xlsx` 6 Sheet（Tags/Objects/Weapons/Projectiles/StatPacks/_Meta）+ `validate_content_xlsx.py` **2217 项构建期检查**（外键闭合、能力位一致、TagIndex 连续/BitMask 唯一、规则值语法真解析、**同簇能力位一致**、ClusterWeight>0）+ 零第三方包 `XlsxReader` 读真 xlsx 的绑定回归（「改表 → 运行期行为变」可证）；⑤ **明确不做**：碰撞/空间划分/伤害结算（游戏逻辑，`ProjectileAdvanceSystem` 只做积分+寿命，未实现分支显式计数不静默）；⑥ **修 6 个静默失效 bug**（记入 §17.8）：FNV-1a32 有符号哈希被当"空引用"判据（同一错误出现 3 处）、`Purge` 回不到初始态、`Projectiles` 行主键与引用列口径不一致致**所有枪静默打不出子弹**、`tag.projectile` 物件拿不到契约、`characters.xlsx` 表头被生成器转置。**测试 101 → 174 全绿**；架构守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/core/Content/**`（ValueContext/ObjectArchetype/ObjectBitMatrix/WeaponContract/ProjectileContract/ContentWorld/ContentIndex/WeaponAimKind）、`scripts/core/StatId.cs`（+17 成员：武器 1030~1041、投射物 1050~1054）、`scripts/combat/**`（CombatComponents/ForgeRules/ContentRegistry/CastQueue/CastSystem/ProjectileAdvanceSystem/Factory）、`scripts/data/Content/**`（ContentBinder/ValueRefParser）、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`（表头修复）、`tools/data_pipeline/{gen_combat_xlsx,validate_content_xlsx}.py`、`tools/data_pipeline/README.md`、`tests/Content/**`、`tests/BiuBiuOrigin.Tests.csproj` |
 | 2026-11-05 | v4 | **素材快查看器（Asset Viewer）落地** | **新增 §16 素材快查看器**：独立 Win32 桌面程序（**不进游戏、不是 GDExtension**），CMake + MSVC + D3D11/Direct2D，**零第三方依赖**。① **边界**：加载器只吐 `ModelData` 纯数据、**不碰 D3D**，渲染器不碰文件格式 —— 故 `thumb_sheet` 能在无窗口环境复用同一套加载代码。② **格式**：自研 glTF 2.0（`.glb`）与 FBX 7.2/7.4/7.5 解析器，**自带 DEFLATE 解压器**（不为 FBX 压缩数组引 zlib）。③ **构建**：`av_core`/`av_ui` 静态库 + `asset_viewer`(WIN32) + `loader_smoke`/`ui_selftest`/`thumb_sheet`(CONSOLE) + `av_sheet` 自定义 target；`AV_STATIC_RUNTIME=ON` 走 `/MT` 免装 VC++ 运行库。④ **修复 8 处实打实缺陷**，全部写进 §16.5 教训表：Inflater 无输出上限致 42GB OOM、畸形 count 直接喂 `resize()`、FBX 子网格材质归一化口径不一致致死循环、`WM_NCCREATE` 期 `hwnd_` 未赋值致 `CreateWindowExW` 失败(errno=1400)、cmd 批处理中文参数变 `??`、`windows.h` 的 `DrawText` 宏污染 `d2d1.h`、多 slot 顶点布局触发 `0x80070057`、`MakeLookAt` z 轴取反致模型不可见。⑤ **验收**：`loader_smoke` 371/371、`thumb_sheet` 371/371（wall 4.56s @16 线程）、`ui_selftest` 77/77、`--shot=` 出图成功。⑥ **交付** `dist/` 单文件绿色版 + 中文启动器 + 使用说明 | `tools/asset_viewer/**`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-05 | v4 | **3D 默认配置回归修复（§14.8.1）** | 2D 层全绿时发现 `DungeonDebug.tscn` 加载即崩：`DungeonOptions` 默认 `8×8 / side=1` 装不下「四面留 1 格隔离带」的隐藏房，8 次重试全败。工具用另一套 `9×24/side=3` 所以一路绿 —— **测试覆盖面 ≠ 产品实际走的路**。修复三处：① `DungeonOptions` 默认放大到 `11×11 / side=2`；② `check_all.ps1` 新增 step 4b `--options`，用 3D 实机默认值再跑一遍同样的属性测试（500 种子全绿），从此「check_all 全绿」等于「游戏能开」；③ `TryPlaceHidden` 的候选位间距从 `RoomSide + ring` 改为 `max(宿主房实际边长, RoomSide) + ring`，起始/Boss 房更大时不再把候选位摆进宿主房里。新增 `tools/dungeon_check --options` 与 `DungeonOptionsDefaults()`。 | `tools/check_all.ps1`、`tools/dungeon_check/Program.cs`、`scripts/host/DungeonOptions.cs`、`scripts/spawn/rooms/BranchDungeonPlanner.cs`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-05 | v4 | **2D 栅格地图层 + 实时调参面板（§14.8）** | **同一份 `DungeonLayout` 再投影出一张俯视 2D 格图**（正方形=房间格、颜色=房型/地砖、方块=障碍），把「哪里通、哪里堵」变成可目视、可程序化验证的东西；3D 白盒仍是唯一玩法路径，未被替换。① **栅格化**：新增 `DungeonMap`（`Kind[]`/`RoomSalt[]`/`DoorSlot[]` + `ToArt()/FromArt()`，字符图例 `#`墙 `.`地面 `+`门 `,`走廊 `X`障碍 `?`秘密通道 `S c $ h B` 房型）、`DungeonMapBuilder`（铺地→连廊→打门→挖秘密通道→撒障碍）、`DungeonMapConfig`（margin/障碍密度/离墙格数，不可变 `With()`）、`DungeonMapCheck`（泛洪可达、房间割裂、陷阱格、Boss 可达、隐藏房双不变量）。② **实时面板**：`scripts/host/debug/` 新增 `DungeonMap2DView`（逐格 `DrawRect`，地面色取自 `DungeonRoomStyleSet.FloorColor`，画图例与「起始→Boss 最短路」）、`DungeonMap2DPanel`（14 根滑条 + 随机种子 + 导出字符画，90 ms 节流）、`DungeonMap2DDebugScene`、`scenes/debug/DungeonMap2D.tscn`。③ **修掉 4 个真缺陷**：**坐标空间混淆**（布局坐标 vs 画布坐标，曾导致一批假报错，现一律走 `ToMapX/ToMapZ/RoomCenter/DoorCell`）；**隐藏房隔离检查自证为真**（用含秘密通道的泛洪判隔离 ⇒ 必然可达，100 图误报 37~58 张，改为用不含通道的泛洪判隔离 + 含通道的泛洪判可达）；**秘密通道挖不出来**（规划器原来自己写了一套 BFS，与 `CarveSecretPassage` 的过滤条件不一致；改为**拿真实 builder 干跑**同一份实现，并补上「主图走廊 + 门」两个漏项）；**隐藏房摆位无解**（宿主房逐个退让重试，规划失败率 46/1000 → 0/1000）。④ **性能实测**：重算一次平均 0.51 ms、稳态最差 3.25 ms，远低于一帧 16.6 ms，故「拖滑条实时重画」成立。⑤ **验收**：`--map --seeds 1000` → 房间图 1000/1000、连通性不合格 0/1000；`--seeds 10000` → 9997/10000、**连通性不合格 0/9997** | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonMap,DungeonMapBuilder,DungeonMapConfig,DungeonMapCheck}.cs`、`scripts/spawn/rooms/BranchDungeonPlanner.cs`、`scripts/spawn/rooms/DungeonValidation.cs`、`scripts/host/debug/**`、`scenes/debug/DungeonMap2D.tscn`、`tools/dungeon_check/**` |
 | 2026-11-05 | v4 | **角色抽象（Character）落地** | **新增 §15 角色抽象**：角色 = 「数值包组合 + 技能包 + 阵营/控制标签」的 ECS 实体，玩家与怪物**同一组件集合**，差异只在数据。① **数值**：`StatId` 追加 法力(1000 段)/护甲(1003 段)/力量·敏捷·幸运(1010 段)，五项基础资源 Hp/Mana/Armor + 三项属性 + 三项资源回复；`StatPackageRepository.Compose` 严格按规则6 折叠——Base 层**绝对值**、其余四层**差量叠加**，`GetLayerValue` 保留单层读取。② **技能**：`SkillSlot` 五个固定槽位（Dash=Shift / PrimaryAttack=左键 / WeaponSwap=Q / Signature=R / Interact=F），`SkillLoadout` 定长表按槽存技能并各自计冷却；`SkillCastSystem` 每帧只消费**一个**槽（意图优先级由 `IntentRules` 决定），门控顺序 `CanCast → Cast → 扣法力 → 起冷却`。③ **组合**：`ActorSpawnRequest(DefinitionSlot, Position, TeamOverride?, ControlOverride?)` 是唯一的造人入口——**夺舍 = 改 `ControlOverride`/`TeamOverride` 两个字段**，不需要任何新类型；`ActorIdentity` 只存槽位号（J2），不存引用。④ **策划可改**：`data/excel/characters.xlsx`（Characters / StatPacks / SkillLoads 三表，四行表头规范）为唯一真源；`CharacterContentSet` 提供与表逐项一致的运行时副本兜底，`CharacterContentRegressionTests` 用 9 条用例把「表 ↔ 运行时」钉死（每个角色都必须能真装配出来、玩家技能包五槽齐全、怪物与玩家同机制）。⑤ **引擎边界**：`PlayerInputIntentSource`（`scripts/host/control/`）把 InputMap action 翻成 `InputIntent`（Q16 定点方向），是唯一碰 `Input` 的地方；技能逻辑只认意图，故 AI/回放/玩家共用同一条代码路径。**测试 101 全绿**（新增 25 例） | `docs/architecture/ARCHITECTURE.md`、`scripts/core/{ActorKind,SkillSlot,StatId}.cs`、`scripts/core/{Actors,Skills}/**`、`scripts/actor/{ActorComponents,ActorRegistries,ActorIntentSystem,ActorAssemblySystem}.cs`、`scripts/skill/SkillCastSystem.cs`、`scripts/data/{StatPackageRepository,CharacterContentSet}.cs`、`scripts/host/control/**`、`scripts/host/DungeonDebugScene.cs`、`project.godot`、`data/excel/characters.xlsx`、`tools/data_pipeline/gen_characters_xlsx.py`、`tests/Characters/**` |
 | 2026-11-04 | v3 | **房间与地牢系统（场景抽象）**，另含 4 处基础设施修复 | **新增 §14 房间与地牢**：四层切分（L1 值词汇 / L2 规划 / L3 生成 / L4 表现）、`IDungeonPlanner.Plan(config,seed,generation) → DungeonLayout` 的「一次掷骰、全链只读」模型、`RoomCategory` 七类（Start/Combat/Special/Hidden/Prototype/Boss/Safe）、6 条可执行不变式、与 ECS 的边界（房间不产生实体、L3 只走 `CommandBuffer`、`World→Node` 单向）。**落地**：`scripts/spawn/rooms/`（契约 + `BranchDungeonPlanner` + `GridContentPlanner` + `DefaultRoomContentSpawner` + `DungeonValidation`）、`scripts/host/Dungeon*`（`DungeonOptions`/`DungeonSceneBuilder`/`DungeonRoomView`/`DungeonDecorCatalog`/`DungeonDebugScene`）、`scenes/main/DungeonDebug.tscn`、`tools/dungeon_check/`（200-seed 性质校验）、`tools/decor_catalog/`（素材→装饰目录）。**基础设施修复**：① `BiuBiuOrigin.csproj` 的 `DefaultItemExcludes` 新增 `**/obj/**;**/bin/**;tools/**;tmp/**;build/**;out/**`——修掉「Godot.NET.Sdk 默认 glob 把 `.godot/mono/temp/obj/**/*.AssemblyInfo.cs` 当源码编进来」导致的 CS0579 自举式重复（本轮最贵的坑）；② `LifetimeSystem` 与 `VisualBridge` 把 `Query<Entity, T>` 改为 `Query<T>`、实体号改从组件 `[Identity] Owner` 取——`Entity` 是句柄不是组件列（J1），旧写法会让 `Register<Entity>()` 抛异常且 `SystemBase` 留在「半死」状态；③ `config/architecture-rules.json` 移除无源头的 `tools/decor_catalog/**` 放行、`.gd` 探针统一收进 `tools/probes/`；④ `tools/probes/` 目录此前只存在于白名单、实际未创建，本次补建。**未改架构**：GS005 清理（39 条 → 0，做法是把真·表现数值收进 `DungeonOptions`、把几何常量改成语义推导，而非加注释糊过去） | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/**`、`scripts/host/**`、`scripts/actor/LifetimeSystem.cs`、`scripts/host/bridge/VisualBridge.cs`、`scenes/main/DungeonDebug.tscn`、`BiuBiuOrigin.csproj`、`config/architecture-rules.json`、`config/decor_catalog.json`、`tools/dungeon_check/**`、`tools/decor_catalog/**`、`tools/probes/**`、`tests/Rooms/**`、`docs/artifacts/decor_catalog.md` |
 | 2026-11-03 | v1 | 立规矩（规则体系建立） | 建立 7 条开发规矩与架构骨架：C# 主逻辑（`Game.*` 七层命名空间）、C++ GDExtension 于 `native/`、UI 层允许 GDScript、Excel 为数值唯一真源、架构守卫 GS001~GS007、完成定义 6 步检查表；本节所有「已落地」项均为空 | `docs/architecture/ARCHITECTURE.md`、`docs/rules/01-gdscript-ban.md`、`docs/rules/02-tech-selection.md`、`docs/rules/03-abstract-first.md`、`docs/rules/04-data-driven.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md`、`docs/rules/07-definition-of-done.md`、`tools/check_architecture.ps1`、`tools/env.ps1`、`docs/prompts/task-prompt-template.md`、`.gitignore`、`AGENTS.md` |
@@ -1310,6 +1312,96 @@ PreUpdate → FixedUpdate×N → Update → LateUpdate → CommandFlush → 事�
 **下一步**：① `progression.xlsx` 的 `Dungeon` Sheet 承载 `DungeonConfig` + 房型表，`DungeonOptions` 改为只读生成物；
 ② 门的状态机（封锁/清场开锁/单向）落在 `scripts/spawn/` 的新 `SystemBase`，房间运行时状态用组件（`RoomState{ RoomIndex, Cleared, Visited }`）表达；
 ③ 多房间流式加载（一次只建当前房 + 相邻房的视图，其余只留数据）——这是 100+ 房间时的必选项（§9 预算）。
+
+### 14.8 2D 栅格地图层（2026-11-05 落地）：可目视、可验证的拓扑视图
+
+> **为什么加这一层**：3D 白盒能走，但「哪里通、哪里堵」在 3D 里根本看不出来，
+> 无法快速判断生成器是不是出了拓扑问题。于是把**同一份 `DungeonLayout`** 再投影成一张
+> 俯视 2D 格图：**正方形 = 房间格，颜色 = 房型/地砖，方块 = 障碍**。它是「地图体检」的可视化，
+> **不替代 3D**，也不碰 ECS —— 3D 仍是唯一玩法路径。
+
+**四件落地物（都在 `scripts/spawn/rooms/` 与 `scripts/host/debug/`）**：
+
+| 物 | 职责 | 位置 |
+|---|---|---|
+| `DungeonMap` | 只读栅格地图：`Kind[]`（格子类型）+ `RoomSalt[]`（属于哪间房）+ `DoorSlot[]`，char 化 `ToArt()/FromArt()` | `scripts/spawn/rooms/DungeonMap.cs` |
+| `DungeonMapBuilder` | `DungeonLayout` → `DungeonMap`：铺地面 → 连走廊 → 打门 → **挖秘密通道** → 撒障碍 | `scripts/spawn/rooms/DungeonMapBuilder.cs` |
+| `DungeonMapConfig` | 栅格化的可调参数（margin / 障碍密度 / 离墙格数…），全部 `With()` 派生，不可变 | `scripts/spawn/rooms/DungeonMapConfig.cs` |
+| `DungeonMapCheck` | 体检：泛洪可达性、房间是否被障碍割裂、陷阱格、Boss 可达、**隐藏房隔离 + 经秘密通道可达** | `scripts/spawn/rooms/DungeonMapCheck.cs` |
+
+**字符图例**（`ToArt()` 与 `tools/dungeon_check --map --gallery N` 共用）：
+
+| 字符 | 含义 | 字符 | 含义 |
+|---|---|---|---|
+| `#` | 墙 | `+` | 门 |
+| `.` | 普通地面格 | `,` | 走廊（房间之间的连接地面） |
+| `X` | 障碍块 | `?` | 秘密通道 |
+| `S` / `c` / `$` / `h` / `B` / `s` / `p` | 起始 / 战斗 / 特殊 / 隐藏 / Boss / 安全 / 原型 房的地面 | | |
+
+**两个坐标空间（最容易踩的坑）**：`RoomPlan.Cell` 是**布局坐标**（可以是负数），
+`DungeonMap` 是**画布坐标**（加过 `OriginX/OriginZ` 偏移）。**永远不要拿布局坐标直接当下标**，
+一律走 `map.ToMapX/ToMapZ/RoomCenter/DoorCell`。这一条踩过：早期体检把布局坐标当画布下标，
+导致「起始房跑到画布外」「房间被障碍割裂」「Boss 不可达」等一批假报错。
+
+**隐藏房的两条不变量（必须同时成立，方向相反）**：
+
+1. **隔离**：不挖通道时，从起始房泛洪**到不了**隐藏房（否则它就不是隐藏房）；
+2. **可达**：算上秘密通道时，泛洪**到得了**隐藏房（否则它是死房间）。
+
+这两条分别用**两次泛洪**判定（`includeSecretPassages` 为 false / true）。
+**曾经的错误**：只用含通道的那次泛洪判隔离 —— 那样「必然可达」，这条检查等于没做，
+100 个种子里有 37~58 张图被误报。**判隔离必须用不含通道的泛洪**。
+
+**实时调参面板（需求原话「数值拖拉拽，实时拖拽查看地图生成结果」）**：
+
+| 物 | 职责 | 位置 |
+|---|---|---|
+| `DungeonMap2DView` | `Node2D` 逐格 `DrawRect`；地面色取自 `DungeonRoomStyleSet.Get(category).FloorColor`（换配色只改 `.tres`）；画图例、画「起始→Boss 最短路」高亮 | `scripts/host/debug/DungeonMap2DView.cs` |
+| `DungeonMap2DPanel` | 14 根滑条（seed/网格/边长/房间数/隐藏房/特殊房/Boss 深度/环路/障碍密度…）+ 随机种子 + 导出字符画；拖动 90 ms 节流，松手立刻算 | `scripts/host/debug/DungeonMap2DPanel.cs` |
+| `DungeonMap2DDebugScene` | 场景根：把 View 与 Panel 接起来 | `scripts/host/debug/DungeonMap2DDebugScene.cs` |
+| 场景 | `res://scenes/debug/DungeonMap2D.tscn`（左侧地图 / 右侧面板） | `scenes/debug/` |
+
+**性能事实（本机实测，`dotnet run --project tools/dungeon_check -c Release -- --bench --seeds 500`）**：
+重算一次 = 规划 + 栅格化 + 体检，**平均 0.51 ms，稳态最差 3.25 ms**，远低于一帧 16.6 ms
+——所以「拖滑条实时重画」在性能上成立，不需要改成松手才算。
+
+**验收证据（`tools/dungeon_check --map --seeds N`）**：
+
+| 样本 | 房间图生成 | 2D 连通性不合格 |
+|---|---|---|
+| 1000 | 1000 / 1000 | 0 / 1000 |
+| 10000 | 9997 / 10000 | **0 / 9997** |
+
+#### 14.8.1 「工具全绿」≠「游戏能开」：一次真实回归（2026-11-05 修复）
+
+这一节记录一个**必须记住的教训**，因为它差点让 3D 实机彻底开不了而测试全绿。
+
+**现象**：2D 层全部通过（10000 种子 0 失败）之后，`scenes/main/DungeonDebug.tscn` 一加载就报
+
+```text
+ERROR: 地牢调试场景初始化失败：System.InvalidOperationException:
+地牢生成失败：连续 8 次尝试都没能生成一张合法的图
+（最近一次原因：隐藏房找不到「不与任何房间贴边」的位置）
+```
+
+**根因**：`DungeonOptions` 的默认值是 `GridWidth/Height = 8, RoomSide = 1`，而
+`tools/dungeon_check` 用的是另一套 `9×24 / side=3`。「隐藏房必须四面留 1 格隔离带」
+（`DungeonValidation.CheckHiddenRooms`）在 8×8/side=1 下**根本不成立**：
+房间只有 1 格，塞进 7 间房后，剩不下任何「四面都有墙」的空位。工具测的配置从不会有这个问题，
+于是它一路绿。
+
+**修复**（两处，缺一不可）：
+
+1. 把 `DungeonOptions` 的默认值放大到 `11×11 / side=2`——让默认配置能真的容下一间隐藏房。
+2. `tools/check_all.ps1` 新增 **step 4b**：`dungeon_check --options`，用**3D 实机那套默认值**再跑一遍同样的属性测试。
+   从此「check_all 全绿」才真的等于「游戏能开」。
+
+**顺带修正的算法缺陷**：`BranchDungeonPlanner.TryPlaceHidden` 原先用配置里的 `RoomSide` 算候选位间距，
+但起始房/Boss 房比普通房大，用 `RoomSide` 会让候选位落进宿主房里。改为按
+`max(宿主房实际边长, RoomSide) + ring` 计算，两头都不会错。
+
+> **通用判据**：任何「用配置 A 测、用配置 B 上线」的场景，都必须有一道校验跑 B。
+> 这不是纪律问题，是**测试的覆盖面和产品实际走的路不是同一条**——这类 bug 靠人看代码是看不出来的。
 
 ---
 

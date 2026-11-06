@@ -62,7 +62,43 @@ public static class DungeonValidation
         CheckDoors(in layout, errors);
         CheckReachability(in layout, errors);
         CheckHiddenRooms(in layout, errors);
+        CheckHiddenIsolation(in layout, errors);
         return new Report { Errors = errors };
+    }
+
+    /// <summary>
+    /// 不变式：**隐藏房必须四面留 1 格隔离带**（不与任何其它房间贴边或重叠）。
+    /// <para>
+    /// 为什么这条必须进房间图校验而不是放在地图层：一旦隐藏房贴着别的房间，两间房在地图上格子相邻，
+    /// 玩家一脚就走进去了——「隐藏房」名存实亡（2026-11-05 实测：18×18 网格上这个问题出现率极高）。
+    /// 秘密通道是唯一入口，所以隔离带必须在拓扑层就成立。
+    /// </para>
+    /// </summary>
+    private static void CheckHiddenIsolation(in DungeonLayout layout, List<string> errors)
+    {
+        RoomPlan[] rooms = layout.Rooms;
+        for (int i = 0; i < rooms.Length; i++)
+        {
+            if (rooms[i].Category != RoomCategory.Hidden)
+            {
+                continue;
+            }
+            (int ax0, int az0, int ax1, int az1) = DungeonGridMath.Bounds(in rooms[i]);
+            for (int j = 0; j < rooms.Length; j++)
+            {
+                if (j == i)
+                {
+                    continue;
+                }
+                (int bx0, int bz0, int bx1, int bz1) = DungeonGridMath.Bounds(in rooms[j]);
+                // 「包围盒外扩 1 格后相交」= 两房重叠或贴边（含只在角上相贴）。用半开区间判定。
+                if (ax0 - 1 < bx1 && bx0 - 1 < ax1 && az0 - 1 < bz1 && bz0 - 1 < az1)
+                {
+                    errors.Add("隐藏房 " + rooms[i].Cell + " 与房间 " + rooms[j].Category + "@" + rooms[j].Cell
+                        + " 贴边或重叠：隐藏房必须四面留 1 格隔离带，否则地图上会被直接走进去。");
+                }
+            }
+        }
     }
 
     /// <summary>校验，失败即抛。规划器内部调用。</summary>

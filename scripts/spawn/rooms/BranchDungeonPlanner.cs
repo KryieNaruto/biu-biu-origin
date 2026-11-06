@@ -846,10 +846,32 @@ public sealed class BranchDungeonPlanner : IDungeonPlanner
     private static bool AddHiddenRooms(
         DungeonConfig config, IRandomProvider random, Draft draft, int[] mainDepth, List<RoomLink> links)
     {
+        // stackalloc 放在循环外：CA2014 会因为它出现在循环体内而告警
+        // （连续多个隐藏房时栈帧会被反复占用，理论上有溢出风险）。
+        Span<int> tried = stackalloc int[draft.Count];
         for (int h = 0; h < config.HiddenRoomCount; h++)
         {
-            int host = PickHiddenHost(draft, mainDepth, random);
-            if (host < 0 || !TryPlaceHidden(config, random, draft, host, links.Count, out int slot))
+            // 宿主房**逐个退让**再试，而不是抓到第一个放不下就让整张图作废。
+            // 加了「秘密通道必须真挖得通」的判定之后，单次命中率明显下降：
+            // 实测 1000 个种子里失败数从 1 涨到 46（2026-11-05）——都被这里吞掉了。
+            int host = -1;
+            int slot = -1;
+            int triedCount = 0;
+            while (triedCount < draft.Count)
+            {
+                int candidateHost = PickHiddenHost(draft, mainDepth, random, tried, triedCount);
+                if (candidateHost < 0)
+                {
+                    break;
+                }
+                tried[triedCount++] = candidateHost;
+                if (TryPlaceHidden(config, random, draft, candidateHost, links, out slot))
+                {
+                    host = candidateHost;
+                    break;
+                }
+            }
+            if (host < 0)
             {
                 return false;
             }
@@ -872,7 +894,8 @@ public sealed class BranchDungeonPlanner : IDungeonPlanner
         return true;
     }
 
-    private static int PickHiddenHost(Draft draft, int[] mainDepth, IRandomProvider random)
+    private static int PickHiddenHost(
+        Draft draft, int[] mainDepth, IRandomProvider random, ReadOnlySpan<int> exclude, int excludeCount)
     {
         Span<int> deep = stackalloc int[draft.Count];
         int n = 0;
@@ -898,17 +921,41 @@ public sealed class BranchDungeonPlanner : IDungeonPlanner
                 }
             }
         }
-        return n == 0 ? -1 : deep[random.NextInt(0, n)];
+        // 去掉这一轮已经试过的宿主房，从剩下的随机挑一个。
+        int avail = 0;
+        for (int i = 0; i < n; i++)
+        {
+            bool skip = false;
+            for (int k = 0; k < excludeCount; k++)
+            {
+                if (exclude[k] == deep[i])
+                {
+                    skip = true;
+                    break;
+                }
+            }
+            if (!skip)
+            {
+                deep[avail++] = deep[i];
+            }
+        }
+        return avail == 0 ? -1 : deep[random.NextInt(0, avail)];
     }
 
     /// <summary>
     /// 围绕 <paramref name="host"/> 找「不与任何房间贴边」的空格。候选沿四向逐圈扩大、起始方向随机；
     /// 最近者优先——最近的那个最像「藏在隔壁墙后的密室」。
+    /// <para>
+    /// <b>2026-11-05 追加：还要求「从 host 到候选格之间确实能挖出一条不穿别人屋的墙缝」。</b>
+    /// 只卡「不贴边」是不够的：实测 seed 2 隐藏房被摆在 host 正下方、
+    /// 中间隔着另一间房 (R9)，秘密通道的每一条候选路线都必然穿过 R9 的格子 ——
+    /// 于是通道挖不出来，隐藏房成了死房间。这类摆位必须在挑选阶段就排除。
+    /// </para>
     /// </summary>
     private static bool TryPlaceHidden(
-        DungeonConfig config, IRandomProvider random, Draft draft, int host, int linkSlot, out int slot)
+        DungeonConfig config, IRandomProvider random, Draft draft, int host, List<RoomLink> mainLinks, out int slot)
     {
-        _ = linkSlot;
+        _ = mainLinks;
         slot = -1;
         RoomPlan hostRoom = draft.Rooms[host];
         int side = config.RoomSide;
@@ -920,8 +967,11 @@ public sealed class BranchDungeonPlanner : IDungeonPlanner
             {
                 RoomDirection dir = (RoomDirection)((d + startDir) % RoomDirectionExtensions.Count);
                 GridOffset step = dir.Offset();
-                // 距离 = side + 间隔，间隔 >= 1，保证与 host 不贴边；再按 ring 逐步拉远。
-                int gap = side + ring;
+                // 间隔按**宿主房的实际尺寸**算，不是按配置里的 RoomSide：
+                // 起始/Boss 房比小房间大，用 RoomSide 会让候选位落进宿主房里（被 IsIsolated 判成重叠）；
+                // 反向（RoomSide 比宿主大）又会把隐藏房推得老远。取两者较大值才两头都对。
+                int hostSpan = Math.Max(hostRoom.Footprint.Width, hostRoom.Footprint.Depth);
+                int gap = Math.Max(hostSpan, side) + ring;
                 RoomPlan candidate = new RoomPlan
                 {
                     Cell = new GridOffset(hostRoom.Cell.X + step.X * gap, hostRoom.Cell.Z + step.Z * gap),
@@ -931,12 +981,163 @@ public sealed class BranchDungeonPlanner : IDungeonPlanner
                 {
                     continue;
                 }
+                if (!CanConnectSecretly(config, draft, in hostRoom, in candidate, mainLinks))
+                {
+                    continue;
+                }
                 slot = draft.AddHidden(in candidate, host);
                 return true;
             }
         }
         return false;
     }
+
+    /// <summary>
+    /// 用**真实的栅格化流程干跑一遍**，验证「秘密通道真能连通宿主房与隐藏房」。
+    /// <para>
+    /// 为什么不再自己写一遍 BFS：2026-11-05 实测，手写的规划器 BFS 与
+    /// <c>DungeonMapBuilder.CarveSecretPassage</c> 的过滤条件（起点只认墙格、终点只认房间环上的墙格、
+    /// 门旁墙格不许挖）总有出入 —— 规划器说能挖通，实际挖出来 goal=-1，
+    /// 100 个种子里 21 张图的隐藏房成了死房间。唯一可靠的做法是**共用同一份实现**：
+    /// 拿当前已摆好的房间造一张只含这两间的临时布局，跑一次 <see cref="DungeonMapBuilder.Build"/>，
+    /// 再看隐藏房中心是否可达。
+    /// </para>
+    /// <para>
+    /// 代价：每个候选位多一次小网格建图（9×24 级别，微秒量级），只在规划阶段、只在隐藏房候选上跑。
+    /// </para>
+    /// </summary>
+    private static bool CanConnectSecretly(
+        DungeonConfig config, Draft draft, in RoomPlan host, in RoomPlan hidden, List<RoomLink> mainLinks)
+    {
+        // 把**整个 draft** 都放进干跑布局：别的房间占的格子、以及主图房间之间的
+        // 走廊（Corridor）都会挡住挖通道 —— 只放两间房会算出「能挖通」的假象。
+        int count = draft.Count;
+        RoomPlan[] rooms = new RoomPlan[count + 1];
+        RoomId hostId = default;
+        bool probeHostFound = false;
+        DungeonGeneration generation = draft.Generation;
+        for (int i = 0; i < count; i++)
+        {
+            rooms[i] = draft.Rooms[i];
+            if (IsSame(draft.Rooms[i], in host))
+            {
+                hostId = new RoomId(generation, i);
+                probeHostFound = true;
+            }
+        }
+        rooms[count] = hidden;
+        RoomId hiddenId = new RoomId(generation, count);
+        if (!probeHostFound)
+        {
+            // 宿主房必须已经在 draft 里，否则这个候选位无意义。
+            return false;
+        }
+        // 主图链路照抄（走廊位置要一致），末尾追加一条临时秘密链路。
+        int mainCount = mainLinks.Count;
+        RoomLink[] links = new RoomLink[mainCount + 1];
+        for (int i = 0; i < mainCount; i++)
+        {
+            links[i] = mainLinks[i];
+        }
+        System.Array.Copy(mainLinks.ToArray(), links, mainCount);
+        links[mainCount] = new RoomLink
+        {
+            Slot = mainCount,
+            A = hostId,
+            B = hiddenId,
+            DirectionAB = DungeonGridMath.DirectionOf(new GridOffset(
+                hidden.Cell.X - host.Cell.X, hidden.Cell.Z - host.Cell.Z)),
+            OnMainGraph = false,
+            OnCriticalPath = false,
+            IsSecret = true,
+        };
+        // 门也照抄：CarveSecretPassage 不挖「门旁边的墙格」（门是主图入口，贴着门挖等于开门），
+        // 干跑时漏掉门，就会误判成「这条路能挖」，正式建图时又被门卡死 —— 实测这类假阳性有 9/100。
+        List<RoomDoor> probeDoors = BuildDoors(config, generation, draft, links);
+        DungeonLayout probe = new DungeonLayout
+        {
+            Generation = generation,
+            Seed = 0,
+            Rooms = rooms,
+            Links = links,
+            Doors = probeDoors.ToArray(),
+            Start = hostId,
+            Boss = hostId,
+        };
+        // 关掉障碍散布：它与本判定无关，还会随种子抖动。
+        DungeonMapConfig mapConfig = new DungeonMapConfig
+        {
+            Margin = 0,
+            ObstaclesEnabled = false,
+            ObstacleDensity = 0f,
+            StartRoomObstacleScale = 0f,
+            BossRoomObstacleScale = 0f,
+            ObstacleWallClearance = 1,
+            FuseMaxExtraSteps = 0,
+            ReportedRouteCount = 0,
+        };
+        DungeonMap map = DungeonMapBuilder.Build(in probe, 0, mapConfig);
+        (int hx, int hz) = map.RoomCenter(in hidden);
+        if (!map.Contains(hx, hz))
+        {
+            return false;
+        }
+        // 从宿主房出发、**允许走秘密通道**地泛洪，看隐藏房中心是否可达。
+        bool[] reached = FloodWithSecrets(in map);
+        return reached[(hz * map.Width) + hx];
+    }
+
+    /// <summary>从地图的起始房间出发泛洪，秘密通道算可走。用于「通道到底通没通」的验证。</summary>
+    private static bool[] FloodWithSecrets(in DungeonMap map)
+    {
+        bool[] reached = new bool[map.Width * map.Height];
+        Queue<(int X, int Z)> queue = new Queue<(int, int)>();
+        for (int z = 0; z < map.Height; z++)
+        {
+            for (int x = 0; x < map.Width; x++)
+            {
+                if (map.KindAt(x, z) == DungeonCellKind.Floor
+                    && map.RoomAt(x, z) == map.Layout.Start.Slot)
+                {
+                    reached[(z * map.Width) + x] = true;
+                    queue.Enqueue((x, z));
+                }
+            }
+        }
+        while (queue.Count > 0)
+        {
+            (int x, int z) = queue.Dequeue();
+            for (int d = 0; d < SecretSteps.Length; d++)
+            {
+                int nx = x + SecretSteps[d].X;
+                int nz = z + SecretSteps[d].Z;
+                if (!map.Contains(nx, nz))
+                {
+                    continue;
+                }
+                int i = (nz * map.Width) + nx;
+                if (reached[i] || !map.IsWalkable(nx, nz))
+                {
+                    continue;
+                }
+                reached[i] = true;
+                queue.Enqueue((nx, nz));
+            }
+        }
+        return reached;
+    }
+
+    private static bool IsSame(in RoomPlan a, in RoomPlan b)
+        => a.Cell.X == b.Cell.X && a.Cell.Z == b.Cell.Z
+        && a.Footprint.Width == b.Footprint.Width && a.Footprint.Depth == b.Footprint.Depth;
+
+    private static readonly GridOffset[] SecretSteps =
+    {
+        new GridOffset(1, 0),
+        new GridOffset(-1, 0),
+        new GridOffset(0, 1),
+        new GridOffset(0, -1),
+    };
 
     /// <summary>
     /// 隐藏房候选判据：在网格内、不与任何房间重叠、**也不与任何房间贴边**。
@@ -950,13 +1151,32 @@ public sealed class BranchDungeonPlanner : IDungeonPlanner
         }
         for (int i = 0; i < draft.Count; i++)
         {
-            if (DungeonGridMath.Overlaps(draft.Rooms[i], in candidate)
-                || DungeonGridMath.AreEdgeAdjacent(draft.Rooms[i], in candidate))
+            if (TouchesOrOverlaps(draft.Rooms[i], in candidate))
             {
                 return false;
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// 「贴边或重叠」的**统一口径**：包围盒各向外扩 1 格后相交。
+    /// <para>
+    /// 为什么不直接用 <see cref="DungeonGridMath.AreEdgeAdjacent"/>：那个判定要求「另一轴有<b>正长度</b>重叠」，
+    /// 于是**只共享一个角**的两间房被判成「不相邻」—— 可在栅格地图上它们是对角贴着的，
+    /// 隐藏房从角上直接连通主图。规划器原来用 <c>AreEdgeAdjacent</c> 卡隔离带，
+    /// 60 个种子里 30 个都栽在这个漏洞上（实测 2026-11-05）。
+    /// </para>
+    /// <para>
+    /// 本函数与 <see cref="DungeonValidation"/> 的 <c>CheckHiddenIsolation</c> 同义，
+    /// 保证「规划器认为干净」= 「校验器认为干净」，不再靠重试碰运气。
+    /// </para>
+    /// </summary>
+    private static bool TouchesOrOverlaps(in RoomPlan a, in RoomPlan b)
+    {
+        (int ax0, int az0, int ax1, int az1) = DungeonGridMath.Bounds(in a);
+        (int bx0, int bz0, int bx1, int bz1) = DungeonGridMath.Bounds(in b);
+        return ax0 - 1 < bx1 && bx0 - 1 < ax1 && az0 - 1 < bz1 && bz0 - 1 < az1;
     }
 
     // ─────────────────────────────────────────────────────────────
