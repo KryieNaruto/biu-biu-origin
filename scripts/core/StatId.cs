@@ -188,6 +188,17 @@ public enum StatId : ushort
 
     /// <summary>瞄准距离上限（米）：光标点被夹取到角色周围的世界半径。</summary>
     AimRange = 1025,
+
+    // ★ 2026-11-06 dash-skill：冲刺（Shift，SkillSlot.Dash）的手感参数。
+    //   为什么走数值包而不是写进技能代码：冲刺"冲多远、冲多快"是角色手感的一部分，
+    //   和 MoveSpeed 同源 —— 换一个角色只要换一行数据，技能实现类一行不改（规则4/规则6）。
+    //   为什么是「倍率 + 时长」而不是「冲刺速度 + 时长」：倍率让冲刺自动跟随该角色的基础移速，
+    //   敏捷型（7.4）冲出去自然比重甲型（3.6）远，不必为每个变体各填一个绝对速度。
+    /// <summary>冲刺速度倍率：冲刺期间速度 = <see cref="MoveSpeed"/> × 本值（1 = 不加速，按普通走路冲）。</summary>
+    DashSpeedMul = 1055,
+
+    /// <summary>冲刺持续时间（秒）：这段时间内速度被强制为冲刺速度，与普通移动意图无关。</summary>
+    DashDuration = 1056,
 }
 
 /// <summary><see cref="StatId"/> 的号段查询：给数据生成器与单测做构建期校验用。</summary>

@@ -70,6 +70,7 @@ public sealed class CharacterSession : IDisposable
     private ImpactEventSystem? _impacts;
     private HitDetectionSystem? _hitDetection;
     private ProjectileSystem? _projectileSystem;
+    private DashSystem? _dashSystem;
     private MoveAimSystem? _moveAim;
     private AimAtCursorSystem? _aimAtCursor;
     private FixedFramePipeline? _fixed;
@@ -280,6 +281,15 @@ public sealed class CharacterSession : IDisposable
                 _hitDetection,
                 _impacts);
         }
+
+        // ⑤ 冲刺：把 DashState 翻译成 Velocity。
+        //    **无条件注册**，不挂 CharacterModules：DashSystem 只在实体身上真有 DashState 时才做事
+        //    （查询本身就筛掉了全部普通帧），因此对"从不冲刺的变体"是纯零成本 —— 比给数据层
+        //    再加一个模块位（等于逼全世界策划去填 Excel 才能保持能跑）划算得多。
+        //    谁有资格冲刺由**数据**决定：技能包那个槽位是不是 kind=dash（SkillLoads）。没配就没人挂得上
+        //    DashState，系统空转，行为与今天完全一致 —— 这就是规则7 的「新增一种能力不惊动其他变体」。
+        _dashSystem = new DashSystem();
+        pipeline.AddModule(CharacterModules.Dash, _dashSystem);
 
         // ⑥ 收口：所有系统就位后才初始化（OnInitialize 里会建查询）。
         pipeline.Build();
@@ -966,6 +976,19 @@ internal sealed class SessionCommandSink : ICommandSink
     {
         _world.Commands.Destroy(new Entity(actorId, generation));
     }
+
+    /// <summary>
+    /// 给已存在实体挂组件（冲刺挂 <see cref="Game.Actor.DashState"/> 走这里）。
+    /// <para>
+    /// 走命令缓冲而不是 <c>_world.Set</c>：施放发生在查询遍历里，直接改结构会撞上
+    /// <c>AssertStructuralAllowed</c> 守卫（J5）。命令在帧末 <c>Flush</c> 时落地，
+    /// 因此"排了命令"与"组件真的在身上"之间隔着本帧剩余的时间 —— 这是契约要求的顺序。
+    /// </para>
+    /// </summary>
+    public void Add<T>(Entity entity, in T value) where T : unmanaged
+    {
+        _world.Commands.Add(entity, value);
+    }
 }
 
 /// <summary>警告版事件出口：宿主还没有表现层订阅方时，把玩法事件打成日志便于验证。</summary>
@@ -1092,4 +1115,12 @@ internal static class CharacterModules
 
     /// <summary>左键射击（投射物 + 命中 + 命中事件）。</summary>
     public const string Fire = "fire_primary";
+
+    /// <summary>
+    /// 冲刺（Shift）：把 <c>DashState</c> 翻译成速度。
+    /// <para>本 id 只作为管线注册键，<u>不</u>出现在 Excel 的 Assemblies 里 —— 它由会话无条件挂上，
+    /// 因为系统本身在没人 <c>DashState</c> 时零成本。是否真的能冲由技能包数据决定
+    /// （<c>SkillLoads.Kind = "dash"</c>）。</para>
+    /// </summary>
+    public const string Dash = "dash_impulse";
 }

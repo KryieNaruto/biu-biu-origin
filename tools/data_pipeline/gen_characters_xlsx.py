@@ -165,6 +165,8 @@ def main() -> int:
             ["test_hero_base", "Base", "MoveAccelTime", 0.12],
             ["test_hero_base", "Base", "TurnResponseTime", 0.10],
             ["test_hero_base", "Base", "AimRange", 18],
+            ["test_hero_base", "Base", "DashSpeedMul", 2.2],
+            ["test_hero_base", "Base", "DashDuration", 0.18],
             # ── 测试人物 · 重甲（血厚/护甲高/移速慢/手感沉）──
             ["test_hero_tank_base", "Base", "Hp", 220],
             ["test_hero_tank_base", "Base", "HpMax", 220],
@@ -186,6 +188,8 @@ def main() -> int:
             ["test_hero_tank_base", "Base", "CritChance", 0.03],
             ["test_hero_tank_base", "Base", "CritMultiplier", 1.5],
             ["test_hero_tank_base", "Base", "HurtInvulnTime", 0.8],
+            ["test_hero_tank_base", "Base", "DashSpeedMul", 1.8],
+            ["test_hero_tank_base", "Base", "DashDuration", 0.22],
             # ── 测试人物 · 敏捷（移速快/射速快/伤害低）──
             ["test_hero_agile_base", "Base", "Hp", 90],
             ["test_hero_agile_base", "Base", "HpMax", 90],
@@ -207,6 +211,8 @@ def main() -> int:
             ["test_hero_agile_base", "Base", "CritChance", 0.08],
             ["test_hero_agile_base", "Base", "CritMultiplier", 1.6],
             ["test_hero_agile_base", "Base", "HurtInvulnTime", 0.4],
+            ["test_hero_agile_base", "Base", "DashSpeedMul", 2.8],
+            ["test_hero_agile_base", "Base", "DashDuration", 0.16],
             # ── 测试人物 · 幸运（暴击高）──
             ["test_hero_lucky_base", "Base", "Hp", 110],
             ["test_hero_lucky_base", "Base", "HpMax", 110],
@@ -228,6 +234,8 @@ def main() -> int:
             ["test_hero_lucky_base", "Base", "CritChance", 0.15],
             ["test_hero_lucky_base", "Base", "CritMultiplier", 2],
             ["test_hero_lucky_base", "Base", "HurtInvulnTime", 0.6],
+            ["test_hero_lucky_base", "Base", "DashSpeedMul", 2.4],
+            ["test_hero_lucky_base", "Base", "DashDuration", 0.18],
             # ── 成长层：4 个变体共用（成长与 Base 正交：换变体不改成长）──
             # 成长层与内置副本逐项一致：HpMax +10 / Strength +1（合计 Hp 130 = 120 Base + 10 Growth）
             ["test_hero_growth", "Growth", "HpMax", 10],
@@ -283,6 +291,8 @@ def main() -> int:
             ["chosen_base", "Base", "CritChance", 0.12],
             ["chosen_base", "Base", "CritMultiplier", 2.0],
             ["chosen_base", "Base", "HurtInvulnTime", 0.8],
+            ["chosen_base", "Base", "DashSpeedMul", 2.0],
+            ["chosen_base", "Base", "DashDuration", 0.2],
         ],
     )
 
@@ -297,38 +307,38 @@ def main() -> int:
             ("SkillId", "int", "技能id", "指向 Skills 表主键；0 = 该槽留空"),
             ("CooldownSeconds", "float", "冷却", "秒；本行覆盖技能默认冷却；射击技能必须 == 武器行 ShotCooldown"),
             ("ManaCost", "float", "法力消耗", "本行覆盖技能默认消耗"),
-            ("Kind", "enum:SkillKind", "实现种类", "fire_projectile=投射物射击 / data=占位（施放不产出）。数据层只声明种类，实例化由宿主 ISkillFactory 做"),
+            ("Kind", "enum:SkillKind", "实现种类", "fire_projectile=投射物射击 / dash=冲刺（参数读数值包 DashSpeedMul·DashDuration，不写在本表） / data=占位（施放不产出）。数据层只声明种类，实例化由宿主 ISkillFactory 做"),
             ("WeaponId", "string", "武器行id", "哪把枪（指向 Weapons.Id）；查伤害/弹速/射程用。非射击技能留空"),
             ("ProjectileId", "string", "子弹外观id", "子弹长什么样（如 proj_pistol_basic），只给射击技能/命令门面用。非射击技能留空。不得与 WeaponId 填成一样"),
             ("Note", "string", "备注", "说明这个槽为什么这么配"),
         ],
         [
             # ── 旧主角技能包（与 CharacterContentSet 内置副本逐项一致）──
-            ["player_kit", "Dash", 1001, 1.2, 8, "data", "", "", "冲刺（Shift）"],
+            ["player_kit", "Dash", 1001, 1.2, 8, "dash", "", "", "冲刺（Shift）"],
             ["player_kit", "PrimaryAttack", 1101, 0.12, 0, "fire_projectile", "pistol_basic", "", "左键射击"],
             ["player_kit", "WeaponSwap", 1201, 0, 0, "data", "", "", "切武器（Q）"],
             ["player_kit", "Signature", 1301, 6, 25, "data", "", "", "大招（R）"],
             ["player_kit", "Interact", 1401, 0, 0, "data", "", "", "交互（F）"],
             # ── 测试人物 · 标准 ──
-            ["test_hero_kit", "Dash", 1001, 1.2, 8, "data", "", "", "冲刺（Shift）"],
+            ["test_hero_kit", "Dash", 1001, 1.2, 8, "dash", "", "", "冲刺（Shift）"],
             ["test_hero_kit", "PrimaryAttack", 1101, 0.15, 0, "fire_projectile", "pistol_basic", "proj_pistol_basic", "瞄准射击（左键）"],
             ["test_hero_kit", "WeaponSwap", 1201, 0.0, 0, "data", "", "", "切换武器（Q）"],
             ["test_hero_kit", "Signature", 1304, 12.0, 25, "data", "", "", "角色独有技能（R）"],
             ["test_hero_kit", "Interact", 1401, 0.0, 0, "data", "", "", "交互（F）"],
             # ── 测试人物 · 重甲 ──
-            ["test_hero_tank_kit", "Dash", 1001, 1.2, 8, "data", "", "", "冲刺（Shift）"],
+            ["test_hero_tank_kit", "Dash", 1001, 1.2, 8, "dash", "", "", "冲刺（Shift）"],
             ["test_hero_tank_kit", "PrimaryAttack", 1106, 0.42, 0, "fire_projectile", "cannon_heavy", "proj_cannon_heavy", "重炮（慢速高伤）"],
             ["test_hero_tank_kit", "WeaponSwap", 1201, 0.0, 0, "data", "", "", "切换武器（Q）"],
             ["test_hero_tank_kit", "Signature", 1305, 16.0, 20, "data", "", "", "角色独有技能（R）"],
             ["test_hero_tank_kit", "Interact", 1401, 0.0, 0, "data", "", "", "交互（F）"],
             # ── 测试人物 · 敏捷 ──
-            ["test_hero_agile_kit", "Dash", 1001, 1.2, 8, "data", "", "", "冲刺（Shift）"],
+            ["test_hero_agile_kit", "Dash", 1001, 1.2, 8, "dash", "", "", "冲刺（Shift）"],
             ["test_hero_agile_kit", "PrimaryAttack", 1107, 0.08, 0, "fire_projectile", "smg_light", "proj_smg_light", "冲锋枪（高射速低伤）"],
             ["test_hero_agile_kit", "WeaponSwap", 1201, 0.0, 0, "data", "", "", "切换武器（Q）"],
             ["test_hero_agile_kit", "Signature", 1306, 10.0, 30, "data", "", "", "角色独有技能（R）"],
             ["test_hero_agile_kit", "Interact", 1401, 0.0, 0, "data", "", "", "交互（F）"],
             # ── 测试人物 · 幸运 ──
-            ["test_hero_lucky_kit", "Dash", 1001, 1.2, 8, "data", "", "", "冲刺（Shift）"],
+            ["test_hero_lucky_kit", "Dash", 1001, 1.2, 8, "dash", "", "", "冲刺（Shift）"],
             ["test_hero_lucky_kit", "PrimaryAttack", 1108, 0.18, 0, "fire_projectile", "ricochet_lucky", "proj_ricochet_lucky", "幸运弹射（高暴击）"],
             ["test_hero_lucky_kit", "WeaponSwap", 1201, 0.0, 0, "data", "", "", "切换武器（Q）"],
             ["test_hero_lucky_kit", "Signature", 1307, 14.0, 25, "data", "", "", "角色独有技能（R）"],
@@ -338,7 +348,7 @@ def main() -> int:
             ["goblin_archer_kit", "PrimaryAttack", 1103, 1.8, 0, "data", "", "", "远程射击"],
             ["ogre_kit", "PrimaryAttack", 1104, 2.4, 0, "data", "", "", "重砸"],
             ["ogre_kit", "Signature", 1302, 9.0, 0, "data", "", "", "冲锋（精英独有）"],
-            ["chosen_kit", "Dash", 1001, 1.0, 8, "data", "", "", "冲刺"],
+            ["chosen_kit", "Dash", 1001, 1.0, 8, "dash", "", "", "冲刺"],
             ["chosen_kit", "PrimaryAttack", 1105, 0.16, 0, "data", "", "", "法术弹"],
             ["chosen_kit", "WeaponSwap", 1201, 0.0, 0, "data", "", "", "切换武器"],
             ["chosen_kit", "Signature", 1303, 8.0, 40, "data", "", "", "天选者：时间减速"],

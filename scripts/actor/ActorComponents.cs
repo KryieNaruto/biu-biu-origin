@@ -207,3 +207,35 @@ public struct WeaponStats
     /// <summary>武器行 id 的稳定哈希（数据侧槽位号；0 = 未指定）。</summary>
     public int WeaponId;
 }
+
+/// <summary>
+/// 冲刺状态（瞬态组件）：<c>DashSkill.Cast</c> 成功后由帧末命令挂上，
+/// 冲刺窗口结束时由 <see cref="Game.Actor.DashSystem"/> 立刻移除 —— 它不该在角色身上长期存在。
+/// <para>
+/// <b>为什么是一个组件而不是技能里的计时器</b>：技能实例在整个技能包生命周期里只有一个，
+/// 若把"谁正在冲刺"记在技能里，两个角色共用同一份技能包数据时状态会串（用户需求的
+/// 「拼接变体」正是共享技能包）。状态属于<u>实体</u>，技能属于<u>配置</u> —— J2 的划分。
+/// </para>
+/// <para>
+/// <b>为什么必须能移除</b>：给冲刺单独一个组件种类，"正在冲刺"就是一个可被查询的结构化事实；
+/// 冲刺结束时删掉组件等于从原型迁走，代价 O(1)，且不会留下"剩余时间=0 的僵尸状态"。
+/// 它同时是冲刺的<u>防重入锁</u>：<c>DashSkill.CanCast</c> 查到这个组件就拒绝再次施放。
+/// </para>
+/// </summary>
+public struct DashState
+{
+    /// <summary>实体自引用。</summary>
+    [Identity] public Entity Owner;
+
+    /// <summary>冲刺剩余时间（秒，&gt; 0 表示正在冲刺）。</summary>
+    public float Remaining;
+
+    /// <summary>冲刺总时长（秒）：给表现层算"剩余比例"用（拖尾长度/残影密度）。</summary>
+    public float Duration;
+
+    /// <summary>本次冲刺的世界方向（水平单位向量）：冲刺期间方向锁定，不吃转向意图。</summary>
+    public System.Numerics.Vector3 Direction;
+
+    /// <summary>本次冲刺的速度（米/秒）：= MoveSpeed × DashSpeedMul，开冲那一刻定格。</summary>
+    public float Speed;
+}

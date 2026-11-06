@@ -46,6 +46,13 @@ public readonly record struct CharacterSkillSpec(
     /// <summary>种类：占位（只有 id/冷却/消耗，施放不产出任何东西）。</summary>
     public const string KindData = "data";
 
+    /// <summary>
+    /// 种类：冲刺（Shift）。参数（倍率/时长）不在本行，而在<u>角色数值包</u>
+    /// （<c>StatId.DashSpeedMul</c> / <c>StatId.DashDuration</c>）—— 于是同一个技能行
+    /// 装在四个变体上会冲出四种手感，数据层无需为此新增列（规则7）。
+    /// </summary>
+    public const string KindDash = "dash";
+
     /// <summary>本行是否声明为"真开火"的射击技能。</summary>
     public bool IsProjectile =>
         string.Equals(Kind, KindFireProjectile, StringComparison.OrdinalIgnoreCase);
@@ -76,7 +83,12 @@ public static class CharacterSkillSpecs
     public const int SlotCount = 5;   // arch-ok: 五固定槽是架构约定（SkillSlot 枚举项数），非可调玩法数值
 
     /// <summary>全部合法 Kind 取值（供校验与生成器共用）。</summary>
-    public static readonly IReadOnlyList<string> KnownKinds = new[] { CharacterSkillSpec.KindFireProjectile, CharacterSkillSpec.KindData };
+    public static readonly IReadOnlyList<string> KnownKinds = new[]
+    {
+        CharacterSkillSpec.KindFireProjectile,
+        CharacterSkillSpec.KindDash,
+        CharacterSkillSpec.KindData,
+    };
 
     /// <summary>把 Excel 的槽位号换成 <see cref="SkillSlot"/>。</summary>
     public static bool TryToSlot(int slotNumber, out SkillSlot slot)
