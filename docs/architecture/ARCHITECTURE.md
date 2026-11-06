@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v7  最后更新: 2026-11-06（§14.8.1 回归修复）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v8  最后更新: 2026-11-07（§14.9 物件随机生成 + 2D 图例带色）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1072,6 +1072,7 @@ user://saves/<slot>.json
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
 | 2026-11-05 | v7 | **武器触发与弹道运动学：把纸面契约接上消费方** | **审计发现「契约有了、消费方缺失」**：`WeaponTrigger` 仅在 `ContentBinder` 被*解析*、**无任何系统读它**；`ProjectileAdvanceSystem` 只有一行 `pos += vel*dt`，故 `combat.xlsx` 里 `Homing`/`Falling`/`Wave` 三种子弹**全按直线飞**，`Gravity=9.8`、`HomingTurn=rand:…` 是死数据。① **新增 `WeaponFireSystem`**（`Update` 组，`UpdateAfter(SkillCastSystem)`）：七种 `WeaponTrigger` 的唯一消费者——`Auto` 按住连射 / `Semi` 边沿只打一发 / `Burst` 起手 / `Charge` 蓄力松手发射 / `Hold` 持续 / `Triggered`+`Manual` 不吃输入；弹药门控优先于一切；开火后立即起冷却与扣弹。② **判定抽成纯函数** `WeaponFireRules`（+`WeaponValues` 做 `ValueSet→标量`），使手感断言不必跑整个 `World`。③ **8 种 `ProjectileMotion` 全部实现**：`Homing`（罗德里格斯限速转向，查 `Query<Hurtbox,Transform3>` 最近目标）、`Orbit`、`Wave`、`Boomerang`、`Falling`、`Spiral`、`Anchor`、`Straight`；运动参数在**发射瞬间定一次**写入 `ProjectileState`（新增 `Motion/HomingTurn/Gravity/BaseSpeed/Age/LaunchDirection` 六字段），避免 `rand:` 逐帧漂移；缺发射者/目标时**退化为直线**而非 NaN。④ **修 1 个静默 bug**（记入 §17.9.3）：`ISpanAction` 执行器是 struct 按值传入，把扫描结果存在执行器身上导致 `Execute` 改的是副本 → `TryFindHomingTarget` 恒 false → 追踪弹静默退化为直线，**而既有测试全绿**（它们只用 `Straight`）。⑤ **新增 §17.9**（触发表 / 运动表 / 教训）；§17.7 补三行「明确不做」：`WeaponDelivery` 其余五种投送、`ProjectileHitPolicy` 运行时结算、`WeaponFireSystem` 尚未在 `DungeonDebugScene` 注册。**测试 179 → 225 全绿**（规则 22 + 运动学 11 + 集成 7），守卫 0 error / 0 warning | `scripts/combat/WeaponFireSystem.cs`、`scripts/combat/WeaponFireRules.cs`、`scripts/combat/WeaponValues.cs`、`scripts/combat/ProjectileAdvanceSystem.cs`、`scripts/combat/CombatComponents.cs`、`scripts/combat/Factory/ContentSpawner.cs`、`tests/Combat/WeaponFireRulesTests.cs`、`tests/Combat/WeaponFireSystemTests.cs`、`tests/Combat/ProjectileMotionTests.cs`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v6 | **素材快查看器 v2：修复用户实测的 4 个 bug** | **用户第一轮实测报的 4 个 bug 全部修完并逐条验收**。① **滚轮后点击错位**（点到的资源不是点的那一个）：`CellRect()` 是绘制与命中的唯一真源，但 `RebuildFilter()` 会把 `scrollY_` 一起重置，导致重建后绘制偏移与命中偏移两个口径分叉 —— 改为**筛选重建时不重置滚动**（另有分支做钳制）。`probe_hit` 断言 14 个滚动位置 × 316 单元格 = **100.00% 命中，零错位**。② **模型不在面板正中 / 显示不全**：`CameraState::distance` 2.5→1.0 并按包围盒自适应；实测真 GUI 模型中心 (849,433) vs 预览区中心 (850,430)，**误差 3px**。③ **模型没有纹理**（见 §16.5 教训表该行，两个独立根因：贴图预览写死 32px 且 UV 只占图集 7.24% → 角色贴图只剩 8×9 像素；另有 123 个模型 `baseColorFactor` 极暗被"黑底兜底"换成随机灰）——修法：`kPreviewMaxEdge` **32→256** + 96MB 预算分级降级，黑底兜底阈值 0.02→0.0005，D3D 与 CPU 两条渲染路径各加**自适应曝光**。④ **没有动画与动画列表**（见 §16.5 该行：FBX 80 字符截断使 clip 名退化为 `Dea`/`Pun`/空串）——`NormalizeName` 改写为取中间完整非噪音段 + 新增 `StripDupSuffix`，Anne 的 14 条 clip 全名恢复；`probe_anim` 证明每个 clip 驱动 49~57 根骨骼、蒙皮覆盖 84.2% 顶点。**共享契约变更（详见新增 §16.9）**：`Vertex` 32→48 B（顶点色）、`GpuVertex` 64→80 B、`TextureInfo::preview` 32→256 px。**另修一个只在 `/MT` 静态版复现的堆破坏崩溃**（`printf` 里两个 `std::string` 临时量，`exit=0xC0000374`，稳定停在 `Bird.glb`）。**验收**：`loader_smoke` 371/371（`/MD` 与 `/MT` 双版）、`ui_selftest` 77/77、`render_regress` 301/301 可见、`thumb_sheet` 371/371 wall 21.61s @256px。`dist/` 已刷新（619KB，MD5 与构建产物一致） | `tools/asset_viewer/src/{model_data.h,glb_loader.cpp,fbx_loader.cpp,texture.h,texture.cpp,d3d_renderer.cpp,d3d_renderer.h,thumb_renderer.cpp,viewer_app.cpp,viewer_app.h}`、`tools/asset_viewer/tests/{loader_smoke.cpp,ui_selftest.cpp}`、`tools/asset_viewer/dist/**`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v5 | **角色真源证真：xlsx 直读比对** | **补上「Excel 唯一真源」缺失的自动证据**：新增 `tests/Characters/CharacterXlsxParityTests`（5 用例）——直接解析 `data/excel/characters.xlsx`，与内置副本**逐字段、逐数值**比对（Characters 9 列 + StatPacks 全部属性 + 能否装配成实体）。新增 `tests/Characters/CharacterXlsxBinder.cs`（复用既有 `XlsxReader`，零第三方依赖，报错带 Excel 真实行号）。`CharacterContentSet` 新增 `RegisterPackRow/RegisterCharacterRow/RegisterLoadoutRow/FlushStatPacks/FlushLoadouts`，使 xlsx 读取与内置副本**走同一代码路径**。**注入验证**：把表中 `player_base.Hp` 改为 999，测试精确报出「预期 120、实际 999」→ 证明不是假守护。修正 `CharacterContentRegressionTests` 里「与 xlsx 逐行对应」的**虚假注释**（它从不读 xlsx），改为显式声明只能证明"内置副本自洽"。§4.1 重写现状 + 新增 §4.1.1 证据链表与「假守护」教训。**发现待决问题**：`StatPackageRepository` 以包 id 为键，同包跨层会互相覆盖（当前数据未触发）。测试 174 → 179，守卫 0 error | `tests/Characters/CharacterXlsxParityTests.cs`、`tests/Characters/CharacterXlsxBinder.cs`、`tests/Characters/CharacterContentRegressionTests.cs`、`scripts/data/CharacterContentSet.cs`、`docs/architecture/ARCHITECTURE.md`
@@ -1402,6 +1403,54 @@ ERROR: 地牢调试场景初始化失败：System.InvalidOperationException:
 
 > **通用判据**：任何「用配置 A 测、用配置 B 上线」的场景，都必须有一道校验跑 B。
 > 这不是纪律问题，是**测试的覆盖面和产品实际走的路不是同一条**——这类 bug 靠人看代码是看不出来的。
+
+### 14.9 物件随机生成（2026-11-06 落地）：建筑 / 奖励 / 可破坏 / 不可破坏
+
+> **需求原话**：「开始往其中加入建筑，奖励，不/可破坏物体的随机生成」。
+> 这一层接在 2D 栅格之后、3D 实体之前：**先决定「什么摆在哪个格」，再由表现层决定「长什么样」**。
+
+**四类物件 = 四种放置规则**（`scripts/spawn/rooms/DungeonProp.cs`）：
+
+| 类型 | 占地 | 挡路 | 放置规则要点 |
+|---|---|---|---|
+| `Building` | 多格（2×2 起） | 是 | **最先摆**（大件优先，否则会被小物件饿死）；房间边长 < `BuildingMinRoomSide` 直接不摆 |
+| `Solid`（不可破坏） | 1 格 | 是 | 摆完建筑后摆，参与连通性检查 |
+| `Breakable`（可破坏） | 1 格 | **是** | 关键判断：**没有子弹的玩家打不烂箱子**，所以「可破坏」在连通性上等同于墙 |
+| `Reward` | 1 格 | **否** | 踩过去就捡到，最后摆，不参与连通性检查 |
+
+**新增三件落地物**：
+
+| 物 | 职责 | 位置 |
+|---|---|---|
+| `DungeonProp` | `readonly struct`：`Kind` + 画布坐标矩形 + `RoomSlot` + `Variant`；`IsMultiCell` | `scripts/spawn/rooms/DungeonProp.cs` |
+| `DungeonPropConfig` | 每类物件的数量/尺寸/离墙格数，全部 `With()` 派生 + `Validate()` | `scripts/spawn/rooms/DungeonPropConfig.cs` |
+| `DungeonPropPlanner` | `Populate(in DungeonMap, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动） | `scripts/spawn/rooms/DungeonPropPlanner.cs` |
+
+**两条踩过的坑（都在 2026-11-06 修复）**：
+
+1. **四个阶段曾经各建一张 `blocked` 掩码** —— 结果建筑占的格子在摆奖励时「看不见」，
+   奖励可以叠在建筑上，而且连通性检查拿的是**残缺掩码**，摆出来的图和检查结论不一致。
+   修法：**一张掩码贯穿全部阶段**。
+2. **奖励被当成挡路** —— `tools/dungeon_check` 的校验口径把 `Reward` 也算作不可通行，
+   于是一张完全正常的图被判「物件堵死通路」。修法：生成器与校验器**共用同一口径**——
+   `Kind != Reward` 才挡路。两处口径不一致时排查成本极高，所以这条写进代码注释。
+
+**离墙格数是「尽量」而不是「必须」**：小房间（3~4 格）两边各留 1 格后就只剩 1 格，什么都放不下。
+`TryPickOrigin` 因此**逐格退让** `WallClearance → 0`。可放置性是硬约束，留白是软约束，冲突时后者让路。
+
+**验收证据**（`tools/dungeon_check --props --seeds 500`，13×30 网格 / 房间边长 4）：
+
+| 指标 | 结果 |
+|---|---|
+| 地图生成 | 500 / 500 |
+| 平均每图 | 建筑 5.65 · 奖励 5.80 · 可破坏 11.85 · 不可破坏 7.50 |
+| 物件堵死通路 | **0** |
+| 物件压门 / 压非地面 | **0 / 0** |
+
+**2D 视图同步升级**（用户反馈「注释没有颜色，看不出来什么颜色对应什么房间」）：
+图例从「一行纯文字」改为**每一项先画一块真颜色再写名字**，色块直接取自 `DungeonRoomStyleSet`，
+换 `.tres` 配色时图例自动跟着变；四类物件在图上用**形状**区分（建筑整块铺满并描边 / 奖励菱形 /
+可破坏圆点 / 不可破坏小方块）——形状比颜色更可靠，色弱和小屏都认得出。
 
 ---
 

@@ -36,6 +36,12 @@ public partial class DungeonMap2DView : Node2D
     [Export]
     public bool HighlightRoute { get; set; } = true;
 
+    /// <summary>奖励菱形相对一格的半径比例（纯视觉）。</summary>
+    private const float RewardDiamondScale = 0.26f; // arch-ok: 图元大小比例（纯视觉排版）
+
+    /// <summary>图例左边距（像素）。</summary>
+    private const float LegendMargin = 2f; // arch-ok: 图例边距（纯视觉排版）
+
     private DungeonMap _map;
     private bool _hasMap;
     private GridOffset[] _route = Array.Empty<GridOffset>();
@@ -58,6 +64,22 @@ public partial class DungeonMap2DView : Node2D
     /// <summary>障碍块颜色。</summary>
     [Export]
     public Color ObstacleColor { get; set; } = new Color(0.10f, 0.10f, 0.12f); // arch-ok: 调试视图默认底色
+
+    /// <summary>建筑（多格，整块铺满）颜色。</summary>
+    [Export]
+    public Color BuildingColor { get; set; } = new Color(0.62f, 0.42f, 0.26f); // arch-ok: 调试视图默认底色
+
+    /// <summary>奖励物颜色。</summary>
+    [Export]
+    public Color RewardColor { get; set; } = new Color(1.00f, 0.82f, 0.16f); // arch-ok: 调试视图默认底色
+
+    /// <summary>可破坏物颜色。</summary>
+    [Export]
+    public Color BreakableColor { get; set; } = new Color(0.52f, 0.74f, 0.42f); // arch-ok: 调试视图默认底色
+
+    /// <summary>不可破坏物颜色。</summary>
+    [Export]
+    public Color SolidColor { get; set; } = new Color(0.36f, 0.38f, 0.44f); // arch-ok: 调试视图默认底色
 
     /// <summary>走廊颜色（房间之间的连接地面）。</summary>
     [Export]
@@ -133,6 +155,7 @@ public partial class DungeonMap2DView : Node2D
         }
 
         DrawCells();
+        DrawProps();
         if (_route.Length > 0)
         {
             DrawRoute();
@@ -141,6 +164,63 @@ public partial class DungeonMap2DView : Node2D
         {
             DrawLegend();
         }
+    }
+
+    /// <summary>
+    /// 画四类物件。**形状区分比颜色更可靠**（色弱/小屏都认得出），所以每类有自己的画法：
+    /// 建筑 = 整块铺满并描边，奖励 = 小菱形，可破坏 = 小圆点，不可破坏 = 小方块。
+    /// </summary>
+    private void DrawProps()
+    {
+        DungeonProp[] props = _map.Props;
+        if (props == null || props.Length == 0)
+        {
+            return;
+        }
+        float cell = CellPixels;
+        for (int i = 0; i < props.Length; i++)
+        {
+            DungeonProp prop = props[i];
+            var rect = new Rect2(prop.X * cell, prop.Z * cell, prop.Width * cell, prop.Depth * cell);
+            switch (prop.Kind)
+            {
+                case DungeonPropKind.Building:
+                    DrawRect(rect, BuildingColor);
+                    DrawRect(rect, BuildingColor.Darkened(0.45f), false, Mathf.Max(cell * 0.08f, 1f));
+                    break;
+                case DungeonPropKind.Reward:
+                    DrawRewardDiamond(prop, cell);
+                    break;
+                case DungeonPropKind.Breakable:
+                    DrawCircle(
+                        new Vector2((prop.X * cell) + (cell * 0.5f), (prop.Z * cell) + (cell * 0.5f)),
+                        cell * 0.22f,
+                        BreakableColor);
+                    break;
+                case DungeonPropKind.Solid:
+                    DrawRect(
+                        new Rect2((prop.X * cell) + (cell * 0.3f), (prop.Z * cell) + (cell * 0.3f), cell * 0.4f, cell * 0.4f),
+                        SolidColor);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private void DrawRewardDiamond(in DungeonProp prop, float cell)
+    {
+        float cx = (prop.X * cell) + (cell * 0.5f);
+        float cz = (prop.Z * cell) + (cell * 0.5f);
+        float r = cell * RewardDiamondScale;
+        Vector2[] points =
+        {
+            new Vector2(cx, cz - r),
+            new Vector2(cx + r, cz),
+            new Vector2(cx, cz + r),
+            new Vector2(cx - r, cz),
+        };
+        DrawColoredPolygon(points, RewardColor);
     }
 
     private void DrawCells()
@@ -206,19 +286,74 @@ public partial class DungeonMap2DView : Node2D
         }
     }
 
+    /// <summary>
+    /// 图例：**每一项都画出真实的色块**，后面跟文字说明。
+    /// <para>
+    /// 上一版图例是一行纯文字（「■起始 □战斗 …」），用户反馈「注释没有颜色，看不出来什么颜色对应什么房间」——
+    /// 文字里的方块和地图上的方块毫无关系，等于没写。所以这里改为「先画一块真颜色，再写名字」，
+    /// 色块直接取自当前配色表，换 .tres 配色时图例自动跟着变，不会再对不上。
+    /// </para>
+    /// </summary>
     private void DrawLegend()
     {
-        string text = "■起始 □战斗 □特殊 □隐藏 □Boss ■墙 ▣门 ·障碍 ┅秘密通道 ─最短路";
-        float y = (_map.Height * CellPixels) + 16f; // arch-ok: 图例与地图像素间距（UI 排版）
-        DrawString(ThemeDB.FallbackFont, new Vector2(2f, y), text, HorizontalAlignment.Left, -1f, 11);
+        float cell = CellPixels;
+        float y = (_map.Height * cell) + 18f; // arch-ok: 图例与地图像素间距（UI 排版）
+        float swatch = 10f; // arch-ok: 图例色块边长（UI 排版）
+        float gap = 6f; // arch-ok: 图例色块与文字间距（UI 排版）
+        float itemGap = 18f; // arch-ok: 图例项之间的间距（UI 排版）
+        float x = LegendMargin;
+        Font font = ThemeDB.FallbackFont;
+
+        // 第一行：房型（颜色来自配色表，与地图完全同源）。
+        x = LegendMargin;
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "起始房", _stylesResolved.Get(RoomCategory.Start).FloorColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "战斗房", _stylesResolved.Get(RoomCategory.Combat).FloorColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "特殊房", _stylesResolved.Get(RoomCategory.Special).FloorColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "隐藏房", _stylesResolved.Get(RoomCategory.Hidden).FloorColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "Boss房", _stylesResolved.Get(RoomCategory.Boss).FloorColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "墙", WallColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "门", DoorColor, font);
+        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "秘密通道", SecretColor, font);
+
+        // 第二行：四类物件。
+        float y2 = y + 16f; // arch-ok: 图例行高（UI 排版）
+        x = LegendMargin;
+        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "建筑", BuildingColor, font);
+        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "奖励", RewardColor, font);
+        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "可破坏", BreakableColor, font);
+        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "不可破坏", SolidColor, font);
+        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "障碍", ObstacleColor, font);
+
+        // 第三行：统计。
         string sub = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
-            "seed {0}  网格 {1}×{2}  房间 {3}",
+            "seed {0}   网格 {1}×{2}   房间 {3}   物件 {4}",
             _map.Seed,
             _map.Width,
             _map.Height,
-            _map.Layout.RoomCount);
-        DrawString(ThemeDB.FallbackFont, new Vector2(2f, y + 14f), sub, HorizontalAlignment.Left, -1f, 11);
+            _map.Layout.RoomCount,
+            _map.PropCount);
+        DrawString(font, new Vector2(LegendMargin, y2 + 16f), sub, HorizontalAlignment.Left, -1f, 11); // arch-ok: 图例行高（UI 排版）
+    }
+
+    /// <summary>画「一块真颜色 + 文字」的图例项，并推进游标。颜色取自当前配色表/导出色，不会与地图脱节。</summary>
+    private void AddLegendSwatch(
+        float x,
+        float y,
+        float swatch,
+        float gap,
+        ref float cursor,
+        float itemGap,
+        string label,
+        Color color,
+        Font font)
+    {
+        DrawRect(new Rect2(cursor, y - swatch, swatch, swatch), color);
+        DrawRect(new Rect2(cursor, y - swatch, swatch, swatch), new Color(0f, 0f, 0f, 0.5f), false, 1f);
+        cursor += swatch + gap;
+        DrawString(font, new Vector2(cursor, y), label, HorizontalAlignment.Left, -1f, 11);
+        // 文字宽度按「一个汉字 ≈ 字号」估算即可，图例是排版辅助，不需要精确字宽测量。
+        cursor += (label.Length * 11f) + itemGap; // arch-ok: 图例文字宽度估算（UI 排版）
     }
 
     private Color ColorFor(DungeonCellKind kind, int x, int z)

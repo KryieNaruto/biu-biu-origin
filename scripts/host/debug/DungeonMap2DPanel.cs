@@ -48,6 +48,12 @@ public partial class DungeonMap2DPanel : PanelContainer
     /// <summary>百分比滑条 → 0~1 密度的换算分母。</summary>
     private const float PercentScale = 100f; // arch-ok: 百分比换算，不是玩法数值
 
+    /// <summary>
+    /// 隐藏房奖励是普通房的几倍。
+    /// <para>隐藏房要玩家主动找、常常还要打穿秘密通道，回报必须更高，否则没人会去找。</para>
+    /// </summary>
+    private const int HiddenRewardMultiplier = 2; // arch-ok: 面板默认推导值，正式数值走 .tres/Excel
+
     /// <summary>一根滑条的取值范围。</summary>
     /// <param name="Min">最小值。</param>
     /// <param name="Max">最大值。</param>
@@ -68,9 +74,9 @@ public partial class DungeonMap2DPanel : PanelContainer
     private static class SliderRanges
     {
         public static readonly Range Seed = new(0, 999999, 1, 0); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
-        public static readonly Range GridWidth = new(5, 40, 1, 9); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
-        public static readonly Range GridHeight = new(8, 60, 1, 24); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
-        public static readonly Range RoomSide = new(2, 10, 1, 3); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range GridWidth = new(5, 40, 1, 13); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range GridHeight = new(8, 60, 1, 30); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range RoomSide = new(2, 10, 1, 4); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
         public static readonly Range TargetRooms = new(3, 40, 1, 9); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
         public static readonly Range Tolerance = new(0, 6, 1, 2); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
         public static readonly Range HiddenRooms = new(0, 4, 1, 1); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
@@ -81,6 +87,12 @@ public partial class DungeonMap2DPanel : PanelContainer
         public static readonly Range ObstacleDensity = new(0, 40, 1, 8); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
         public static readonly Range ObstacleClearance = new(0, 3, 1, 1); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
         public static readonly Range CellPixels = new(6, 40, 1, 16); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range BuildingsPerRoom = new(0, 4, 1, 1); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range BuildingMaxSide = new(2, 5, 1, 3); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range RewardsPerRoom = new(0, 6, 1, 1); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range BreakablesPerRoom = new(0, 8, 1, 2); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range SolidsPerRoom = new(0, 6, 1, 1); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
+        public static readonly Range PropClearance = new(0, 2, 1, 1); // arch-ok: 滑条取值范围（UI 控件边界），非玩法数值
     }
 
     private VBoxContainer _rows = null!;
@@ -101,6 +113,12 @@ public partial class DungeonMap2DPanel : PanelContainer
     private SpinBox _obstacleDensity = null!;
     private SpinBox _obstacleClearance = null!;
     private SpinBox _cellPixels = null!;
+    private SpinBox _buildingsPerRoom = null!;
+    private SpinBox _buildingMaxSide = null!;
+    private SpinBox _rewardsPerRoom = null!;
+    private SpinBox _breakablesPerRoom = null!;
+    private SpinBox _solidsPerRoom = null!;
+    private SpinBox _propClearance = null!;
 
     private int _pendingRebuild = -1;
     private double _debounceLeft;
@@ -173,6 +191,16 @@ public partial class DungeonMap2DPanel : PanelContainer
         _obstacleDensity = AddSpinBox("障碍密度（%）", SliderRanges.ObstacleDensity);
         _obstacleClearance = AddSpinBox("障碍离墙格数", SliderRanges.ObstacleClearance);
         _cellPixels = AddSpinBox("格子像素大小", SliderRanges.CellPixels);
+
+        Label propTitle = new Label { Text = "── 物件（建筑 / 奖励 / 可破坏 / 不可破坏）──" };
+        propTitle.AddThemeFontSizeOverride("font_size", 11);
+        _rows.AddChild(propTitle);
+        _buildingsPerRoom = AddSpinBox("每房建筑数", SliderRanges.BuildingsPerRoom);
+        _buildingMaxSide = AddSpinBox("建筑最大边长（格）", SliderRanges.BuildingMaxSide);
+        _rewardsPerRoom = AddSpinBox("每房奖励数", SliderRanges.RewardsPerRoom);
+        _breakablesPerRoom = AddSpinBox("每房可破坏数", SliderRanges.BreakablesPerRoom);
+        _solidsPerRoom = AddSpinBox("每房不可破坏数", SliderRanges.SolidsPerRoom);
+        _propClearance = AddSpinBox("物件离墙格数（尽量）", SliderRanges.PropClearance);
 
         HBoxContainer buttons = new HBoxContainer();
         _rows.AddChild(buttons);
@@ -267,6 +295,33 @@ public partial class DungeonMap2DPanel : PanelContainer
         };
     }
 
+    /// <summary>
+    /// 从「物件」那一组滑条拼配置。
+    /// <para>
+    /// 数量为 0 就等于「关掉这一类」，不必再加一个开关 —— 少一个控件就少一处不一致。
+    /// 奖励按房间类别分档（普通房 / 隐藏房），面板只暴露一个「每房奖励数」，
+    /// 隐藏房取它的两倍：隐藏房是玩家冒风险才找到的，回报必须更高。
+    /// </para>
+    /// </summary>
+    private DungeonPropConfig BuildPropConfig()
+    {
+        int rewards = (int)_rewardsPerRoom.Value;
+        return new DungeonPropConfig
+        {
+            BuildingsEnabled = _buildingsPerRoom.Value > 0.0,
+            BuildingsPerRoom = (int)_buildingsPerRoom.Value,
+            BuildingMaxSide = (int)_buildingMaxSide.Value,
+            RewardsEnabled = rewards > 0,
+            RewardsPerCombatRoom = rewards,
+            RewardsPerHiddenRoom = rewards * HiddenRewardMultiplier,
+            BreakablesEnabled = _breakablesPerRoom.Value > 0.0,
+            BreakablesPerRoom = (int)_breakablesPerRoom.Value,
+            SolidsEnabled = _solidsPerRoom.Value > 0.0,
+            SolidsPerRoom = (int)_solidsPerRoom.Value,
+            WallClearance = (int)_propClearance.Value,
+        };
+    }
+
     /// <summary>按当前滑条值重新规划 + 栅格化 + 重画，并把体检结果写进状态行。</summary>
     private void RebuildNow()
     {
@@ -295,6 +350,16 @@ public partial class DungeonMap2DPanel : PanelContainer
         }
 
         DungeonMap map = DungeonMapBuilder.Build(in layout, seed, mapConfig);
+        // 物件（建筑/奖励/可破坏/不可破坏）在栅格化之后叠加：它们依赖「哪些格是地板、哪些格是门」，
+        // 这些信息只有栅格化完才齐。Populate 不修改原图，返回一张带 Props 的新图。
+        try
+        {
+            map = DungeonPropPlanner.Populate(in map, seed, BuildPropConfig());
+        }
+        catch (InvalidOperationException ex)
+        {
+            _status.Text = "物件配置非法：" + ex.Message + "（地图保持无物件）";
+        }
         DungeonMapCheck.Report report = DungeonMapCheck.Inspect(in map);
         _view.SetMap(in map);
         double elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - startedAt) * 1000.0 // arch-ok: 计时单位换算（秒→毫秒）
