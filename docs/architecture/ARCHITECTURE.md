@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v8  最后更新: 2026-11-07（§14.9 物件随机生成 + 2D 图例带色）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v8  最后更新: 2026-11-09（§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置；此前 §14.9 物件随机生成）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -532,6 +532,37 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 - ❌ 用英文单复数混用命名文件（统一**小写复数**主题名：`characters.xlsx` 而不是 `Character.xlsx`）。
 - ❌ 一个 `.xlsx` 里塞两个同义 Sheet（如 `Weapon` 和 `Weapons` 并存）。
 - ❌ 把 Sheet 名改成与表名不一致（pipeline 按 Sheet 名定位表，改名 = 断链）。
+- ❌ **同一个 `PackId` 出现在两个不同的 `Layer`**（见下方「数值包 id 与层是一对多，不是一个 id 多层」）。
+
+#### 4.3.1 数值包 id 与层：**一个 `PackId` 只能占一层**
+
+规则 6 要求数值包分五层折叠（`Base` 绝对值 + `Growth`/`Equipment`/`Buff`/`Temporary` 四层差量）。
+但这**不意味着同一个包名可以分好几层写**：
+
+```text
+✅ 正确（不同层用不同 id，装配时按列引用）
+   hero_base    Base      Hp 120
+   hero_base    Base      Mp 50
+   hero_growth  Growth    Hp 10
+   Characters.GrowthPackage = hero_growth
+
+❌ 错误（同一个 id 想同时当 Base 和 Growth）
+   hero  Base    Hp 120
+   hero  Growth  Hp 10
+```
+
+**为什么禁止**：运行时的 `StatPackageRepository` 以 **`PackId` 为唯一键**
+（`Dictionary<string, StatPackageLayer>`），一个 id 只能存一层。上面这种写法会构造出两个
+同 id 不同 layer 的对象，注册时直接抛「数值包 id 重复」——也就是说这是**数据表达不了的形状**。
+在 Excel 侧拦下的成本 ≈ 0；等它流到运行期，报错会发生在装配阶段，离「改了哪行表」已经很远。
+
+**校验落点**：`tools/data_pipeline/validate_content_xlsx.py` 的 `validate_statpacks()`，
+报错会指明「已作为 X 层出现在第 N 行」并建议拆分命名（`hero_base` / `hero_growth`）。
+当前 31 个包全部合规（0 个跨层），这条是**预防性约束**。
+
+> 如果将来真需要「同名包分层」，那是**数据模型变更**：键改成 `(PackId, Layer)`，
+> 同时 `Compose` / `Find` / `GetLayerValue` 三个入口一并改，并按规则 7 评估扩展成本。
+> 在那之前，按层拆名字。
 
 ### 4.4 各段的校验点汇总表
 
@@ -542,6 +573,7 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 | ③ 跨表外键 | pipeline 写盘前 | 中断，指出两表两 id | 同上 |
 | ④ schema 版本 | pipeline 开始 + 结束 | 中断 | 同上 |
 | ⑤ 生成物自检 | pipeline 写盘后 | 中断并回滚生成目录 | 同上 |
+| ⑥ 数值包跨层 | pipeline 转换前 | 中断，指出两行行号 | 同上（§4.3.1） |
 | ⑥ 运行期版本 | `GeneratedConfigSource` 启动 | 抛中文异常，禁止降级 | `Game.Data` |
 | ⑦ 存档版本 | `SaveService` 读档 | 不兼容则提示并拒绝载入 | `Game.Data` |
 
@@ -891,6 +923,53 @@ user://saves/<slot>.json
 - 任何新增 shader 必须登记到 7.3 表，并写清 uniform 来源。
 - d3d12 是**唯一目标 RHI**（现配置）；写 shader 不要用只在 Vulkan 可用的扩展。
 
+#### 7.5.1 窗口 → 视口：**`stretch/mode` 必须是 `disabled`**
+
+`project.godot` 的 `[display]` 段：
+
+```ini
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/size/resizable=true
+window/stretch/mode="disabled"
+window/stretch/aspect="expand"
+```
+
+**为什么不能用 `canvas_items`**（2026-11-06 用户实测 bug，已修）：
+`stretch/mode="canvas_items"` 的语义是「把内容渲染到一张**固定基准分辨率**的画布，再缩放贴到窗口」。
+一旦没显式写 `viewport_width/height`，基准就落到引擎默认的 **1152×648**，于是：
+
+| 拖到的窗口 | 实际 3D 视口 | 现象 |
+|---|---|---|
+| 1280×720 | 1152×648 | 画面被放大 |
+| 1920×1080 | **1152×648** | 窗口变大了，画面**一点没变**，只是被拉伸 |
+| 1280×1024 | 1152×921 | 只有高度跟着动，宽度锁死 |
+
+**这就是「拖动窗口不修改渲染画面」的根因**：视口尺寸被钉死，相机看到的范围自然不变。
+
+**为什么本项目可以直接关掉 stretch**：本作是纯 3D 俯视射击，HUD 是**自绘 `Control`**
+（`CharacterHudDrawer` 在 `_Draw` 里按自身 `Size` 重建几何，本来就会自适应），
+不存在需要像素级缩放的 UI 栅格图。关掉之后 `视口尺寸 == 窗口尺寸`，窗口多大就渲染多大。
+
+> **相机视野仍独立控制**：`TopDownCameraRig` 用 `KeepAspect = Height` + 正交 `Size`
+> 决定「看到多大一片世界」。窗口变宽 → 横向看到更多（正确行为）；想改视野范围改 `OrthoHeight`，
+> 不要改 stretch。
+
+**回归探针**：`tools/probes/viewport_resize_probe.gd`（只读探针，规则1 白名单 `tools/probes/**`）。
+带窗运行（**不能加 `--headless`**，没有 DisplayServer 就没有窗口可测）：
+
+```powershell
+& "E:\Godot\Godot_v4.7.2-stable_mono_win64_console.exe" --path . `
+    --script tools/probes/viewport_resize_probe.gd
+```
+
+它把窗口依次设成 1280×720 / 1920×1080 / 1280×1024 / 800×450，每次读回
+`root.get_visible_rect().size`，断言**视口 == 窗口**。实测对照：
+`canvas_items` 下 **4/4 失败**（视口恒为 1152×648），`disabled` 下 **4/4 通过**。
+
+> **这类 bug 编译、日志、架构守卫都发现不了**——stretch 配错不报任何错，只是静默缩放。
+> 所以必须靠「设尺寸 → 读回尺寸 → 比对」的探针来钉住，不能只靠肉眼。
+
 ### 7.6 下一步
 
 1. 先做**级别 0** 的 Toybox 观感基线：一套 `toybox_lit.gdshader` + `WorldEnvironment` 预设，跑通一个可看场景。
@@ -1073,6 +1152,7 @@ user://saves/<slot>.json
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
 | 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
+| 2026-11-09 | v8 | **数值包跨层校验 + 窗口缩放修复** | ① **Excel 校验器新增「同一 PackId 不能跨层」**（§4.3.1）：运行期 `StatPackageRepository` 以 PackId 为唯一键，同 id 写两层会构造出两个同 id `StatPackageLayer`，注册时抛「数值包 id 重复」——这是**数据表达不了的形状**，必须在建表期拦下。`validate_statpacks()` 记录 (Layer, 行号)，冲突时报「已作为 X 层出现在第 N 行」并建议拆成 `hero_base`/`hero_growth`。现有 31 个包全合规（0 跨层），属预防性约束；注入测试 4/4 双向往返通过（该报的报、不该报的不报）。**刻意不改运行期键**为 `(PackId, Layer)`——那要同时改 `Compose`/`Find`/`GetLayerValue`，收益不抵成本。② **修「拖动窗口不改变渲染画面」**（§7.5.1）：`window/stretch/mode` 由 `canvas_items` 改为 `disabled`，补 `viewport_width/height=1600×900`、`resizable=true`。根因：`canvas_items` 把内容渲染到**固定基准分辨率**，未显式指定时回落引擎默认 **1152×648**，故窗口怎么拖 3D 视口都恒为 1152×648。**这类 bug 编译/日志/守卫全发现不了**，故新增只读探针 `tools/probes/viewport_resize_probe.gd` 实测对照：旧配置 **4/4 失败**（视口锁死 1152×648），新配置 **4/4 通过**（视口 == 窗口）。相机 `KeepAspect=Height` 本就正确，非病因。 | `tools/data_pipeline/validate_content_xlsx.py`、`project.godot`、`tools/probes/viewport_resize_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v7 | **武器触发与弹道运动学：把纸面契约接上消费方** | **审计发现「契约有了、消费方缺失」**：`WeaponTrigger` 仅在 `ContentBinder` 被*解析*、**无任何系统读它**；`ProjectileAdvanceSystem` 只有一行 `pos += vel*dt`，故 `combat.xlsx` 里 `Homing`/`Falling`/`Wave` 三种子弹**全按直线飞**，`Gravity=9.8`、`HomingTurn=rand:…` 是死数据。① **新增 `WeaponFireSystem`**（`Update` 组，`UpdateAfter(SkillCastSystem)`）：七种 `WeaponTrigger` 的唯一消费者——`Auto` 按住连射 / `Semi` 边沿只打一发 / `Burst` 起手 / `Charge` 蓄力松手发射 / `Hold` 持续 / `Triggered`+`Manual` 不吃输入；弹药门控优先于一切；开火后立即起冷却与扣弹。② **判定抽成纯函数** `WeaponFireRules`（+`WeaponValues` 做 `ValueSet→标量`），使手感断言不必跑整个 `World`。③ **8 种 `ProjectileMotion` 全部实现**：`Homing`（罗德里格斯限速转向，查 `Query<Hurtbox,Transform3>` 最近目标）、`Orbit`、`Wave`、`Boomerang`、`Falling`、`Spiral`、`Anchor`、`Straight`；运动参数在**发射瞬间定一次**写入 `ProjectileState`（新增 `Motion/HomingTurn/Gravity/BaseSpeed/Age/LaunchDirection` 六字段），避免 `rand:` 逐帧漂移；缺发射者/目标时**退化为直线**而非 NaN。④ **修 1 个静默 bug**（记入 §17.9.3）：`ISpanAction` 执行器是 struct 按值传入，把扫描结果存在执行器身上导致 `Execute` 改的是副本 → `TryFindHomingTarget` 恒 false → 追踪弹静默退化为直线，**而既有测试全绿**（它们只用 `Straight`）。⑤ **新增 §17.9**（触发表 / 运动表 / 教训）；§17.7 补三行「明确不做」：`WeaponDelivery` 其余五种投送、`ProjectileHitPolicy` 运行时结算、`WeaponFireSystem` 尚未在 `DungeonDebugScene` 注册。**测试 179 → 225 全绿**（规则 22 + 运动学 11 + 集成 7），守卫 0 error / 0 warning | `scripts/combat/WeaponFireSystem.cs`、`scripts/combat/WeaponFireRules.cs`、`scripts/combat/WeaponValues.cs`、`scripts/combat/ProjectileAdvanceSystem.cs`、`scripts/combat/CombatComponents.cs`、`scripts/combat/Factory/ContentSpawner.cs`、`tests/Combat/WeaponFireRulesTests.cs`、`tests/Combat/WeaponFireSystemTests.cs`、`tests/Combat/ProjectileMotionTests.cs`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v6 | **素材快查看器 v2：修复用户实测的 4 个 bug** | **用户第一轮实测报的 4 个 bug 全部修完并逐条验收**。① **滚轮后点击错位**（点到的资源不是点的那一个）：`CellRect()` 是绘制与命中的唯一真源，但 `RebuildFilter()` 会把 `scrollY_` 一起重置，导致重建后绘制偏移与命中偏移两个口径分叉 —— 改为**筛选重建时不重置滚动**（另有分支做钳制）。`probe_hit` 断言 14 个滚动位置 × 316 单元格 = **100.00% 命中，零错位**。② **模型不在面板正中 / 显示不全**：`CameraState::distance` 2.5→1.0 并按包围盒自适应；实测真 GUI 模型中心 (849,433) vs 预览区中心 (850,430)，**误差 3px**。③ **模型没有纹理**（见 §16.5 教训表该行，两个独立根因：贴图预览写死 32px 且 UV 只占图集 7.24% → 角色贴图只剩 8×9 像素；另有 123 个模型 `baseColorFactor` 极暗被"黑底兜底"换成随机灰）——修法：`kPreviewMaxEdge` **32→256** + 96MB 预算分级降级，黑底兜底阈值 0.02→0.0005，D3D 与 CPU 两条渲染路径各加**自适应曝光**。④ **没有动画与动画列表**（见 §16.5 该行：FBX 80 字符截断使 clip 名退化为 `Dea`/`Pun`/空串）——`NormalizeName` 改写为取中间完整非噪音段 + 新增 `StripDupSuffix`，Anne 的 14 条 clip 全名恢复；`probe_anim` 证明每个 clip 驱动 49~57 根骨骼、蒙皮覆盖 84.2% 顶点。**共享契约变更（详见新增 §16.9）**：`Vertex` 32→48 B（顶点色）、`GpuVertex` 64→80 B、`TextureInfo::preview` 32→256 px。**另修一个只在 `/MT` 静态版复现的堆破坏崩溃**（`printf` 里两个 `std::string` 临时量，`exit=0xC0000374`，稳定停在 `Bird.glb`）。**验收**：`loader_smoke` 371/371（`/MD` 与 `/MT` 双版）、`ui_selftest` 77/77、`render_regress` 301/301 可见、`thumb_sheet` 371/371 wall 21.61s @256px。`dist/` 已刷新（619KB，MD5 与构建产物一致） | `tools/asset_viewer/src/{model_data.h,glb_loader.cpp,fbx_loader.cpp,texture.h,texture.cpp,d3d_renderer.cpp,d3d_renderer.h,thumb_renderer.cpp,viewer_app.cpp,viewer_app.h}`、`tools/asset_viewer/tests/{loader_smoke.cpp,ui_selftest.cpp}`、`tools/asset_viewer/dist/**`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v5 | **角色真源证真：xlsx 直读比对** | **补上「Excel 唯一真源」缺失的自动证据**：新增 `tests/Characters/CharacterXlsxParityTests`（5 用例）——直接解析 `data/excel/characters.xlsx`，与内置副本**逐字段、逐数值**比对（Characters 9 列 + StatPacks 全部属性 + 能否装配成实体）。新增 `tests/Characters/CharacterXlsxBinder.cs`（复用既有 `XlsxReader`，零第三方依赖，报错带 Excel 真实行号）。`CharacterContentSet` 新增 `RegisterPackRow/RegisterCharacterRow/RegisterLoadoutRow/FlushStatPacks/FlushLoadouts`，使 xlsx 读取与内置副本**走同一代码路径**。**注入验证**：把表中 `player_base.Hp` 改为 999，测试精确报出「预期 120、实际 999」→ 证明不是假守护。修正 `CharacterContentRegressionTests` 里「与 xlsx 逐行对应」的**虚假注释**（它从不读 xlsx），改为显式声明只能证明"内置副本自洽"。§4.1 重写现状 + 新增 §4.1.1 证据链表与「假守护」教训。**发现待决问题**：`StatPackageRepository` 以包 id 为键，同包跨层会互相覆盖（当前数据未触发）。测试 174 → 179，守卫 0 error | `tests/Characters/CharacterXlsxParityTests.cs`、`tests/Characters/CharacterXlsxBinder.cs`、`tests/Characters/CharacterContentRegressionTests.cs`、`scripts/data/CharacterContentSet.cs`、`docs/architecture/ARCHITECTURE.md`
