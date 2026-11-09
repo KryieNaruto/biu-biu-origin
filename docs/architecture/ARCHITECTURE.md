@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v8  最后更新: 2026-11-09（§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置；此前 §14.9 物件随机生成）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v10  最后更新: 2026-11-09（§14.8 调参面板 SpinBox→可左右拖动滑块；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置；此前 §14.9 物件随机生成）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1151,6 +1151,7 @@ window/stretch/aspect="expand"
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-09 | v9 | **调参面板：数值控件换成可左右拖动的滑块** | 用户原话「数值改为左右拖动的滑块」。① `SpinBox` 只能点箭头/键盘输入，调参时视线在图、手要找小箭头，频繁打断看图；20 根控件全部换成 **`HSlider` + 定宽数值标签**（标签固定宽度，拖动时位数变化不让整列跳动），在地图旁边既能拖又能随时看到当前值。② 节流 `RebuildDebounceMs` **90 ms → 30 ms**：原值是给「点箭头一次跳一格」定的，连续拖动下明显发黏；实测重算平均 0.57 ms、稳态最差 8.92 ms（仍 < 一帧 16.6 ms），故可放宽到几乎每帧都算。③ **无头可验证**：自检新增 `sliders=` / `spinBoxes=` 计数并断言 `spinBoxes==0` —— 数的是场景树里真实存在的节点类型，不是「我写了 AddSlider 所以它是滑块」。实际结果 `sliders=20 spinBoxes=0`，并用临时探针验证「改值 → 6 帧内地图重画 `mapChanged=True`」链路通（探针已删除，不留诊断代码）。守卫 0 error | `docs/architecture/ARCHITECTURE.md`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
 | 2026-11-09 | v8 | **数值包跨层校验 + 窗口缩放修复** | ① **Excel 校验器新增「同一 PackId 不能跨层」**（§4.3.1）：运行期 `StatPackageRepository` 以 PackId 为唯一键，同 id 写两层会构造出两个同 id `StatPackageLayer`，注册时抛「数值包 id 重复」——这是**数据表达不了的形状**，必须在建表期拦下。`validate_statpacks()` 记录 (Layer, 行号)，冲突时报「已作为 X 层出现在第 N 行」并建议拆成 `hero_base`/`hero_growth`。现有 31 个包全合规（0 跨层），属预防性约束；注入测试 4/4 双向往返通过（该报的报、不该报的不报）。**刻意不改运行期键**为 `(PackId, Layer)`——那要同时改 `Compose`/`Find`/`GetLayerValue`，收益不抵成本。② **修「拖动窗口不改变渲染画面」**（§7.5.1）：`window/stretch/mode` 由 `canvas_items` 改为 `disabled`，补 `viewport_width/height=1600×900`、`resizable=true`。根因：`canvas_items` 把内容渲染到**固定基准分辨率**，未显式指定时回落引擎默认 **1152×648**，故窗口怎么拖 3D 视口都恒为 1152×648。**这类 bug 编译/日志/守卫全发现不了**，故新增只读探针 `tools/probes/viewport_resize_probe.gd` 实测对照：旧配置 **4/4 失败**（视口锁死 1152×648），新配置 **4/4 通过**（视口 == 窗口）。相机 `KeepAspect=Height` 本就正确，非病因。 | `tools/data_pipeline/validate_content_xlsx.py`、`project.godot`、`tools/probes/viewport_resize_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-05 | v7 | **武器触发与弹道运动学：把纸面契约接上消费方** | **审计发现「契约有了、消费方缺失」**：`WeaponTrigger` 仅在 `ContentBinder` 被*解析*、**无任何系统读它**；`ProjectileAdvanceSystem` 只有一行 `pos += vel*dt`，故 `combat.xlsx` 里 `Homing`/`Falling`/`Wave` 三种子弹**全按直线飞**，`Gravity=9.8`、`HomingTurn=rand:…` 是死数据。① **新增 `WeaponFireSystem`**（`Update` 组，`UpdateAfter(SkillCastSystem)`）：七种 `WeaponTrigger` 的唯一消费者——`Auto` 按住连射 / `Semi` 边沿只打一发 / `Burst` 起手 / `Charge` 蓄力松手发射 / `Hold` 持续 / `Triggered`+`Manual` 不吃输入；弹药门控优先于一切；开火后立即起冷却与扣弹。② **判定抽成纯函数** `WeaponFireRules`（+`WeaponValues` 做 `ValueSet→标量`），使手感断言不必跑整个 `World`。③ **8 种 `ProjectileMotion` 全部实现**：`Homing`（罗德里格斯限速转向，查 `Query<Hurtbox,Transform3>` 最近目标）、`Orbit`、`Wave`、`Boomerang`、`Falling`、`Spiral`、`Anchor`、`Straight`；运动参数在**发射瞬间定一次**写入 `ProjectileState`（新增 `Motion/HomingTurn/Gravity/BaseSpeed/Age/LaunchDirection` 六字段），避免 `rand:` 逐帧漂移；缺发射者/目标时**退化为直线**而非 NaN。④ **修 1 个静默 bug**（记入 §17.9.3）：`ISpanAction` 执行器是 struct 按值传入，把扫描结果存在执行器身上导致 `Execute` 改的是副本 → `TryFindHomingTarget` 恒 false → 追踪弹静默退化为直线，**而既有测试全绿**（它们只用 `Straight`）。⑤ **新增 §17.9**（触发表 / 运动表 / 教训）；§17.7 补三行「明确不做」：`WeaponDelivery` 其余五种投送、`ProjectileHitPolicy` 运行时结算、`WeaponFireSystem` 尚未在 `DungeonDebugScene` 注册。**测试 179 → 225 全绿**（规则 22 + 运动学 11 + 集成 7），守卫 0 error / 0 warning | `scripts/combat/WeaponFireSystem.cs`、`scripts/combat/WeaponFireRules.cs`、`scripts/combat/WeaponValues.cs`、`scripts/combat/ProjectileAdvanceSystem.cs`、`scripts/combat/CombatComponents.cs`、`scripts/combat/Factory/ContentSpawner.cs`、`tests/Combat/WeaponFireRulesTests.cs`、`tests/Combat/WeaponFireSystemTests.cs`、`tests/Combat/ProjectileMotionTests.cs`、`docs/architecture/ARCHITECTURE.md` |
@@ -1438,9 +1439,17 @@ PreUpdate → FixedUpdate×N → Update → LateUpdate → CommandFlush → 事�
 | 物 | 职责 | 位置 |
 |---|---|---|
 | `DungeonMap2DView` | `Node2D` 逐格 `DrawRect`；地面色取自 `DungeonRoomStyleSet.Get(category).FloorColor`（换配色只改 `.tres`）；画图例、画「起始→Boss 最短路」高亮 | `scripts/host/debug/DungeonMap2DView.cs` |
-| `DungeonMap2DPanel` | 14 根滑条（seed/网格/边长/房间数/隐藏房/特殊房/Boss 深度/环路/障碍密度…）+ 随机种子 + 导出字符画；拖动 90 ms 节流，松手立刻算 | `scripts/host/debug/DungeonMap2DPanel.cs` |
-| `DungeonMap2DDebugScene` | 场景根：把 View 与 Panel 接起来 | `scripts/host/debug/DungeonMap2DDebugScene.cs` |
+| `DungeonMap2DPanel` | 20 根**可左右拖动的 `HSlider`**（地图形状 14 根 + 物件 6 根），每行「名字 + 滑块 + 当前值标签」；拖 30 ms 节流，松手立刻算 | `scripts/host/debug/DungeonMap2DPanel.cs` |
+| `DungeonMap2DDebugScene` | 场景根：把 View 与 Panel 接起来；自检报告 `sliders=` / `spinBoxes=` 计数 | `scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 场景 | `res://scenes/debug/DungeonMap2D.tscn`（左侧地图 / 右侧面板） | `scenes/debug/` |
+
+**交互控件为什么是滑块而不是 SpinBox（2026-11-09 改）**：用户原话「数值改为左右拖动的滑块」。
+`SpinBox` 只能点小箭头或键盘输入，调参时眼睛在图上、手要去找一个小箭头，频繁打断看图。
+改用 `HSlider` + 旁边一个**定宽数值标签**（固定宽度，拖动时数字位数变化不会让整列跳动）。
+节流同时从 90 ms 收到 **30 ms**：90 ms 是给「点箭头一次跳一格」定的，换成连续拖动后明显发黏；
+实测重算一次平均 0.57 ms、稳态最差 8.92 ms，仍在一帧 16.6 ms 内，所以敢放宽到几乎每帧都能算。
+自检里加 `sliders=` / `spinBoxes=` 两个计数并断言 `spinBoxes==0`——无头环境没有眼睛看面板，
+「我写了 `AddSlider` 所以它一定是滑块」不算证据，数场景树里真实存在的节点类型才算。
 
 **性能事实（本机实测，`dotnet run --project tools/dungeon_check -c Release -- --bench --seeds 500`）**：
 重算一次 = 规划 + 栅格化 + 体检，**平均 0.51 ms，稳态最差 3.25 ms**，远低于一帧 16.6 ms
