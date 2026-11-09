@@ -71,9 +71,14 @@ public partial class DungeonMap2DDebugScene : Godot.Control
                     break;
             }
         }
+        // 控件统计：直接数场景树里真实存在的节点类型，而不是相信「我写了 AddSlider 所以它就是滑块」。
+        // 无头环境下没有眼睛看面板，这是唯一能证明「数值确实换成了可左右拖动的滑块」的证据。
+        int sliders = CountNodes<HSlider>(_panel);
+        int spinBoxes = CountNodes<SpinBox>(_panel);
+
         string summary = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
-            "hasMap={0} size={1}x{2} artLength={3} props(B={4} R={5} b={6} o={7})",
+            "hasMap={0} size={1}x{2} artLength={3} props(B={4} R={5} b={6} o={7}) sliders={8} spinBoxes={9}",
             _view.HasMap,
             _view.MapWidth,
             _view.MapHeight,
@@ -81,16 +86,35 @@ public partial class DungeonMap2DDebugScene : Godot.Control
             buildings,
             rewards,
             breakables,
-            solids);
+            solids,
+            sliders,
+            spinBoxes);
         GD.Print("[DungeonMap2D 自检] " + summary);
         if (!ok)
         {
             GD.PushWarning("[DungeonMap2D 自检] 没拿到地图，字符画为空");
+        }
+        if (spinBoxes > 0)
+        {
+            // SpinBox 只能点箭头，用户明确要的是左右拖动；残留任何一个都说明改造漏了。
+            GD.PushWarning("[DungeonMap2D 自检] 面板里还有 " + spinBoxes + " 个 SpinBox，没换成滑块");
         }
         using FileAccess file = FileAccess.Open("user://dungeon_map2d_selfcheck.txt", FileAccess.ModeFlags.Write);
         if (file is not null)
         {
             file.StoreString(summary + "\n\n" + art);
         }
+    }
+
+    /// <summary>统计某个节点子树里指定类型的节点个数（含自身）。</summary>
+    private static int CountNodes<T>(Node root)
+        where T : Node
+    {
+        int count = root is T ? 1 : 0;
+        foreach (Node child in root.GetChildren())
+        {
+            count += CountNodes<T>(child);
+        }
+        return count;
     }
 }

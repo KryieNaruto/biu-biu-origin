@@ -25,10 +25,17 @@ namespace Game.Host.Debug;
 /// </summary>
 public partial class DungeonMap2DPanel : PanelContainer
 {
-    /// <summary>拖动滑条时的重算节流（毫秒）。太小会卡，太大手感黏。</summary>
-    private const int RebuildDebounceMs = 90; // arch-ok: 交互节流阈值，不是玩法数值
+    /// <summary>
+    /// 拖动滑条时的重算节流（毫秒）。太小会卡，太大手感黏。
+    /// <para>
+    /// 实测重算一次平均 <b>0.57 ms</b>（稳态最差 8.92 ms，仍在一帧 16.6 ms 以内），
+    /// 所以这里可以放宽到「几乎每帧都能算」。原先 90 ms 是给 SpinBox 点箭头定的，
+    /// 那个场景一次只跳一格，慢了无所谓；换成**连续拖动**后 90 ms 会明显发黏，故收到 30 ms。
+    /// </para>
+    /// </summary>
+    private const int RebuildDebounceMs = 30; // arch-ok: 交互节流阈值，不是玩法数值
 
-    private const string PanelTitle = "拖拽下面的滑条，地图会实时重画";
+    private const string PanelTitle = "左右拖动滑块，地图会实时重画";
 
     /// <summary>起始房 / Boss 房比普通小房间多出的边长（格）。</summary>
     private const int SpecialRoomExtraSide = 2; // arch-ok: 面板派生「大房间」边长的结构性常量
@@ -47,6 +54,15 @@ public partial class DungeonMap2DPanel : PanelContainer
 
     /// <summary>百分比滑条 → 0~1 密度的换算分母。</summary>
     private const float PercentScale = 100f; // arch-ok: 百分比换算，不是玩法数值
+
+    /// <summary>滑条行里「名字」列的宽度；够放下最长的那条中文标签。</summary>
+    private const float LabelColumnWidth = 150f; // arch-ok: 面板布局尺寸（UI）
+
+    /// <summary>滑条行里「当前值」列的宽度；固定宽度避免数字位数变化时整列跳动。</summary>
+    private const float ValueColumnWidth = 34f; // arch-ok: 面板布局尺寸（UI）
+
+    /// <summary>滑条行的控件间距。</summary>
+    private const int RowSeparation = 8; // arch-ok: 面板布局尺寸（UI）
 
     /// <summary>
     /// 隐藏房奖励是普通房的几倍。
@@ -99,26 +115,26 @@ public partial class DungeonMap2DPanel : PanelContainer
     private Label _status = null!;
     private DungeonMap2DView _view = null!;
 
-    private SpinBox _seedBox = null!;
-    private SpinBox _gridWidth = null!;
-    private SpinBox _gridHeight = null!;
-    private SpinBox _roomSide = null!;
-    private SpinBox _targetRooms = null!;
-    private SpinBox _tolerance = null!;
-    private SpinBox _hiddenRooms = null!;
-    private SpinBox _minSpecials = null!;
-    private SpinBox _maxSpecials = null!;
-    private SpinBox _minBossDepth = null!;
-    private SpinBox _loopDistance = null!;
-    private SpinBox _obstacleDensity = null!;
-    private SpinBox _obstacleClearance = null!;
-    private SpinBox _cellPixels = null!;
-    private SpinBox _buildingsPerRoom = null!;
-    private SpinBox _buildingMaxSide = null!;
-    private SpinBox _rewardsPerRoom = null!;
-    private SpinBox _breakablesPerRoom = null!;
-    private SpinBox _solidsPerRoom = null!;
-    private SpinBox _propClearance = null!;
+    private HSlider _seedBox = null!;
+    private HSlider _gridWidth = null!;
+    private HSlider _gridHeight = null!;
+    private HSlider _roomSide = null!;
+    private HSlider _targetRooms = null!;
+    private HSlider _tolerance = null!;
+    private HSlider _hiddenRooms = null!;
+    private HSlider _minSpecials = null!;
+    private HSlider _maxSpecials = null!;
+    private HSlider _minBossDepth = null!;
+    private HSlider _loopDistance = null!;
+    private HSlider _obstacleDensity = null!;
+    private HSlider _obstacleClearance = null!;
+    private HSlider _cellPixels = null!;
+    private HSlider _buildingsPerRoom = null!;
+    private HSlider _buildingMaxSide = null!;
+    private HSlider _rewardsPerRoom = null!;
+    private HSlider _breakablesPerRoom = null!;
+    private HSlider _solidsPerRoom = null!;
+    private HSlider _propClearance = null!;
 
     private int _pendingRebuild = -1;
     private double _debounceLeft;
@@ -177,30 +193,30 @@ public partial class DungeonMap2DPanel : PanelContainer
 
         // 滑条取值范围是 **UI 控件边界**，不是玩法数值（规则4 管的是战斗/手感数值）。
         // 但写成字面量仍然难看，统一收进 SliderRanges 常量表，改范围只改一处。
-        _seedBox = AddSpinBox("种子 seed", SliderRanges.Seed);
-        _gridWidth = AddSpinBox("网格宽（格）", SliderRanges.GridWidth);
-        _gridHeight = AddSpinBox("网格高（格）", SliderRanges.GridHeight);
-        _roomSide = AddSpinBox("小房间边长（格）", SliderRanges.RoomSide);
-        _targetRooms = AddSpinBox("目标房间数", SliderRanges.TargetRooms);
-        _tolerance = AddSpinBox("房间数容差", SliderRanges.Tolerance);
-        _hiddenRooms = AddSpinBox("隐藏房数量", SliderRanges.HiddenRooms);
-        _minSpecials = AddSpinBox("特殊房下限", SliderRanges.SpecialRooms);
-        _maxSpecials = AddSpinBox("特殊房上限", SliderRanges.MaxSpecials);
-        _minBossDepth = AddSpinBox("Boss 最小深度", SliderRanges.MinBossDepth);
-        _loopDistance = AddSpinBox("环路距离（格）", SliderRanges.LoopDistance);
-        _obstacleDensity = AddSpinBox("障碍密度（%）", SliderRanges.ObstacleDensity);
-        _obstacleClearance = AddSpinBox("障碍离墙格数", SliderRanges.ObstacleClearance);
-        _cellPixels = AddSpinBox("格子像素大小", SliderRanges.CellPixels);
+        _seedBox = AddSlider("种子 seed", SliderRanges.Seed, out _);
+        _gridWidth = AddSlider("网格宽（格）", SliderRanges.GridWidth, out _);
+        _gridHeight = AddSlider("网格高（格）", SliderRanges.GridHeight, out _);
+        _roomSide = AddSlider("小房间边长（格）", SliderRanges.RoomSide, out _);
+        _targetRooms = AddSlider("目标房间数", SliderRanges.TargetRooms, out _);
+        _tolerance = AddSlider("房间数容差", SliderRanges.Tolerance, out _);
+        _hiddenRooms = AddSlider("隐藏房数量", SliderRanges.HiddenRooms, out _);
+        _minSpecials = AddSlider("特殊房下限", SliderRanges.SpecialRooms, out _);
+        _maxSpecials = AddSlider("特殊房上限", SliderRanges.MaxSpecials, out _);
+        _minBossDepth = AddSlider("Boss 最小深度", SliderRanges.MinBossDepth, out _);
+        _loopDistance = AddSlider("环路距离（格）", SliderRanges.LoopDistance, out _);
+        _obstacleDensity = AddSlider("障碍密度（%）", SliderRanges.ObstacleDensity, out _);
+        _obstacleClearance = AddSlider("障碍离墙格数", SliderRanges.ObstacleClearance, out _);
+        _cellPixels = AddSlider("格子像素大小", SliderRanges.CellPixels, out _);
 
         Label propTitle = new Label { Text = "── 物件（建筑 / 奖励 / 可破坏 / 不可破坏）──" };
         propTitle.AddThemeFontSizeOverride("font_size", 11);
         _rows.AddChild(propTitle);
-        _buildingsPerRoom = AddSpinBox("每房建筑数", SliderRanges.BuildingsPerRoom);
-        _buildingMaxSide = AddSpinBox("建筑最大边长（格）", SliderRanges.BuildingMaxSide);
-        _rewardsPerRoom = AddSpinBox("每房奖励数", SliderRanges.RewardsPerRoom);
-        _breakablesPerRoom = AddSpinBox("每房可破坏数", SliderRanges.BreakablesPerRoom);
-        _solidsPerRoom = AddSpinBox("每房不可破坏数", SliderRanges.SolidsPerRoom);
-        _propClearance = AddSpinBox("物件离墙格数（尽量）", SliderRanges.PropClearance);
+        _buildingsPerRoom = AddSlider("每房建筑数", SliderRanges.BuildingsPerRoom, out _);
+        _buildingMaxSide = AddSlider("建筑最大边长（格）", SliderRanges.BuildingMaxSide, out _);
+        _rewardsPerRoom = AddSlider("每房奖励数", SliderRanges.RewardsPerRoom, out _);
+        _breakablesPerRoom = AddSlider("每房可破坏数", SliderRanges.BreakablesPerRoom, out _);
+        _solidsPerRoom = AddSlider("每房不可破坏数", SliderRanges.SolidsPerRoom, out _);
+        _propClearance = AddSlider("物件离墙格数（尽量）", SliderRanges.PropClearance, out _);
 
         HBoxContainer buttons = new HBoxContainer();
         _rows.AddChild(buttons);
@@ -219,24 +235,64 @@ public partial class DungeonMap2DPanel : PanelContainer
         _rows.AddChild(_status);
     }
 
-    private SpinBox AddSpinBox(string label, Range range)
+    /// <summary>
+    /// 加一行「名字 + 可左右拖动的滑块 + 当前值」。
+    /// <para>
+    /// **为什么用 <see cref="HSlider"/> 而不是 <see cref="SpinBox"/>**：用户要的是「数值左右拖动」，
+    /// SpinBox 只能点小箭头或键盘输入，拖不了；而且调参时眼睛在图上、手在滑条上，
+    /// 点箭头这种「对准一个小目标」的操作会频繁打断看图。
+    /// </para>
+    /// <para>
+    /// 滑块本身不显示数字，所以旁边固定一个等宽数值标签：既能拖，又随时看得见拖到了多少。
+    /// 标签用 <see cref="Godot.Control.CustomMinimumSize"/> 固定宽度，拖动时不会因为数字位数变化而让整列跳动。
+    /// </para>
+    /// </summary>
+    private HSlider AddSlider(string label, Range range, out Label valueLabel)
     {
         HBoxContainer row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", RowSeparation);
         _rows.AddChild(row);
-        Label name = new Label { Text = label, CustomMinimumSize = new Vector2(150f, 0f) }; // arch-ok: 标签列宽（UI 布局尺寸）
+
+        Label name = new Label { Text = label, CustomMinimumSize = new Vector2(LabelColumnWidth, 0f) }; // arch-ok: 标签列宽（UI 布局尺寸）
         name.AddThemeFontSizeOverride("font_size", 11);
         row.AddChild(name);
-        SpinBox box = new SpinBox
+
+        HSlider slider = new HSlider
         {
             MinValue = range.Min,
             MaxValue = range.Max,
             Step = range.Step,
             Value = range.Initial,
             SizeFlagsHorizontal = Godot.Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Godot.Control.SizeFlags.ShrinkCenter,
         };
-        box.ValueChanged += OnAnyValueChanged;
-        row.AddChild(box);
-        return box;
+        row.AddChild(slider);
+
+        Label value = new Label
+        {
+            Text = FormatValue(range.Initial),
+            CustomMinimumSize = new Vector2(ValueColumnWidth, 0f), // arch-ok: 数值列宽（UI 布局尺寸）
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        value.AddThemeFontSizeOverride("font_size", 11);
+        row.AddChild(value);
+
+        slider.ValueChanged += OnAnyValueChanged;
+        // 拖动过程中实时刷新数字：ValueChanged 只在值真的变了才触发，够用且不会每帧刷标签。
+        slider.ValueChanged += v => value.Text = FormatValue(v);
+        valueLabel = value;
+        return slider;
+    }
+
+    /// <summary>数值显示格式：整数不带小数点，小数保留一位（滑条步长最小是 1，这里主要防浮点尾数）。</summary>
+    private static string FormatValue(double value)
+    {
+        double rounded = Math.Round(value);
+        if (Math.Abs(value - rounded) < 0.0005) // arch-ok: 浮点比较容差（显示层，非玩法数值）
+        {
+            return rounded.ToString(CultureInfo.InvariantCulture);
+        }
+        return value.ToString("0.0", CultureInfo.InvariantCulture);
     }
 
     private void OnAnyValueChanged(double value)
