@@ -1,8 +1,17 @@
 ; =============================================================================
 ;  biu_biu_native.gdextension
-;  由 native/CMakeLists.txt 构建产出，产物在 addons/biu_biu_native/bin/
-;  注意：必须是分段写法 [configuration] + entry_symbol 键，
-;        写成一整行 configuration/entry_symbol 会导致 --import 报错（02 §4.4 踩坑记录）
+;  Emitted by native/CMakeLists.txt; DLLs land in addons/biu_biu_native/bin/.
+;
+;  NOTE: this file must use the SPLIT form -- [configuration] on its own line,
+;  then entry_symbol. Writing "configuration/entry_symbol = ..." on one line
+;  makes --import fail.
+;
+;  KEEP THIS FILE PURE ASCII. It is parsed by the engine as a raw byte stream
+;  (not as UTF-8). Non-ASCII comment bytes were the cause of a silently broken
+;  parse on 2026-11-09: a trailing multi-byte char swallowed the newline, so
+;  "[configuration]" ended up glued to the comment line and the whole section
+;  header was lost -- which surfaced as
+;  "Can't open GDExtension dynamic library".
 ; =============================================================================
 [configuration]
 

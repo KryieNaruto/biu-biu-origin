@@ -387,6 +387,54 @@ Add-Check (New-Check 'csproj' $csprojStatus $csprojOk $csprojPath $false)
 
 # ============================================================================
 # 9. directory skeleton: native/, data/excel, data/generated
+
+# ============================================================================
+# 9.1 Godot scan-ignore markers (.gdignore)
+# ----------------------------------------------------------------------------
+# Godot does not read .gitignore and scans every project directory. C++ build
+# trees under native/ and tools/*/ contain .obj/.png/.lib that Godot mistakes
+# for 3D models / textures, producing "Couldn't read OBJ file" import errors at
+# startup (observed 2026-11-09). The fix is an empty .gdignore in each such dir.
+# Those dirs are git-ignored, and git cannot re-include a file inside an
+# excluded directory, so the marker can never be committed -- it must be
+# recreated locally. tools/fix_godot_scan_dirs.ps1 does that; this check tells
+# you when it is needed. Optional (false): a missing marker never blocks -Verify.
+# ============================================================================
+$gdIgnoreDirs = @(
+    'native\build',
+    'native\build-debug',
+    'native\build-mt',
+    'native\gdextension\libgodot-cpp',
+    'tools\asset_viewer\build',
+    'tools\asset_viewer\dist',
+    'tools\asset_viewer2\build',
+    'tools\asset_viewer2\dist'
+)
+$gdTotal = 0
+$gdReady = 0
+$gdMissing = New-Object System.Collections.ArrayList
+foreach ($rel in $gdIgnoreDirs) {
+    $dir = Join-Path $ProjectRoot $rel
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+    $gdTotal++
+    if (Test-Path -LiteralPath (Join-Path $dir '.gdignore')) {
+        $gdReady++
+    } else {
+        [void]$gdMissing.Add(($rel -replace '\\', '/'))
+    }
+}
+if ($gdTotal -eq 0) {
+    $gdOk = $true
+    $gdStatus = 'no build dirs'
+} else {
+    $gdOk = ($gdMissing.Count -eq 0)
+    $gdStatus = "$gdReady/$gdTotal $(T 'items')"
+}
+$gdDetail = $ProjectRoot
+if ($gdMissing.Count -gt 0) {
+    $gdDetail = 'run tools/fix_godot_scan_dirs.ps1  missing: ' + ($gdMissing -join ', ')
+}
+Add-Check (New-Check '.gdignore' $gdStatus $gdOk $gdDetail $false)
 # ============================================================================
 $dirSpecs = @(
     @{ key = 'native';         path = 'native';         label = 'native/' },

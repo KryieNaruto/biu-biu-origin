@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v10  最后更新: 2026-11-09（§14.8 调参面板 SpinBox→可左右拖动滑块；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置；此前 §14.9 物件随机生成）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v11  最后更新: 2026-11-09（§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -140,6 +140,8 @@ biu-biu-origin/
 
 | 目录 | 职责 | 语言 | 谁可以写 | 禁写 |
 |---|---|---|---|---|
+| 2026-11-06 | v9 | **标签分层：逻辑功能层 / 标识层** | **新增 §20 标签分层**：标签拆成两层 —— `Logic`（决定玩法行为，代码消费，加之前先想规则）与 `Identity`（不做判定，只做归属/吸引/主题匹配，随手加）。① **表**：`Tags` 表新增 `Tier` 列；标识层 6 轴（Loot / Attract / Faction / Theme / Aura / Craft）共 22 个标签，tag 40 → 62。② **道具互相吸引**：`Attract` 轴是**可叠加**轴，被吸物与吸引源各挂自己的类型，交集非空即被吸引 —— **代码不认识具体名字，C# 0 行改动**就能加一种新磁铁。③ **硬约束（机器保证）**：标识标签 `BitMask` 必须 -1（否则进配方字 = 偷偷影响玩法）、`Group` 必须 `None`（否则产出能力位），由校验器 `check_tag_tiers` + `ContentBinder` 双向把关；`TagGroup` 词表新增 `None` 成员。④ **运行期 API**：`TierOf / TagsOfTier / TierMask` + `TagFamilies.TierOf(axis)`。⑤ **踩坑**：`TagId` 只允许单段 `tag.<名>`，`tag.loot.ammo` 非法 → 统一扁平写法 —— `tag.loot_ammo`；`ObjectBitMatrix.Mask(row, tag)` 第二参是 **tag 下标**不是 word；62 个 tag 已跨两个 word，印证「轴索引不受 BitMask 32 位上限约束」。**测试 354 → 358 全绿**（TagFamilyTests 11 → 15 条），校验 3258 → 3540 项，守卫 error 0。| `data/excel/combat.xlsx`、`scripts/core/Content/TagFamily.cs`、`scripts/core/Content/ObjectBitMatrix.cs`、`scripts/data/Content/ContentBinder.cs`、`tools/data_pipeline/migrate_tag_tiers.py`、`tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`tools/data_pipeline/README.md`、`tests/Content/Data/TagFamilyTests.cs`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-06 | v8 | **标签轴（TagFamily）：以轴为范围索引内容** | **新增 §19 标签轴**：给所有内容挂上「轴」这一层索引坐标系 —— 物体是点、标签是坐标值、轴是坐标系。① **表**：`Tags` 表新增 `Family` 列（10 轴：Kind / WeaponKind / ProjectileKind / Element / Ability / Trigger / Rarity / Race / Role / Effect），tag 17 → 40。② **互斥性由轴决定**：`Ability` **刻意不互斥**（穿透+弹跳+分裂叠在一颗弹上，正是 ECS 组合的主战场）；`Race` 是**分层轴**（祖先 `tag.humanoid` ⊃ 具体 `tag.goblin`），于是「对人形增伤」能打到哥布林。③ **运行期**：`ContentRules` 新增 `FamilyOf / TagsOfFamily / FamilyMask / PackMask`，「命中某轴任一标签」= **一次按位与**，不认识任何具体 tag 名。④ **约束**：`Family` 只做索引、**不改变能力位**（能力位仍只看 `Group`），故标签重构不碰工厂判定；绑定器对认不出的轴名**当场报错**而非静默落 None。⑤ **修两个静默失效**：校验器按**列号**取 `BitMask`（插列后全部读成 -1 → 30 条错），改为按**字段名**取；生成器 `TAGS` 的 `BitMask` 曾全 -1，重跑覆盖 `combat.xlsx` 清零了 bit 0~15，已写回并给出回填脚本。**测试 219 → 354 全绿**（新增 11 条 `TagFamilyTests`），守卫 error 0。| `data/excel/combat.xlsx`、`scripts/core/Content/TagFamily.cs`、`scripts/core/Content/ObjectBitMatrix.cs`、`scripts/data/Content/ContentBinder.cs`、`tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`tools/data_pipeline/fix_tag_bitmasks.py`、`tools/data_pipeline/migrate_tags_multiaxis.py`、`tests/Content/Data/TagFamilyTests.cs`、`docs/architecture/ARCHITECTURE.md` |
 | `scripts/core/` | 零依赖基础件：接口、事件、池、随机 | C# | 任意任务；**接口改动必须回写第 3 节** | Godot API 重度使用（core 应可脱离 Node 测试） |
 | `scripts/data/` | 配置读取、生成物加载、存档、schema 校验 | C# | 数据类任务 | 数值字面量（全部来自生成物） |
 | `scripts/combat/` | 命中、伤害修正、结算、状态 | C# | 战斗类任务 | 直接操作 UI/输入 |
@@ -1168,6 +1170,8 @@ window/stretch/aspect="expand"
 | 2026-11-03 | v1 | 立规矩（第四轮收口，本日第四次更新） | **`ISkillCaster` 悬空接口关闭**：§3.2 行更新为 03 §4.1 定稿签名（新增 `CanCast` 预检、`TickSkill(id,dt)`→批量 `TickSkills(dt)`、新增 `TryReplaceSkills` 受控通路），状态由「v1 待正式定义」改为「✅ 签名已定稿」；原「⚠️ 已知缺口」小节改写为「归属已收口」并补**两通路纪律**（`TryApplyTakeover` 内部改技能 = 夺舍专用；`TryReplaceSkills` 非夺舍、夺舍中返回 false）；03 §4.1.1 待仲裁项全部改标 ✅、03 补 `ISkillCaster` 为第 15 个正式接口、05 §8 补 `IStatProvider` 实现位置注释、06 修 2 处省略式 `ApplySlot` 槽位写法；06 §9.2 开放问题 OQ-1~OQ-9 **全部关闭** | `docs/architecture/ARCHITECTURE.md`、`docs/rules/03-abstract-first.md`、`docs/rules/05-numeric-package.md`、`docs/rules/06-extensibility.md` |
 | 2026-11-03 | v2 | ECS 权重骨架落地 | **运行时架构由「纸面」转为「已实现」**：`scripts/core/ecs/`（内核 14 文件）、`scripts/host/`（七阶段管线 + 视图池 + 事件队列）、`scripts/actor`+`scripts/spawn`（3 个系统）、`tests/`（63 用例全绿）落地；§0 阶段改为 v2、§1.1 现状树重写、§2.3 矩阵新增 `Game.Host`/`Game.Core.Ecs` 两行并写明「Host 是唯一 using Godot 的游戏层」硬约束、§3.2.0 新增 ECS 类型清单、§6.1 现状更新 + 新增 §6.1.1「七步逻辑如何映射到 ECS 阶段」、§10 关闭 R1/R2/R3、R11 部分关闭、新增 R13~R15、**新增 §13 ECS 落地汇总**（含 4 条真炸过的缺陷复盘与填充顺序）；形状真源仍是 `docs/architecture/ECS.md` | `docs/architecture/ARCHITECTURE.md`、`docs/architecture/ECS.md`、`AGENTS.md` |
 | 2026-11-05 | v7 | **第一个可玩人物 `test_hero` 落地** | **在 ECS + 角色抽象之上做出第一个真正可操作的人物**：新增 §16 记录全链路（Excel 数据行 → `CharacterContentSet` 镜像 → `ContentSkillSet` 实例化真技能 → `CharacterSession` 一条管线 → `VisualBridge`/`TransformBridge` → HUD 快照）。① **组合根**：新增 `scripts/host/composition/`（`ISkillFactory` / `NullSkillFactory` / `NullSkill` / `ContentSkillFactory` / `ContentSkillSet`），刻意不 `using Godot`，测试工程直接编译 —— 「数据行 kind → 技能实现类」的唯一定义点。② **人物会话**：新增 `scripts/host/CharacterSession.cs`，把「出生 + 意图 + 装配 + 技能 + 移动 + 瞄准 + 视图 + HUD」收成一个可 `Tick` 的单元；`DungeonDebugScene` 改为持有会话并支持 `--hero` / `--hero-variant=` / `--hero-fire` / 角色特写截图。③ **四个变体纯数据**：`test_hero`(标准) / `test_hero_tank`(重甲) / `test_hero_agile`(敏捷) / `test_hero_lucky`(幸运)，换变体只改 xlsx 一行，C# 0 行改动。④ **修复四个静默失效的接线**（详见 §16.4）：玩家实体发现死循环（人物不出生）、技能包注册表槽位号错位（按左键永不开枪）、`DataSkill` 占位不生成子弹、意图覆盖方向写错。⑤ **HUD**：`HudSnapshot`/`CharacterHudDrawer` 显示 HP/法力/耐力/护甲减伤/移速/暴击/瞄准角/五技能槽；护甲减伤口径修正为 `armor/(armor+k)`（曾显示 94%）。⑥ **测试 101 → 219 全绿**（新增 `HeroIntegrationTests` 端到端用例：按下左键 → 世界里真出现 `Projectile` 且弹速/射程/伤害/半径全部可追溯到武器行；新增 `RuntimeSkillRegistry_KeepsContentSlotNumbers` 钉住槽位号一致性，并做了变异验证确认它能抓到原 bug），架构守卫 0 error / 0 warning。⑦ ECS 内核：`TypeSet.MaxComponentCount` 16 → 64（人物 12 类组件超出原上限导致运行时崩溃）。 | \scripts/host/CharacterSession.cs\、\scripts/host/composition/**\、\scripts/host/DungeonDebugScene.cs\、\scripts/host/control/PlayerInputIntentSource.cs\、\scripts/ui/**\、\	ests/**\、\docs/architecture/ARCHITECTURE.md\ | `scripts/host/CharacterSession.cs`、`scripts/host/composition/**`、`scripts/host/DungeonDebugScene.cs`、`scripts/host/control/PlayerInputIntentSource.cs`、`scripts/host/view/**`、`scripts/host/bridge/**`、`scripts/ui/**`、`scripts/actor/**`、`scripts/combat/**`、`scripts/skill/**`、`scripts/data/**`、`scripts/core/ecs/TypeSet.cs`、`tests/**`、`docs/architecture/ARCHITECTURE.md`、`data/excel/characters.xlsx` |
+| 2026-11-06 | v11 | **本地化：中文名真源 `l10n.xlsx`（图鉴全中文）** | **用户打开图鉴「全是英文」**——根因不是图鉴，而是**项目里从来没有中文名**：`DisplayKey` 明文规定不写中文（它是本地化 key），全仓库搜 `*loc*`/`*i18n*`/`*.csv` 零命中。**新增 §23**：① **`data/excel/l10n.xlsx` 作为名字的唯一真源**（167 条：物件 37 / 标签 62 / 枚举 55 / 单位 7 / 人物武器 5），四行表头 + `#data` 与其它主题表一致；**图鉴与将来的游戏 UI 读同一份**，杜绝「图鉴叫飞弹、游戏里叫炮弹」。② **图鉴中文名做主标题、英文 id 做副标题**（等宽小字，对表用），搜索索引收录中英文与标签三条路径。③ **校验器新增 5 类检查**（`validate_l10n` + `collect_l10n_refs`）：Key 重复 / Zh 为空 / **覆盖性（被引用的 key 必须有名字）** / 中文名仍是英文 / **同命名空间内重名**——检查项 4136 → **4569**。分命名空间是关键：`Pierce` 与 `tag.pierce` 都叫「穿透」是对的，第一版跨桶比较产生 12 条假阳性，淹没了真问题（`tag.melee` 与 `tag.short_range` 都叫「近战」）。④ **顺带修掉 DisplayKey 不一致的真 bug**：`player_hero` 在 `combat.xlsx` 是 `actor.player`、在 `characters.xlsx` 是 `actor.player_hero`；规范定为 `actor.<Id>`，已改齐。⑤ 图鉴加稀有度/元素色条、冲刺未配置时明确显示「未配置（不能冲刺）」而不是留白。**测试 372/372、构建 0/0、校验 4569 全绿、图鉴 0 条缺名警告**。**开工注意**：加任何新内容（人物/怪物/武器/子弹/标签）必须同步在 `l10n.xlsx` 加一行中文名，忘了校验器会报「缺少中文名：xxx（被 Yyy 引用）」 | `data/excel/l10n.xlsx`、`data/excel/combat.xlsx`、`tools/data_pipeline/gen_l10n_xlsx.py`、`tools/data_pipeline/add_missing_l10n.py`、`tools/data_pipeline/gen_codex.py`、`tools/data_pipeline/validate_content_xlsx.py`、`docs/codex/index.html`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-06 | v10 | **核心内容集：5 人物 / 5 怪物 / 5 武器 / 5 子弹 + 图鉴原型** | **补齐用户最初的「5+5+5+5」需求**（此前怪物只有 3 种、人物 4 行是同一模板的数值变体）。**没有新增任何类**——五个人的差异只有三处：① 能力位（Objects.Tags）② 数值包（StatPacks）③ 技能包→武器/子弹（SkillLoads.WeaponId），系统代码 0 行改动。人物补齐第 5 个 **	est_hero_elemental 元素法师**（70 血 / 180 蓝 / 追踪穿透分裂弹），与既有 4 个在「血/蓝/速/甲/暴击/冲刺手感」六维上两两反向，无严格上位关系。怪物补齐到 5 种（新增 slime_401 分裂、slime_403 爆散，走与人物**同一套**数值包+技能包路径，差别只在填了几个槽）。新增 5 把人物武器 + 5 条弹道（直飞/重击/穿透 2/弹跳 3/追踪穿透分裂），子弹物件首次真实使用标识层 Faction 轴（	ag.own_player）。**新增图鉴原型** 	ools/data_pipeline/gen_codex.py → docs/codex/index.html（直读两个 xlsx，按标签轴分栏配色，兼作数值快速预览与游戏内图鉴的信息层级原型）。新增幂等填充脚本 ill_core_roster.py。**6 处坑写进 §22.9**（_upsert 必须自写主键、同 PackId 不能跨 Base/Growth 层、规则值列空≠0、VisualSlot 必填整数等）。测试 358 → **372 全绿**，校验器 3540 → **4126 项通过**。| data/excel/combat.xlsx、data/excel/characters.xlsx、scripts/data/CharacterContentSet.cs、	ools/data_pipeline/fill_core_roster.py、	ools/data_pipeline/gen_codex.py、	ools/data_pipeline/validate_content_xlsx.py、	ests/Characters/HeroAssemblyTests.cs、docs/codex/index.html、docs/architecture/ARCHITECTURE.md |
 ## 12. 待办与下一步（按优先级）
 
 | 优先级 | 待办 | 产出位置 | 完工时必须回写本文件的章节 |
@@ -2255,3 +2259,483 @@ E:\Godot\Godot_v4.7.2-stable_mono_win64_console.exe --headless --path . -- --her
 4. **Excel 与 C# 镜像必须同步**：改了 `gen_characters_xlsx.py` 却没改 `CharacterContentSet.cs`，
    `CharacterXlsxParityTests` 会逐字段报错（本次正是靠它发现 `chosen_base` 少两项）。
 
+---
+
+## 20. 标签轴：以「轴」为范围索引内容（2026-11-06 落地）
+
+### 20.1 为什么要多加一层「轴」
+
+原有标签只有 `TagId / TagIndex / Category / Group / BitMask`：一个物体身上挂十几个 tag，
+但代码想问的问题**从来不是**「哪些物体挂了 `tag.pierce`」这种具体标签，而是：
+
+- 强化要「所有**稀有**武器」→ 稀有的都有哪几个？表说了算
+- 图鉴要按「**元素** / **能力** / **族裔**」分栏
+- 元素抗性要「对**动能**类伤害减免」→ 动能类包含哪些
+- 掉落要「**Rarity=common** 的候选池」
+
+如果每个玩法自己去拼具体标签名，`tag.rare` 就会硬编码散落在 C# 各处 —— 新增一个稀有度等级要改 N 个文件，
+违反规则 7。**轴（Family）就是把这些范围查询从「字符串拼装」变成「一次按位与」的那层索引。**
+
+一句话：**物体是点，标签是坐标值，轴是坐标系。**
+
+### 20.2 十个轴（`TagFamily`，Excel `Tags.Family` 列）
+
+| 轴 | 语义 | 互斥 | 例 |
+|---|---|---|---|
+| `Kind` | 物体大类，**同时决定能力位** | ✅ | `tag.actor` / `tag.weapon` / `tag.projectile` |
+| `WeaponKind` | 武器种类抽料 | ✅ | `tag.pistol` / `tag.rifle` / `tag.bow` / `tag.melee` |
+| `ProjectileKind` | 弹体种类（选弹道运动学实现） | ✅ | `tag.homing` |
+| `Element` | 伤害元素（抗性 / 元素联动） | ✅ | `tag.kinetic` / `tag.energy` / `tag.explosive` |
+| `Ability` | **能力，可叠加轴** | ❌ | `tag.pierce` / `tag.bounce` / `tag.split` / `tag.summon` |
+| `Trigger` | 触发时机（挂效果回调） | ✅ | `tag.volatile` |
+| `Rarity` | 稀有度（掉落权重 / 图鉴配色） | ✅ | `tag.common` / `tag.uncommon` / `tag.rare` / `tag.legendary` |
+| `Race` | **族裔，分层轴**（祖孙共存） | ❌ | 祖先 `tag.humanoid` ⊃ 具体 `tag.goblin` / `tag.slime` / `tag.ogre` |
+| `Role` | 角色定位（波次编排 / AI 选型） | ✅ | `tag.hero` / `tag.grunt` / `tag.elite` / `tag.caster` |
+| `Effect` | 特效类别（表现层选特效） | ✅ | `tag.muzzle` / `tag.hit` / `tag.burst` |
+
+**两个「不互斥」是刻意的设计决定，不是遗漏：**
+
+1. `Ability` 不互斥 —— 一颗弹同时「穿透 + 弹跳 + 分裂」正是 ECS 组合的主战场。
+   一旦把它做成互斥，组合爆炸又退回成分类枚举。
+2. `Race` 是分层轴 —— `tag.humanoid` 是祖先、`tag.goblin` 是具体。
+   于是「对人形增伤」能打到哥布林，「对哥布林增伤」只命中哥布林，两条规则靠同一套索引都能写出来。
+   若强制互斥，就得给每个族裔复制一份人形标记，祖先关系彻底丢失。
+
+### 20.3 运行期形状
+
+```text
+combat.xlsx / Tags
+  TagId     TagIndex   Family       Category  Group        BitMask
+  tag.pierce   11      Ability      Kind      Ability      11
+        │                     │
+        │                     └─ 轴：索引坐标系（新增，本任务）
+        └─ Group：能力位来源（原有，只认 ObjectKind）
+              ↓ ContentBinder.LoadRules
+ContentRules
+  · TagNames / TagOf(name) / NameOf(id)          ← 原有
+  · FamilyOf(id) → TagFamily                     ← 新增
+  · TagsOfFamily(TagFamily) → IReadOnlyList<int> ← 新增：轴 → tag id 列表
+  · FamilyMask(TagFamily, word) → int            ← 新增：整轴压成一个位掩码
+  · PackMask(tags, word) → int                   ← 新增：条件「这几个之一」压成掩码
+              ↓
+ObjectBitMatrix  （行 = 物件槽位，位 = tag 下标）
+              ↓
+按轴筛选 = (matrix.Mask(row, 0) & rules.FamilyMask(TagFamily.Rarity)) != 0
+                                    ↑ 一次 AND，不认识任何具体 tag 名
+```
+
+**热路径代价**：一次 `int` 与。`FamilyMask` 在加载期算好后可以直接缓存，逐帧零成本。
+**零分配**：`TagsOfFamily` 返回加载期就建好的数组副本（`IReadOnlyList<int>`），不逐帧 new。
+
+### 20.4 关键约束（三条）
+
+1. **`Family` 只做索引，不改变能力位。** 能力位仍然只看 `Group`（`ObjectKind` → actor/weapon/projectile）。
+   这样标签重构不会动到工厂的 `ObjectCapability` 判定，风险面被限制在「查询」一侧。
+2. **绑定器对认不出的轴名当场报错**（不静默落 `None`）。静默落 None 会让这个 tag
+   从所有按轴索引的玩法里消失 —— 这是最难查的一类失效，必须在加载期炸出来。
+3. **位矩阵的 32 位上限与轴无关。** 只有需要「进配方字」的 tag 才占 `BitMask`（现有 16 个，bit 0~15）；
+   轴标签可以远超 32 个（当前 40 个，只有 16 个有位）。轴索引走 `TagIndex` 的位，
+   不受 `ContentBitLimits.TagBits` 约束。
+
+### 20.5 扩展成本（规则 7 实操核对）
+
+| 我想做 | 要改的文件 | 数量 |
+|---|---|---|
+| 加一个 tag（如「毒元素」） | `combat.xlsx` 的 `Tags` 加一行（`Family=Element`） | **1** |
+| 加一个新轴（如「阵营」） | `Tags.Family` 枚举 + `TagFamily` 枚举 + 校验器词表 | **3** |
+| 按新轴写一条强化 | 0（`FamilyMask` 直接可查） | **0** |
+| 给物体补标签 | `combat.xlsx` 的 `Objects` 改一格 | **1** |
+
+> 与 §17 的判据一致：**新增内容只改表**；只有新增**轴**这一级概念才要改代码，且是 3 处枚举。
+
+### 20.6 验证（可复现）
+
+```powershell
+dotnet build                                          # 0 error
+cd tests; dotnet test                                 # 354/354 通过（含 11 条 TagFamilyTests）
+python tools/data_pipeline/validate_content_xlsx.py   # OK: 3258 项检查通过
+```
+
+`tests/Content/Data/TagFamilyTests.cs` 的 11 条用例分两类：
+**合成用例**钉索引算法与边界（大小写、未知轴、互斥表、越界、掩码打包）；
+**真实表用例**读 `combat.xlsx` 钉「表 → 运行期」链路 ——
+后者才能证明 `Family` 列真的被读进来了（列名写错、读错列号都是静默失效）。
+其中 `Binder_ReadsFamilyColumnFromRealWorkbook` 断言**真实表里没有任何 tag 落在 `None` 轴**，
+这条断言就是 `Family` 列断链的报警器。
+
+### 20.7 已知债务
+
+1. `Category` 列（Kind/Stat/Element/Ability）与 `Family` 存在**语义重叠**：`Category` 是早期的粗分类，
+   现已被 `Family` 全面覆盖。保留是为了不破坏老列；**新内容一律只填 `Family`**，`Category` 可视为历史遗留。
+2. 轴目前只用于查询，**还没有消费方**（强化系统 / 图鉴 / 掉落池都未落地）。
+   本章先把索引口径钉死，后续系统直接 `FamilyMask` 取范围，不再各自拼字符串。
+3. `TagFamilies.Names`（C#）与校验器 `TAG_GROUP_TO_FAMILY` 是两处独立词表，
+   靠 `Binder_ReadsFamilyColumnFromRealWorkbook` 与校验器的 `check_tag_families` 双向钉住。
+
+### 20.8 本轮踩到的两个静默失效（已修，记录以防复发）
+
+1. **校验器按列号取 `BitMask`。** 旧实现写死 `c[4]`（第 5 列）。`Family` 列插进第 3 列后，
+   `c[4]` 变成 `Category` 列，于是所有 tag 的 `BitMask` 都被读成 -1 → 30 条「配方里的 tag 没有配方位」。
+   **已改为按字段名取**（`t.cell(c, "BitMask")`）。教训：四行表头的列结构必须按**名字**索引。
+2. **重跑生成器冲掉手改值。** `gen_combat_xlsx.py` 的 `TAGS` 里 `BitMask` 曾写成全 -1，
+   有人重跑它覆盖了 `combat.xlsx`，把 bit 0~15 的配方位全部清零。
+   **已把历史配方位写回生成器**，使「生成器产物 == 手改表」；并新增
+   `tools/data_pipeline/fix_tag_bitmasks.py` 做幂等回填。
+   > ⚠️ **纪律**：`combat.xlsx` 是**手改真源**，重跑 `gen_combat_xlsx.py` 会整体覆盖它。改表请直接改 xlsx。
+
+## 21. 标签分层：逻辑功能层 vs 标识层（2026-11-06 落地）
+
+### 21.1 为什么要分两层
+
+§19 给所有内容加了「轴」做范围索引。但两个**用途完全不同**的东西被混在了同一张表里：
+
+| | **逻辑功能层**（`Logic`） | **标识层**（`Identity`） |
+|---|---|---|
+| 问什么 | 它**能做什么** | 它**属于谁 / 吸引谁** |
+| 典型标签 | `tag.kinetic` / `tag.pierce` / `tag.rare` / `tag.actor` | `tag.loot_coin` / `tag.attract_magnet` / `tag.own_player` |
+| 谁消费 | 系统（能力位、配方字、抗性、权重） | 匹配（吸附、拾取、主题、共鸣） |
+| 加一个的代价 | **要先想规则**（可能牵动结算） | **随手加**（不影响任何判定） |
+
+混在一起时，看到 Tags 表有 80 行没法判断「哪些能随便加」。分层之后这就是一条可执行的纪律：
+**`Logic` 行加之前先想规则；`Identity` 行随便加。**
+
+> 层（Tier）与轴（Family）是两个维度：**轴说「哪一类」，层说「能不能影响玩法」。**
+> `tag.kinetic` 是 `Logic` 层的 `Element` 轴；`tag.loot_coin` 是 `Identity` 层的 `Loot` 轴。
+
+### 21.2 标识层的六个轴
+
+| 轴 | 互斥 | 语义 | 谁会用 |
+|---|---|---|---|
+| `Loot` | ✅ | 拾取类别：弹药 / 回血 / 回蓝 / 金币 / 遗物 / 钥匙 | 吸附半径、磁铁筛选、自动拾取白名单 |
+| `Attract` | ❌ **可叠加** | 被哪些磁场吸引：磁铁 / 武器吸附 / 经验吸附 | **「道具互相吸引」的匹配机制** |
+| `Faction` | ✅ | 归属方：玩家 / 敌方 / 中立 | 同阵营高亮、掉落归属、UI 分组 |
+| `Theme` | ❌ 可叠加 | 主题：森林 / 地牢 / 熔炉 | 章节化随机、皮肤 |
+| `Aura` | ❌ 可叠加 | 光环 / 共鸣标记：火 / 冰 / 电 | 元素共鸣、熔炉链 |
+| `Craft` | ❌ 可叠加 | 原料类别：金属 / 木材 / 宝石 / 精华 | 合成配方筛选 |
+
+### 21.3 「道具互相吸引」怎么实现
+
+这是标识层最典型的用法 —— **代码不认识任何具体名字，只做一次按位与**：
+
+```csharp
+// 被吸物 (例如金币) 挂: tag.loot_coin, tag.attract_magnet
+// 吸引源 (例如磁铁道具) 挂: tag.attract_magnet
+int word        = magnetTag >> 5;                    // 标识标签在 tag 32+，落在 word 1
+int magnetMask  = ContentRules.PackMask(new[] { magnetTag }, word);
+bool attracted  = (lootMatrix.Mask(loot, magnetTag) & magnetMask) != 0;
+```
+
+**新增一种磁铁**：表里加一行 `Identity / Attract` 的标签，给物件的 `Attract` 打上 → **C# 0 行改动**。
+
+### 21.4 硬约束（机器保证，不是约定）
+
+`check_tag_tiers`（校验器）+ `ContentBinder.LoadRules`（运行期）**双向**保证标识层不越界：
+
+| 约束 | 为什么 |
+|---|---|
+| 标识标签 `BitMask` **必须 -1** | 否则它进了熔炉配方字 = 偷偷影响玩法 |
+| 标识标签 `Group` **必须 `None`** | 否则它产生能力位 = 被工厂当成物件能力 |
+| `Tier` 与轴的层映射必须一致 | 防止「挂标识轴却声明成 Logic」的半截状态 |
+| 认不出的 `Tier` 值**当场报错** | 静默落 `None` 会让这行从所有按层筛选里消失 |
+
+`TagGroup` 词表新增了 `None` 成员专门承载这一点。
+
+### 21.5 运行期 API
+
+```csharp
+rules.TierOf(tag)              // tag → TagTier
+rules.TagsOfTier(TagTier.Identity)   // 层 → tag id 列表
+rules.TierMask(TagTier.Identity, word) // 整层压成一个位掩码
+TagFamilies.TierOf(TagFamily.Loot)     // 轴 → 它属于哪一层
+```
+
+### 21.6 扩展成本（规则 7 实操核对）
+
+| 我想做 | 要改的文件 | 数量 |
+|---|---|---|
+| 加一个标识标签（新主题/新拾取类别） | `combat.xlsx` 加一行（`Tier=Identity`） | **1** |
+| 加一种磁铁 | 同上，再给物件 `Tags` 打上 | **1** |
+| 加一个标识轴 | 3 处枚举（Excel 词表 / `TagFamily` / 校验器 `IDENTITY_FAMILIES`） | **3** |
+| 按新标识轴写吸附逻辑 | 0（`FamilyMask` 直接查） | **0** |
+
+### 21.7 验证
+
+```powershell
+cd tests; dotnet test                                 # 358/358 通过（15 条 TagFamilyTests）
+python tools/data_pipeline/validate_content_xlsx.py   # OK: 3540 项检查通过
+```
+
+关键用例：`RealWorkbook_TierAgreesWithAxis`（层↔轴双向自洽）、
+`RealWorkbook_IdentityTagsNeverAffectGameplay`（标识层不影响玩法）、
+`AttractMask_IsTheMagnetMatchingMechanism`（吸引机制端到端）。
+
+### 21.8 踩到的坑（记录以防复发）
+
+1. **`TagId` 只允许 `tag.<小写名>` 单段**，写成 `tag.loot.ammo` 会被校验器判非法。
+   标识标签一律用**扁平下划线**：`tag.loot_ammo` / `tag.attract_magnet` / `tag.own_player`。
+2. **`ObjectBitMatrix.Mask(row, tag)` 第二个参数是 tag 下标，不是 word 下标。**
+   标识标签 id 都 ≥ 40，落在 `word 1`；但传参时仍要传 **tag id**，内部换算。
+   这也是「轴索引不受 BitMask 32 位上限约束」的直接证据 —— 62 个 tag 已经跨了两个 word。
+
+## 22. 核心内容集：5 人物 / 5 怪物 / 5 武器 / 5 子弹 + 图鉴原型（2026-11-06 落地）
+
+### 22.1 这一节解决什么
+
+用户最初的需求是「**5 武器 / 5 子弹 / 5 怪物 / 5 人物，发挥 ECS 组合机制**」，并要求
+「**只设置数值，不做场景**」（场景地编尚未就绪）。此前工程里武器 8 把、子弹 7 种已够数，
+但**怪物只有 3 种**、**人物 4 行是同一模板的数值变体（机制上无差异）**。
+
+本节补齐这些缺口，并把「5 个」做成**机制各异**的组合，而不是同一套数值换个系数。
+
+### 22.2 设计口径：五个类，还是一套组合？
+
+**没有任何一个新类。** 每个人的差异都落在同一条 `ObjectArchetype` 组合上，差别只有三处：
+
+| 差异来源 | 落在哪 | 谁读它 |
+|---|---|---|
+| ① **能力位**（tag 组合） | `combat.xlsx / Objects.Tags` | `ObjectCapability` 位运算 |
+| ② **数值包** | `characters.xlsx / StatPacks` | `StatPackageRepository.Compose` |
+| ③ **技能包 → 武器 / 子弹** | `characters.xlsx / SkillLoads.WeaponId` | `ContentSkillFactory` |
+
+所以「5 人物」= **同一套 ECS 装配 × 5 组数据**，系统代码 **0 行改动**（规则 7）。
+
+### 22.3 五个人物：机制各异，不是数值变体
+
+| 人物 | 定位 | HP | 法力 | 护甲 | 移速 | 暴击率 | 武器 | 左键节奏 |
+|---|---|---|---|---|---|---|---|---|
+| `test_hero` | 均衡基准 | 120 | 80 | 6 | 5.2 | 0.05 | `pistol_basic` | 0.15s |
+| `test_hero_tank` | 重甲坦克 | 220 | 60 | 20 | 3.6 | 0.03 | `cannon_heavy` | 0.42s |
+| `test_hero_agile` | 敏捷刺客 | 90 | 100 | 3 | 7.4 | 0.08 | `smg_light` | 0.08s |
+| `test_hero_lucky` | 幸运枪手 | 110 | 90 | 5 | 5.4 | 0.15（倍率 2.0） | `ricochet_lucky` | 0.18s |
+| `test_hero_elemental` | 元素法师 | 70 | **180** | 3 | 4.4 | 0.08 | `orb_elemental` | 0.22s（耗蓝 6） |
+
+**数值设计纪律**：每两个人之间**至少有一项是反向的**，保证没有谁是另一个的严格上位。
+例如 tank 的血是 agile 的 2.4 倍，但移速只有一半；elemental 蓝量最高但血量最低。
+
+五个人的 `DashSpeedMul / DashDuration` 也各不相同（2.2/0.18、1.8/0.22、2.8/0.16、2.4/0.18、2.0/0.20）
+—— 冲刺手感是**角色的**属性而不是技能实现的属性，所以换角色只换数据（§19 同理）。
+
+### 22.4 五颗子弹：每人一颗，机制不同
+
+| 子弹物件 | 运动 | 命中策略 | 伤害 | 速度 | 特殊 |
+|---|---|---|---|---|---|
+| `bullet_hero_pistol` | Straight | Single | 20 | 22 | 基础直飞 |
+| `bullet_hero_cannon` | Straight | Single | **55** | 14 | 高伤低弹速 |
+| `bullet_hero_smg` | Straight | **Pierce** | 8 | 26 | 穿透 2 |
+| `bullet_hero_ricochet` | Straight | Pierce | 16 | 20 | **弹跳 3** |
+| `bullet_hero_orb` | **Homing** | Pierce | 12 | 16 | **追踪 + 穿透 3 + 分裂** |
+
+子弹物件全部带 `tag.own_player`（标识层 `Faction` 轴，§21）—— 这是标识层第一次真正被内容使用。
+
+### 22.5 五只怪物：3 → 5
+
+| 怪物 | 种类 | HP | 护甲 | 移速 | 机制 |
+|---|---|---|---|---|---|
+| `goblin_grunt` | Monster | 40 | 2 | 3.4 | 近战杂兵 |
+| `goblin_archer` | Monster | 40 | 2 | 3.4 | 远程射手 |
+| `ogre_brute` | Elite | 300 | 25 | 2.2 | 重锤精英 |
+| `slime_401` | Monster | 30 | 0 | 2.6 | **分裂**（`tag.split`） |
+| `slime_403` | Monster | 55 | 4 | 2.2 | **死亡爆散**（`tag.explosive` + `tag.volatile`） |
+
+两只史莱姆走**与人物同一套装配路径**：`StatPacks` 数值包 + `SkillLoads` 技能包。
+差别只在「填了几个槽」—— 怪物只有 `PrimaryAttack` 一槽，人物五槽全满。
+这是 §17「玩家怪物同源」在内容层的又一次兑现。
+
+### 22.6 图鉴原型
+
+`tools/data_pipeline/gen_codex.py` 直读两个 xlsx，产出 `docs/codex/index.html`：
+
+```powershell
+python tools/data_pipeline/gen_codex.py            # → docs/codex/index.html
+```
+
+**两个用途**：① 策划改完表跑一次就能看到全部数字，不用开引擎；
+② 未来游戏内图鉴要显示哪些字段、按什么分组，先在这里把信息层级定死再搬进 UI。
+
+**为什么按标签轴分栏**：物件全是「`Objects` 一行 + 一串标签」（§17），所以图鉴最自然的
+组织方式就是沿轴切分 —— 先按 `Kind` 轴分大类，再按 `Element` / `Rarity` / `Role` 轴配色与筛选。
+**加一个新轴 = 加一种新视图，渲染逻辑不变。**
+
+### 22.7 幂等与真源
+
+数值全部由 `tools/data_pipeline/fill_core_roster.py` 写入，**按主键覆盖**：
+
+```powershell
+python tools/data_pipeline/fill_core_roster.py     # 可重复运行，结果一致
+```
+
+⚠️ 该脚本**只写新增内容与既有 4 个人物变体的价值**，不重排、不删行。
+`data/excel/combat.xlsx` 与 `characters.xlsx` 仍是**手工编辑的唯一真源**。
+
+### 22.8 验证
+
+```powershell
+dotnet build                                          # 0 error
+cd tests; dotnet test                                 # 372/372 通过
+python tools/data_pipeline/validate_content_xlsx.py   # OK: 4569 项检查通过
+```
+
+### 22.9 踩到的坑（记录以防复发）
+
+1. **`_upsert` 必须自己写主键列。** 第一版把「主键列」留给调用方传，调用方只传了非主键列，
+   新行的 `Id` 列全空 → 校验器报一片「Id 不能为空」。现在 `_upsert` **强制写入主键**。
+2. **同一个 `PackId` 不能同时出现在 Base 与 Growth 两层。** 仓库以包 id 为键，跨层互相覆盖，
+   `CharacterContentSet.FlushStatPacks` 会直接抛异常。成长包要么共用、要么换 id。
+3. **规则值列「空 ≠ 0」。** `Gravity` / `HomingTurn` 之类必须显式写 `0` 表示「明确为零」；
+   而 `MaxChainDepth` 例外，**必须 ≥ 1**。
+4. **`VisualSlot` 是必填整数**，空白会让 `CharacterXlsxBinder.ParseInt` 抛 `FormatException`。
+5. **改表必须同步 C# 内置镜像。** `CharacterXlsxParityTests` 会逐项比对表与
+   `CharacterContentSet.BuildBuiltinV1()`；只改一边必定红。
+6. **`wstat:` / `flags:` 这类继承写法对图鉴不友好。** 图鉴要展示的是**最终数字**，
+   继承值需要先求值；新增人物武器因此一律写独立基线。
+
+---
+
+## 23. 本地化：中文名真源 `l10n.xlsx`（2026-11-06 落地）
+
+### 23.1 这一节解决什么
+
+用户打开图鉴第一句话是「全是英文」。根因不在图鉴，而在**项目里从来没有中文名**：
+
+- `DisplayKey` 列（`combat.xlsx/Objects`、`characters.xlsx/Characters`）**明文规定不写中文**，
+  它是**本地化 key**（`actor.goblin_grunt`、`item.pistol_101`）；
+- 全仓库搜 `*loc*` / `*i18n*` / `*lang*` / `*.csv` → **零命中**，没有任何本地化表。
+
+所以 §22 的图鉴只能把 key 原样印出来。本节补的不是"给图鉴加翻译"，
+而是**给整个项目补上第二条真源：名字**。
+
+### 23.2 核心决定：名字是独立真源，不是代码常量
+
+| 备选 | 否决理由 |
+|---|---|
+| 中文名写进 `gen_codex.py` 常量 | 违反规则 4（文案也是数据）；加一个武器就得改脚本 |
+| 给 `Tags` / `Objects` 表加 `NameZh` 列 | 要同步改生成器 `COLUMNS` → C# Def → 校验器 → ARCHITECTURE，**远超规则 7 的「≤2 个文件」**；而且名字与数值的编辑节奏不同（文案改得比数值频繁得多），混在一张表里会频繁打架 |
+| **独立 `data/excel/l10n.xlsx`** ✅ | 一张表、一个 `gen_codex.py` 消费点；将来游戏 UI 用同一个文件，**图鉴与游戏不会各说各话** |
+
+**关键**：图鉴和将来的游戏 UI 读的是**同一份** `l10n.xlsx`。
+这避免了最典型的翻车场景 —— 策划在图鉴上看到"飞弹"，进游戏发现叫"炮弹"。
+
+### 23.3 表结构
+
+`tools/data_pipeline/gen_l10n_xlsx.py` 生成，之后**手工维护**（同 `combat.xlsx` 的规矩）。
+四行表头 + `#data` 标记行 + 第 6 行起数据，与其它主题表完全一致：
+
+| 列 | 含义 |
+|---|---|
+| `Key` | `actor.*` / `item.*` / `proj.*` / `fx.*`（= `DisplayKey`）、`tag.*`（= `TagId`）、或裸枚举名（`Pierce` / `Explosive` / `Melee`…） |
+| `Zh` | ★ 中文名，策划直接改这里 |
+| `Note` | 可空；只在语义容易误解时填 |
+
+当前 **167 条**：物件 37 · 标签 62 · 枚举 55 · 单位 7（+ 5 个人物武器 id）。
+
+### 23.4 图鉴怎么用它
+
+`gen_codex.py` 里的 `L10n` 类提供 `l10n(key)` 与 `l10n.tag(name)` 两个查询，**三处约定**：
+
+1. **中文名做主标题，英文 id 做副标题**（`<code class="id">`，10.5px、灰色、等宽）。
+   策划对表时要看 id，玩家只看中文 —— 两者都不能丢。
+2. **查不到时原样返回 key 并记账**（`l10n.missing`），生成结束打印警告清单。
+   **绝不返回空字符串** —— 图鉴上冒出一个英文 key 是最好的"这里缺名"提示；
+   留白会让人以为是排版问题。
+3. **搜索索引同时收录中英文**：`data-search` 拼 `中文名 + 英文 id + 副标题`，
+   `data-chips` 保留英文标签。搜「元素」「element」「bullet_301」都能命中。
+
+### 23.5 校验器新增的 5 类检查（437 项）
+
+`validate_content_xlsx.py` 里新增 `validate_l10n()` 与 `collect_l10n_refs()`，
+检查项从 4136 → **4569**。这是本次最有价值的部分 —— 中文名很容易**静默**出错：
+
+| 检查 | 为什么必须报错 |
+|---|---|
+| `Key` 重复 | 建字典时后一条覆盖前一条，图鉴会显示其中一个，**没人会发现** |
+| `Zh` 为空 / 全空格 | 图鉴退化成显示英文 key，看起来像"还没做"而不是"填错了" |
+| **缺中文名**（覆盖性） | 扫 `Objects.DisplayKey` + `Tags.TagId` + `Characters.DisplayKey` 的全部引用，**引用必须有名字**；报错时指出是谁引用的 |
+| 中文名仍是英文标识 | 复制粘贴没改的典型症状 |
+| 同一命名空间内重名 | **只在 `tag` 与 `object` 各自桶内比较**。`Pierce`（枚举）与 `tag.pierce`（标签）都叫"穿透"是**正确且必要**的，跨桶不比较 |
+
+> 第一版没分命名空间，一次性报了 12 条假阳性，真问题（`tag.melee` 与 `tag.short_range`
+> 都叫"近战"）淹没在里面。**校验器的信噪比比检查数量更重要。**
+
+### 23.6 顺带修掉的一个真 bug：DisplayKey 不一致
+
+校验器的覆盖性检查抓出来的：`player_hero` 在两张表里有两个不同的 `DisplayKey` ——
+
+- `combat.xlsx/Objects` 写 `actor.player`
+- `characters.xlsx/Characters` 写 `actor.player_hero`
+
+**规范定为 `actor.<Id>`**（`characters.xlsx` 里 12 行全部符合），已把 `combat.xlsx` 那一个
+异常值改齐。这类不一致之所以危险：两边都能过校验、都能跑，但**同一个物件在两个界面里
+会有两个名字**，等 UI 接上去才会发现。
+
+### 23.7 可重复运行的脚本
+
+| 脚本 | 用途 |
+|---|---|
+| `gen_l10n_xlsx.py` | **仅首次**生成骨架；之后不要重跑（会覆盖手改） |
+| `add_missing_l10n.py` | 幂等补几条已知遗漏（人物武器 id、枚举 `Homing`） |
+| `gen_codex.py` | 重跑图鉴；缺名会打印警告清单 |
+
+### 23.8 验证
+
+```powershell
+dotnet build                                          # 0 error
+cd tests; dotnet test                                 # 372/372 通过
+python tools/data_pipeline/validate_content_xlsx.py   # OK: 4569 项检查通过
+python tools/data_pipeline/gen_codex.py               # 0 条缺名警告
+```
+
+### 23.9 一句话规矩
+
+> **加任何新内容（人物/怪物/武器/子弹/标签）时，`l10n.xlsx` 必须同步加一行中文名。**
+> 忘了不会崩，但校验器会报「缺少中文名：xxx（被 Yyy 引用）」，图鉴生成也会打警告。
+
+
+
+---
+
+## 24. 3D 素材查看器（`tools/asset_viewer2/`）
+
+**定位**：独立于 Godot 的只读工具。用来**快速浏览 `素材/` 目录下的 3D 资产**——扫描、列表、逐个渲染看效果。不参与游戏运行时，不链接 Godot，不进 `native/`。
+
+### 24.1 为什么单独放 `tools/` 而不是 `native/`
+
+规则2 要求「C++ 代码放 `native/`」是为了约束**游戏运行时的原生扩展**（GDExtension）。素材查看器是一个**完全独立的桌面程序**：自己的 `main()`、自己的 Vulkan 设备、自己的窗口，与引擎零交互。放进 `native/` 反而会让 `native/build/` 与 Godot 的 GDExtension 构建互相污染。
+
+因此它在 `config/architecture-rules.json` 的 `ignore` 列表里登记放行（与旧版 `tools/asset_viewer/**`、`tools/probes/**` 同理）。
+
+### 24.2 技术栈
+
+| 层 | 选型 |
+|---|---|
+| 窗口 / 输入 | GLFW 3.4 |
+| 图形 | Vulkan 1.1（`VkContext` 自管 swapchain / render pass / depth） |
+| UI | Dear ImGui 1.92.8 + 官方 `imgui_impl_vulkan` + `imgui_impl_glfw` |
+| glTF 解析 | cgltf（单头文件） |
+| FBX 解析 | 自研二进制解析器 `src/loaders/fbx_loader.cpp`（覆盖 7200/7400/7500） |
+| 贴图解码 | WIC（Windows Imaging Component） |
+| 构建 | CMake + Ninja + MSVC |
+
+### 24.3 目录
+
+```text
+tools/asset_viewer2/
+├─ CMakeLists.txt          av_core / av_gpu / av_imgui 三个静态库 + asset_viewer2 主程序
+├─ shaders/                model.vert / model.frag（源码，.spv 由 glslc 在构建时生成）
+├─ src/
+│  ├─ core/                math3d / model_data / scanner（素材扫描）/ image_io
+│  ├─ loaders/             gltf_loader（cgltf）/ fbx_loader / texture / wic_*
+│  ├─ gpu/                 vk_context（设备/交换链）/ vk_pipeline（管线/推送常量）/ camera / thumb_renderer
+│  ├─ ui/                  asset_cache（后台加载线程）/ ui_main（面板布局）
+│  ├─ app.cpp              Init / Frame 主循环
+│  └─ main.cpp             入口
+└─ tests/                  loader_test / tex_test / render_test（控制台自测）
+```
+
+### 24.4 两个必须知道的坑（都踩过）
+
+1. **矩阵约定**。CPU 侧 `Mat` 是**行主序 + 行向量**（`v' = v * M`）。上传前 `ToColumnMajor()` 转置成 GLSL 列主序，所以 **shader 里必须写 `row_vector * mat4`**，不能写 `mat4 * vec4`。写反了不会报错，只会让几何体飞出屏幕——表现是「什么都没画出来」。
+2. **`.spv` 不能留在 `shaders/` 源目录**。`CMakeLists.txt` 的 POST_BUILD 会把 `shaders/` 整个拷到输出目录。如果源目录里躺着一份旧的 `.spv`，它会**覆盖掉刚编译的新 shader**，导致「改了 shader 但画面不变」。现在改由 CMake 在 POST_BUILD 阶段调 `glslc` 生成，源目录只留 `.vert` / `.frag`。
+
+### 24.5 素材过滤
+
+纯碰撞体资产不进列表：目录名等于 `Collision`，或文件名以 `_Collision` 结尾（`src/core/scanner.cpp` 的 `IsCollisionOnly`）。当前素材库扫描结果：**358 个资产 / 12 个目录**（301 glb + 57 fbx，约 132 万顶点）。

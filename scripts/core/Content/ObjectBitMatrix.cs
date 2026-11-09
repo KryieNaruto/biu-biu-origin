@@ -222,7 +222,11 @@ public sealed class ObjectBitMatrix
 public sealed class ContentRules
 {
     private readonly string[] _tagNames;
+    private readonly string[] _tagFamilies;
     private readonly Dictionary<string, int> _tagOf;
+    private readonly Dictionary<TagFamily, IReadOnlyList<int>> _tagsByFamily;
+    private readonly TagTier[] _tagTiers;
+    private readonly Dictionary<TagTier, IReadOnlyList<int>> _tagsByTier;
 
     /// <summary>tag 名列表（索引 = tag id，按表顺序稳定）。</summary>
     public IReadOnlyList<string> TagNames { get; }
@@ -230,10 +234,70 @@ public sealed class ContentRules
     /// <summary>tag 总数（= 位矩阵每行的位宽来源）。</summary>
     public int TagCount => _tagNames.Length;
 
-    private ContentRules(string[] tagNames)
+    /// <summary>
+    /// 各轴上挂了哪些 tag（<b>轴 → tag id 列表</b>）。
+    /// <para>
+    /// 这是「按标签范围索引」的唯一入口：强化要「所有稀有武器」、图鉴要「所有 Element 轴标签」、
+    /// 掉落要「所有 Rarity=common 的候选」，都从这里取范围，再去位矩阵上筛。
+    /// 没有这一层，每个玩法都要自己遍历 tag 名字做字符串匹配。
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<TagFamily, IReadOnlyList<int>> TagsByFamily => _tagsByFamily;
+
+    /// <summary>各层挂了哪些 tag（**层 → tag id 列表**）。图鉴 / 编辑器面板按层分组用。</summary>
+    public IReadOnlyDictionary<TagTier, IReadOnlyList<int>> TagsByTier => _tagsByTier;
+
+    private ContentRules(string[] tagNames, string[]? tagFamilies, string[]? tagTiers)
     {
         _tagNames = tagNames;
         TagNames = Array.AsReadOnly(tagNames);
+
+        // 轴信息缺省时全部落在 None：兼容「只关心 tag id 与位」的老调用方与测试夹具。
+        _tagFamilies = new string[tagNames.Length];
+        var buckets = new Dictionary<TagFamily, List<int>>();
+        for (int i = 0; i < tagNames.Length; i++)
+        {
+            TagFamily family = tagFamilies is not null && i < tagFamilies.Length
+                ? TagFamilies.Parse(tagFamilies[i])
+                : TagFamily.None;
+            _tagFamilies[i] = TagFamilies.NameOf(family);
+            if (!buckets.TryGetValue(family, out List<int>? bucket))
+            {
+                bucket = new List<int>(4);
+                buckets.Add(family, bucket);
+            }
+            bucket.Add(i);
+        }
+
+        // 层索引：缺省时全部落 Logic —— 本字段是后加的，老调用方不该因为没传层就丢掉轴功能。
+        _tagTiers = new TagTier[tagNames.Length];
+        var tierBuckets = new Dictionary<TagTier, List<int>>();
+        for (int i = 0; i < tagNames.Length; i++)
+        {
+            TagTier tier = tagTiers is not null && i < tagTiers.Length
+                ? TagTiers.Parse(tagTiers[i])
+                : TagTier.Logic;
+            _tagTiers[i] = tier;
+            if (!tierBuckets.TryGetValue(tier, out List<int>? tierBucket))
+            {
+                tierBucket = new List<int>(8);
+                tierBuckets.Add(tier, tierBucket);
+            }
+            tierBucket.Add(i);
+        }
+
+        _tagsByTier = new Dictionary<TagTier, IReadOnlyList<int>>(tierBuckets.Count);
+        foreach (KeyValuePair<TagTier, List<int>> pair in tierBuckets)
+        {
+            _tagsByTier.Add(pair.Key, pair.Value.ToArray());
+        }
+
+        _tagsByFamily = new Dictionary<TagFamily, IReadOnlyList<int>>(buckets.Count);
+        foreach (KeyValuePair<TagFamily, List<int>> pair in buckets)
+        {
+            _tagsByFamily.Add(pair.Key, pair.Value.ToArray());
+        }
+
         _tagOf = new Dictionary<string, int>(tagNames.Length, StringComparer.Ordinal);
         for (int i = 0; i < tagNames.Length; i++)
         {
@@ -252,6 +316,22 @@ public sealed class ContentRules
     /// </summary>
     public static ContentRules FromTags(IEnumerable<string> tags)
     {
+        return FromTags(tags, null, null);
+    }
+
+    /// <summary>带轴信息构建（层缺省为 Logic）。</summary>
+    public static ContentRules FromTags(IEnumerable<string> tags, IEnumerable<string>? families)
+    {
+        return FromTags(tags, families, null);
+    }
+
+    /// <summary>
+    /// 带轴信息构建。<paramref name="families"/> 与 <paramref name="tags"/> <b>按位置一一对应</b>
+    /// （第 i 个轴名属于第 i 个 tag），长度不一致时缺的部分按 <see cref="TagFamily.None"/> 处理。
+    /// </summary>
+    public static ContentRules FromTags(
+        IEnumerable<string> tags, IEnumerable<string>? families, IEnumerable<string>? tiers)
+    {
         if (tags is null)
         {
             throw new ArgumentNullException(nameof(tags));
@@ -266,7 +346,10 @@ public sealed class ContentRules
             }
             names.Add(tag);
         }
-        return new ContentRules(names.ToArray());
+        return new ContentRules(
+            names.ToArray(),
+            families is null ? null : new List<string>(families).ToArray(),
+            tiers is null ? null : new List<string>(tiers).ToArray());
     }
 
     /// <summary>按名查 tag id；不存在返回 -1（与 <c>Registry.NoneSlot</c> 同一哨兵约定）。</summary>
@@ -281,6 +364,83 @@ public sealed class ContentRules
 
     /// <summary>按 id 取 tag 名；越界返回空串（越界是「表版本不一致」，不该炸掉调试面板）。</summary>
     public string NameOf(int tag) => tag >= 0 && tag < _tagNames.Length ? _tagNames[tag] : string.Empty;
+
+    /// <summary>按 id 取 tag 所属轴；越界返回 <see cref="TagFamily.None"/>。</summary>
+    public TagFamily FamilyOf(int tag) =>
+        tag >= 0 && tag < _tagFamilies.Length ? TagFamilies.Parse(_tagFamilies[tag]) : TagFamily.None;
+
+    /// <summary>按 id 取 tag 所属层；越界返回 <see cref=TagTier.None/>。</summary>
+    public TagTier TierOf(int tag) =>
+        tag >= 0 && tag < _tagTiers.Length ? _tagTiers[tag] : TagTier.None;
+
+    /// <summary>某层上挂了哪些 tag id；该层没有任何 tag 时返回空列表（不抛异常）。</summary>
+    public IReadOnlyList<int> TagsOfTier(TagTier tier) =>
+        _tagsByTier.TryGetValue(tier, out IReadOnlyList<int>? tags) ? tags : Array.Empty<int>();
+
+    /// <summary>
+    /// 某层全部标签压成的单一位掩码。用于「这个物体挂的标识标签里，有没有任意一个属于该层」。
+    /// <para>
+    /// 典型用法：判断「这堆掉落里哪些是被磁铁吸引的」——
+    /// <c>(matrix.Mask(row,0) &amp; rules.FamilyMask(TagFamily.Attract,0)) != 0</c>；
+    /// 而判断「这件东西带不带任何标识标签」用 <c>rules.TierMask(TagTier.Identity)</c>。
+    /// </para>
+    /// </summary>
+    public int TierMask(TagTier tier, int word = 0) => PackMask(TagsOfTier(tier), word);
+
+    /// <summary>某轴上是否至少有一个 tag（用于报「这一轴是空的」这类表配置错误）。</summary>
+    public bool HasFamily(TagFamily family) => _tagsByFamily.TryGetValue(family, out IReadOnlyList<int>? tags) && tags.Count > 0;
+
+    /// <summary>某轴上的全部 tag id；该轴没有任何 tag 时返回空列表（不抛异常 —— 表可以合法地少用一个轴）。</summary>
+    public IReadOnlyList<int> TagsOfFamily(TagFamily family) =>
+        _tagsByFamily.TryGetValue(family, out IReadOnlyList<int>? tags) ? tags : Array.Empty<int>();
+
+    /// <summary>
+    /// 某轴全部标签压成的**单一位掩码**（按 <paramref name="word"/> 取第几段 32 位）。
+    /// <para>
+    /// 用法：<c>(matrix.Mask(row, 0) &amp; rules.FamilyMask(TagFamily.Element, 0)) != 0</c> 即「这个物体挂了元素轴上的某个标签」。
+    /// 一次 AND 就把整个轴筛完，不认识具体标签名 —— 新增元素标签时这里 0 行改动。
+    /// </para>
+    /// </summary>
+    public int FamilyMask(TagFamily family, int word = 0)
+    {
+        if (word < 0)
+        {
+            return 0;
+        }
+        int mask = 0;
+        IReadOnlyList<int> tags = TagsOfFamily(family);
+        for (int i = 0; i < tags.Count; i++)
+        {
+            int tag = tags[i];
+            if ((tag >> 5) == word)
+            {
+                mask |= 1 << (tag & 31);
+            }
+        }
+        return mask;
+    }
+
+    /// <summary>
+    /// 把一组 tag id 压成位掩码（只压落在 <paramref name="word"/> 那一段的位）。
+    /// 强化 / 筛选条件通常表达成「这几个标签之一」，用本函数一次压好、之后每帧只做 AND。
+    /// </summary>
+    public static int PackMask(IReadOnlyList<int> tags, int word = 0)
+    {
+        if (tags is null || word < 0)
+        {
+            return 0;
+        }
+        int mask = 0;
+        for (int i = 0; i < tags.Count; i++)
+        {
+            int tag = tags[i];
+            if (tag >= 0 && (tag >> 5) == word)
+            {
+                mask |= 1 << (tag & 31);
+            }
+        }
+        return mask;
+    }
 
     /// <inheritdoc />
     public override string ToString() => string.Concat("ContentRules(tags=", TagCount.ToString(), ")");

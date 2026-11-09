@@ -11,25 +11,14 @@ config_version=5
 [application]
 
 config/name="BiuBiuOrigin"
-config/features=PackedStringArray("4.7", "Forward Plus")
-config/icon="res://icon.svg"
 run/main_scene="res://scenes/main/DungeonDebug.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/icon="res://icon.svg"
 
 [display]
 
-; ── 窗口与缩放（2026-11-06 修「拖动窗口渲染画面不变」）──────────────────────
-; 症状：拉伸窗口只让画面变糊或被裁，3D 世界不渲染更多内容。
-; 根因：只写了 stretch/mode 而**没写基准分辨率**，引擎按默认 1152×648 当内容基准，
-;       窗口变化只是把这张固定尺寸的画布线性缩放 —— 3D 视口以及 HUD 的 Size
-;       永远停在 1152×648，相机看到的范围自然不变。
-; 修法：本作是纯 3D 俯视射击，HUD 是自绘 Control（CharacterHudDrawer 按自身 Size
-;       重建几何，已自适应），不需要像素级 UI 缩放 —— 故关掉 stretch，
-;       让视口尺寸 == 窗口尺寸，窗口多大就渲染多大。相机视野范围另由
-;       TopDownCameraRig 的 KeepAspect=Height + ortho Size 控制（见该类文档）。
 window/size/viewport_width=1600
 window/size/viewport_height=900
-window/size/resizable=true
-window/stretch/mode="disabled"
 window/stretch/aspect="expand"
 
 [dotnet]
@@ -38,9 +27,6 @@ project/assembly_name="BiuBiuOrigin"
 
 [input]
 
-; 角色技能槽位的按键方案（需求③：Shift 冲刺 / 左键瞄准射击 / Q 切武器 / R 独有技能 / F 交互）。
-; 这些是「操作方案」不是玩法数值，所以放在 InputMap（玩家可在设置里改键），
-; C# 侧由 scripts/host/control/PlayerInputIntentSource.cs 把 action 名翻译成技能槽位。
 actor_dash={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194325,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
@@ -91,7 +77,6 @@ actor_aim_down={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":83,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
-
 actor_move_left={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":65,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)

@@ -230,7 +230,11 @@ public sealed class ContentBinder
     // ── 列清单：与 combat.xlsx 第 1 行并行维护（结构性标识，不是游戏数值）──────────
 
     /// <summary>Tags 表必需列。</summary>
-    private static readonly string[] TagColumns = { "TagId", "TagIndex", "Category", "Group", "BitMask" };
+    /// <summary>Tags 表必需列。
+    /// <para>★ <c>Family</c>（标签轴）是 2026-11-06 多轴标签扩展加进来的必需列：强化 / 图鉴 / 筛选按轴取范围。
+    /// 它只做索引，不改变能力位（能力位仍只看 <c>Group</c>），所以对运行时热路径零影响。</para></summary>
+    private static readonly string[] TagColumns =
+        { "TagId", "TagIndex", "Tier", "Family", "Category", "Group", "BitMask" };
 
     /// <summary>Objects 表必需列。</summary>
     private static readonly string[] ObjectColumns =
@@ -254,6 +258,18 @@ public sealed class ContentBinder
     /// 这是<b>表格式缺省值</b>（docs/rules/04 §5.2「空单元格 = 取默认值」），不是玩法数值。
     /// </summary>
     private const float ClusterWeightDefault = 1f;
+
+    /// <summary>
+    /// Objects 表的<b>可选</b>列 <c>VisualPack</c>：外观包 id（指向任一 xlsx 的 <c>VisualPacks.Id</c>）。
+    /// <para>与 <see cref="ClusterWeightColumn"/> 同款处理：缺列 = 没有外观包（白模），不是装配失败。</para>
+    /// </summary>
+    private const string VisualPackColumn = "VisualPack";
+
+    /// <summary>Objects 表可选列 <c>AssetPath</c>：直接钉死模型路径（<c>res://</c>），优先于外观包。</summary>
+    private const string AssetPathColumn = "AssetPath";
+
+    /// <summary>Objects 表可选列 <c>AssetAnim</c>：默认动画剪辑名（空 = 不主动播）。</summary>
+    private const string AssetAnimColumn = "AssetAnim";
 
     /// <summary>Weapons 表必需列。</summary>
     private static readonly string[] WeaponColumns =
@@ -417,6 +433,8 @@ public sealed class ContentBinder
         }
 
         var names = new string[byIndex.Count];
+        var families = new string[byIndex.Count];
+        var tiers = new string[byIndex.Count];
         int expected = 0;
         foreach (KeyValuePair<int, ContentRow> pair in byIndex)
         {
@@ -428,9 +446,42 @@ public sealed class ContentBinder
                     pair.Key.ToString(CultureInfo.InvariantCulture), "，tag '", pair.Value.Get("TagId"), "'）。"));
             }
             names[expected] = pair.Value.Get("TagId").Trim();
+
+            // 轴（Family）是索引坐标系：认不出的轴名 = 表写错了，必须当场报错。
+            // 若静默落成 None，这个 tag 就从所有「按轴取范围」的强化/图鉴里消失，属于最难查的静默失效。
+            string rawFamily = pair.Value.Get("Family");
+            TagFamily family = TagFamilies.Parse(rawFamily);
+            if (family == TagFamily.None && !string.IsNullOrWhiteSpace(rawFamily))
+            {
+                throw new ContentException(string.Concat(
+                    pair.Value.WhereOf("Family"), "：tag '", names[expected], "' 的轴名 '", rawFamily.Trim(),
+                    "' 无法识别（合法值：", string.Join(" / ", TagFamilies.Names), "）。"));
+            }
+            families[expected] = TagFamilies.NameOf(family);
+
+            // 层（Tier）：Logic 决定玩法 / Identity 只做标识匹配。同样是认不出就炸，不静默落 None。
+            string rawTier = pair.Value.Get("Tier");
+            TagTier tier = TagTiers.Parse(rawTier);
+            if (tier == TagTier.None)
+            {
+                throw new ContentException(string.Concat(
+                    pair.Value.WhereOf("Tier"), "：tag '", names[expected], "' 的层名 '", (rawTier ?? string.Empty).Trim(),
+                    "' 无法识别（合法值：", string.Join(" / ", TagTiers.Names), "）。"));
+            }
+
+            // 层与轴必须自洽：轴属于标识层 → 层必须是 Identity，反之亦然。
+            // 否则会出现「挂 Identity 轴的标签却声明成 Logic」这种半截状态，规则侧读得到它、编辑器面板却归类错。
+            TagTier expectedTier = TagFamilies.TierOf(family);
+            if (expectedTier != TagTier.None && expectedTier != tier)
+            {
+                throw new ContentException(string.Concat(
+                    pair.Value.WhereOf("Tier"), "：tag '", names[expected], "' 的轴 '", TagFamilies.NameOf(family),
+                    "' 属于 ", TagTiers.NameOf(expectedTier), " 层，但 Tier 写的是 '", TagTiers.NameOf(tier), "'。"));
+            }
+            tiers[expected] = TagTiers.NameOf(tier);
             expected++;
         }
-        return ContentRules.FromTags(names);
+        return ContentRules.FromTags(names, families, tiers);
     }
 
     /// <summary>
@@ -735,7 +786,25 @@ public sealed class ContentBinder
             effect: effectRef,
             displayKey: displayKey,
             weaponContract: weapon,
-            projectileContract: projectile);
+            projectileContract: projectile,
+            // 模型属性（可选列：老表没有这三列时为空串 = 白模，不报错）。
+            // 语义：AssetPath 优先于 VisualPack；两者都空 → 表现层回退白模。
+            visualPackId: OptionalCell(row, VisualPackColumn),
+            assetPath: OptionalCell(row, AssetPathColumn),
+            assetAnim: OptionalCell(row, AssetAnimColumn));
+    }
+
+    /// <summary>
+    /// 读一个<b>可选列</b>的字符串值（缺列 / 空单元格 → 空串）。
+    /// <para>
+    /// <b>为什么不抛异常</b>：可选列的存在与否属于表格式版本差异，不是数据错误。
+    /// 老表（或别人手里的一份旧表）没有 <c>VisualPack</c> 列时必须照样能装配，
+    /// 否则"加一列美术字段"就会让所有旧表失效 —— 这正是规则7 要避免的「新增功能不大改」。
+    /// </para>
+    /// </summary>
+    private static string OptionalCell(ContentRow row, string column)
+    {
+        return HasColumn(row.Table, column) ? row.Get(column).Trim() : string.Empty;
     }
 
     /// <summary>绑定 Weapons 表的一行。外键指向 Objects 时必须已建索引。</summary>

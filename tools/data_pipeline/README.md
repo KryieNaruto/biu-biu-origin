@@ -72,8 +72,10 @@ $py = "E:\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe"
 |---|---|---|
 | `TagId` | string | 标签 id，**必须** `tag.` 开头，如 `tag.pistol` |
 | `TagIndex` | int | ★ 运行时的 tag id，**必须从 0 连续递增**（0,1,2,…，不能跳号、不能重号） |
-| `Category` | enum `TagCategory` | `Kind`/`Stat`/`Element`/`Ability`/`Trigger` |
-| `Group` | enum `TagGroup` | `ObjectKind`/`WeaponKind`/`ProjectileKind`/`Element`/`Ability`/`Chain`/`Trigger` |
+| `Family` | enum `TagFamily` | ★ **标签轴**（索引坐标系）：强化 / 图鉴 / 筛选按轴取范围，见下 |
+| `Tier` | enum `TagTier` | ★ **标签层**：`Logic`=逻辑功能层（决定玩法）/ `Identity`=标识层（只做匹配），见 §7 |
+| `Category` | enum `TagCategory` | `Kind`/`Stat`/`Element`/`Ability`/`Trigger`（**历史遗留**，新内容只填 `Family`） |
+| `Group` | enum `TagGroup` | `ObjectKind`/`WeaponKind`/`ProjectileKind`/`Element`/`Ability`/`Chain`/`Trigger`/`None` |
 | `BitMask` | int | 该标签在 64 位配方字里的位，**0..63 且唯一**；写 `-1` = 不进配方字 |
 | `Note` | string | 人读说明 |
 
@@ -81,8 +83,39 @@ $py = "E:\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe"
 代码里**不出现任何具体 tag 名**。所以一个物体**最多只能命中一个** `ObjectKind` 标签
 （都命不中 = 纯表现物体，如特效）。
 
-**怎么加一个标签**：在最后加一行，`TagIndex` 填「现有最大 +1」，`BitMask` 填一个没用过的位（或 `-1`）。
+> ⚠️ `Group` 决定**能力位**，`Family` 决定**索引轴**。两者刻意分开：标签体系怎么扩，都不会动到工厂判定。
+
+**为什么要 `Family`（标签轴）**：玩法要问的范围几乎从来不是「哪些物体挂了 `tag.pierce`」，
+而是「所有**稀有**武器」「所有**元素**标签」「所有**族裔**」。
+`Family` 把这些范围查询编成一个坐标系，运行期「命中某轴任一标签」= **一次按位与**
+（`matrix.Mask(row,0) & rules.FamilyMask(TagFamily.Rarity)`），代码不认识任何具体 tag 名。
+详见 [ARCHITECTURE §19](../../docs/architecture/ARCHITECTURE.md)。
+
+十个轴（不在这里的轴名一律被绑定器**当场报错**，不会静默落入 `None`）：
+
+| 轴 | 互斥 | 含义 | 现有标签 |
+|---|---|---|---|
+| `Kind` | ✅ | 物体大类（同时决定能力位） | `actor` / `weapon` / `projectile` |
+| `WeaponKind` | ✅ | 武器种类 | `pistol` / `rifle` / `bow` / `melee` |
+| `ProjectileKind` | ✅ | 弹体种类 | `homing` |
+| `Element` | ✅ | 伤害元素 | `kinetic` / `energy` / `explosive` |
+| `Ability` | ❌ **可叠加** | 能力（穿透+弹跳+分裂能叠在同一颗弹上） | `pierce` / `bounce` / `split` / `summon` / `chain` / `projectile_fired` / `short_range` / `multi_shot` / `charge` / `ricochet` / `high_damage` |
+| `Trigger` | ✅ | 触发时机 | `volatile` |
+| `Rarity` | ✅ | 稀有度 | `common` / `uncommon` / `rare` / `legendary` |
+| `Race` | ❌ **分层** | 族裔（祖先 `humanoid` ⊃ 具体 `goblin`/`slime`/`ogre`） | `humanoid` / `goblin` / `slime` / `ogre` |
+| `Role` | ✅ | 角色定位 | `hero` / `grunt` / `ranged` / `caster` / `elite` / `assassin` |
+| `Effect` | ✅ | 特效类别 | `muzzle` / `hit` / `burst` |
+
+**两个「不互斥」是刻意的**：
+`Ability` 可叠加 = ECS 组合的主战场，一旦互斥就退回成分类枚举；
+`Race` 分层 = 「对人形增伤」要能打到哥布林，而「对哥布林增伤」不该误伤其他人形。
+
+**怎么加一个标签**：在最后加一行，`TagIndex` 填「现有最大 +1」，`Family` 填所属轴，
+`BitMask` 填一个没用过的位（不需要进配方字就写 `-1`）。
 **不要删、不要改已有的 `TagIndex` / `BitMask`**——它们会被存档与配方字引用。
+
+> 现有 40 个 tag 里只有 16 个占 `BitMask`（bit 0~15，进配方字）；其余 24 个 `BitMask = -1`，
+> 它们只走轴索引、不占位矩阵的 32 位预算。**轴标签数不受 `BitMask` 上限约束。**
 
 ### 3.2 `Objects` —— 唯一的「物体原型」表（人物 / 怪物 / 武器 / 子弹 / 特效全在这）
 
@@ -297,7 +330,7 @@ tag.pistol|tag.pistol|tag.kinetic|tag.pierce|tag.kinetic|tag.pistol|tag.kinetic|
 | 新增一把武器 | ① `Objects` 加一行（`Tags` 含 `tag.weapon` + 一个 `WeaponKind`，`StatPacks` 填 `Base` 包名）<br>② `StatPacks` 加该包的数值行<br>③ `Weapons` 加一行，`ObjectId` 指向①的 `Id` |
 | 新增一种子弹 | ① `Objects` 加一行（`Tags` 含 `tag.projectile`，`StatPacks` 填 `Base` 包名）<br>② `StatPacks` 加数值行<br>③ `Projectiles` 加一行，`ObjectId` 指向①的 `Id`<br>④ 回到武器表 `ProjectileRef` 指向它 |
 | 新增一个怪物 | ① `characters.xlsx` 的 `Characters` 加一行（`BasePackage` 必填）<br>② `Characters.StatPacks` 加该 Base 包的数值行<br>③ 若要让它拿武器：`weapons`/`combat` 里对应加行并在 `Objects.Weapon` 指向 |
-| 新增一个标签 | `Tags` 表最后加一行（`TagIndex` = 最大值+1，`BitMask` 用没用过的位或 `-1`） |
+| 新增一个标签 | `Tags` 表最后加一行（`TagIndex` = 最大值+1，`Family` 填轴，`BitMask` 用没用过的位或 `-1`） |
 | 改中文显示名 | `DisplayKey`（本地化 key），不要直接写中文 |
 
 ---
@@ -363,3 +396,153 @@ tag.pistol|tag.pistol|tag.kinetic|tag.pierce|tag.kinetic|tag.pistol|tag.kinetic|
 - [ ] 新增的 Id 与已有 Id 风格一致（小写下划线）
 - [ ] 新增内容至少有一条数据真的引用了它（否则它永远进不了游戏）
 - [ ] `git diff` 只看得到你预期的那几个单元格
+
+---
+
+## 6. 标签轴（Family）与维护脚本
+
+2026-11-06 起 Tags 表多了 Family 列。要点：
+
+- **Family 只做索引，不改能力位。** 能力位仍只看 Group（ObjectKind）。
+- **绑定器对认不出的轴名当场报错**（ContentBinder.LoadRules），不会静默落 None。
+  静默落 None 会让这个 tag 从所有按轴索引的玩法里消失，是最难查的一类失效。
+- **校验器按字段名取列，不按列号。** 曾因写死 c[4] 在插列后把 BitMask 全读成 -1。
+
+### 6.1 表结构变更脚本
+
+| 脚本 | 用途 | 幂等 |
+|---|---|---|
+| migrate_tags_multiaxis.py | 给已有 combat.xlsx 补 Family 列、追加 23 个轴标签、给 26 个物体补多轴标签 | ✅ |
+| ix_tag_bitmasks.py | 按生成器内存数据把 Tags.BitMask 对齐回历史值（生成器曾被重跑冲掉引线时用） | ✅ |
+
+### 6.2 ⚠️ 不要重跑 gen_combat_xlsx.py
+
+data/excel/combat.xlsx 是**手改真源**，gen_combat_xlsx.py **整体覆盖**写它。
+2026-11-06 曾因重跑该脚本，把手工维护的 BitMask（bit 0~15）全部清零，
+导致 30 条「配方里的 tag 没有配方位」错误。
+
+- **要改内容：直接改 xlsx。**
+- 生成器里的 TAGS / OBJECTS 只作为「从零重建」的种子，已同步为当前真值；
+  若确需重建，先 ix_tag_bitmasks.py 校验再比对 diff。
+---
+
+## 7. 标签分层（Tier，2026-11-06）
+
+`Tags` 表多了 `Tier` 列，把标签拆成两层：
+
+| 层 | 谁消费 | 加一个的代价 | 例 |
+|---|---|---|---|
+| `Logic` | 系统（能力位 / 配方字 / 抗性 / 权重） | **先想规则** | `tag.kinetic` / `tag.pierce` / `tag.rare` |
+| `Identity` | 匹配（吸附 / 拾取 / 主题 / 共鸣） | **随手加** | `tag.loot_coin` / `tag.attract_magnet` / `tag.own_player` |
+
+> 层回答「能不能影响玩法」，轴回答「属于哪一类」。两者是两个维度。
+
+### 7.1 标识层六轴
+
+| 轴 | 互斥 | 标签 |
+|---|---|---|
+| `Loot` | ✅ | `tag.loot_ammo` / `loot_health` / `loot_mana` / `loot_coin` / `loot_relic` / `loot_key` |
+| `Attract` | ❌ 可叠加 | `tag.attract_magnet` / `attract_weapon` / `attract_exp` |
+| `Faction` | ✅ | `tag.own_player` / `own_enemy` / `own_neutral` |
+| `Theme` | ❌ 可叠加 | `tag.theme_forest` / `theme_dungeon` / `theme_forge` |
+| `Aura` | ❌ 可叠加 | `tag.aura_fire` / `aura_ice` / `aura_shock` |
+| `Craft` | ❌ 可叠加 | `tag.craft_metal` / `craft_wood` / `craft_gem` / `craft_essence` |
+
+### 7.2 标识层的硬约束（校验器强制）
+
+| 约束 | 为什么 |
+|---|---|
+| `BitMask` **必须是 -1** | 标识标签不得进配方字（否则偷偷影响玩法） |
+| `Group` **必须是 `None`** | 标识标签不得产出能力位 |
+| `Tier` 必须与轴的层一致 | 防止「挂标识轴却声明 Logic」 |
+
+### 7.3 ⚠️ TagId 命名规则
+
+`TagId` 只允许 **`tag.<小写名>` 单段**，名里可以有下划线但**不能再有点**：
+
+- ✅ `tag.loot_coin`、`tag.attract_magnet`、`tag.own_player`
+- ❌ `tag.loot.coin`、`tag.attract.magnet`（校验器判「Id 格式非法」）
+
+### 7.4 「道具互相吸引」怎么写
+
+被吸物与吸引源各挂**自己的** `Attract` 类型标签，运行期做交集：
+
+```csharp
+int word = magnetTag >> 5;                        // 标识标签 id ≥ 40，落在 word 1
+int mask = ContentRules.PackMask(new[] { magnetTag }, word);
+bool hit = (lootMatrix.Mask(loot, magnetTag) & mask) != 0;
+```
+
+新增一种磁铁 = 表里加一行 + 物件打上标签，**C# 0 行改动**。
+
+> ⚠️ `ObjectBitMatrix.Mask(row, tag)` 第二个参数是 **tag 下标**，不是 word 下标。
+
+---
+
+## 8. 核心内容集填表（`fill_core_roster.py`）与图鉴（`gen_codex.py`）
+
+### 8.1 批量填人/怪/武器/子弹的数值
+
+```powershell
+python tools/data_pipeline/fill_core_roster.py    # 幂等：按主键覆盖，可重复跑
+python tools/data_pipeline/validate_content_xlsx.py
+```
+
+它写四类内容：① 人物与怪物的 `StatPacks` 数值包 ② `Characters` 行 ③ 人物武器 `Weapons` 行
+④ 人物子弹的 `Objects` + `Projectiles` 行，并把 5 个人物的 `SkillLoads` 整体重写（左键槽指向各自武器）。
+
+> ⚠️ **它只写这几样，不重排、不删别的行。** 两个 xlsx 仍是手工编辑的唯一真源。
+
+### 8.2 生成图鉴（数值快速预览 + 游戏内图鉴原型）
+
+```powershell
+python tools/data_pipeline/gen_codex.py      # → docs/codex/index.html，浏览器直接打开
+```
+
+直读三个 xlsx，**按标签轴分栏配色**（`Kind` 分大类，`Element` / `Rarity` / `Role` 配色），
+带搜索框（中英文都能搜）。改表后重跑即可，不需要开引擎。
+
+### 8.3 中文名：`l10n.xlsx`（名字的唯一真源）
+
+> 图鉴"全是英文"不是图鉴的问题 —— 项目里原来**根本没有中文名**。
+> `DisplayKey` 列明文规定**不写中文**（它是本地化 key，如 `actor.goblin_grunt`），
+> 所以名字单独放在 `data/excel/l10n.xlsx`。**图鉴和将来的游戏 UI 读同一份**。
+
+| Key 形态 | 例子 | 谁在用 |
+|---|---|---|
+| `actor.*` / `item.*` / `proj.*` / `fx.*` | `actor.slime_401`、`item.pistol_101` | `Objects.DisplayKey`、`Characters.DisplayKey` |
+| `tag.*` | `tag.kinetic` | `Tags.TagId` |
+| 裸枚举名 | `Pierce`、`Explosive`、`Semi` | 表里的枚举单元格（图鉴直接显示） |
+
+**加任何新内容（人物/怪物/武器/子弹/标签）时，必须同步加一行中文名。**
+忘了不会崩，但会收到两处提醒：
+
+```powershell
+python tools/data_pipeline/validate_content_xlsx.py
+#   → [错误] l10n.xlsx/L10n: 缺少中文名：actor.新怪物（被 Characters.新怪物 引用）
+
+python tools/data_pipeline/gen_codex.py
+#   → [warn] 1 个 key 缺中文名（已原样显示英文）： - 新怪物
+```
+
+图鉴里**中文名做主标题、英文 id 做副标题**（灰色等宽小字，给策划对表用），两者都不丢。
+
+> ⚠️ `gen_l10n_xlsx.py` **只在首次生成骨架时用一次**，之后手工维护 `l10n.xlsx`；
+> 重跑会覆盖手改内容（同 `combat.xlsx` 的规矩）。
+
+### 8.4 填表时的六个坑（都是实际踩过的）
+
+| 坑 | 症状 | 正解 |
+|---|---|---|
+| 追加行不写主键列 | 校验器报一片「Id 不能为空」 | `_upsert` 里**强制**写主键，别指望调用方传 |
+| 同 `PackId` 跨 Base/Growth 两层 | `FlushStatPacks` 抛「同时出现两层」 | 成长包共用或换 id |
+| 规则值列留空 | 「规则值列不能为空；没有效果请显式写 0」 | 无效果写 `0`；`MaxChainDepth` 例外，**必须 >= 1** |
+| `VisualSlot` 留空 | `ParseInt` 抛 `FormatException` | 必填整数，每人/怪一个 |
+| 只改表不改 C# | `CharacterXlsxParityTests` 红 | 同步 `CharacterContentSet.BuildBuiltinV1()` |
+| 用 `wstat:` 继承写法 | 图鉴看不到最终数字 | 图鉴要展示的武器写**独立基线** |
+
+### 8.4 新增 StatId 要改三处
+
+`stat:` 规则里能用的属性名由 `scripts/core/StatId.cs` 定义，校验器另有 `STAT_ID_VALUES` 号段表，
+`characters.xlsx` 的 `StatPacks.StatId` 还经过另一套登记。**三处必须同时加**，否则报「不是已知 StatId」。
+（例：冲刺的 `DashSpeedMul=1055 / DashDuration=1056` 就是照这个流程补的。）

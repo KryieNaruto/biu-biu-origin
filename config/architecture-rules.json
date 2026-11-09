@@ -21,6 +21,7 @@
     "data/generated/**",
     "tools/probes/**",
     "tools/asset_viewer/**",
+    "tools/asset_viewer2/**",
     "tools/dungeon_check/**",
     "tmp/**",
     ".worktrees/**",

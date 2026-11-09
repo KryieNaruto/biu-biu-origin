@@ -35,13 +35,16 @@ namespace BiuBiuOrigin.Tests.Characters
         /// <summary>每个用例各建一份内容集：装配仓库有状态（Resolve 之后才有 views），共享实例会让用例互相干扰。</summary>
         private static CharacterContentSet NewContent() => new CharacterContentSet().BuildBuiltinV1();
 
-        /// <summary>契约 §0 #6 规定必须能一次生成 4 个变体；这里只钉「有哪些 id」，不钉顺序以外的细节。</summary>
+        /// <summary>
+        /// 契约 §0 #6 规定必须能一次生成 5 个变体（标准/重甲/敏捷/幸运/元素）；
+        /// 这里只钉「有哪些 id」，不钉顺序以外的细节。
+        /// </summary>
         private static readonly string[] HeroVariantIds =
         {
-            "test_hero", "test_hero_tank", "test_hero_agile", "test_hero_lucky",
+            "test_hero", "test_hero_tank", "test_hero_agile", "test_hero_lucky", "test_hero_elemental",
         };
 
-        // ───────────────────────── ① 4 个变体都存在 ─────────────────────────
+        // ───────────────────────── ① 5 个变体都存在 ─────────────────────────
 
         [TestMethod]
         public void HeroAssembly_ExistsAndMatchesContractEntryPoints()
@@ -66,7 +69,7 @@ namespace BiuBiuOrigin.Tests.Characters
                 content.Assemblies.ViewsOf(CharacterContentSet.HeroAssemblyId);
 
             Assert.AreEqual(HeroVariantIds.Length, views.Count,
-                "契约 §0 #6：一次必须能生成 4 个变体（战士/敏捷/重甲/幸运）。多一个少一个都要改契约");
+                "契约 §0 #6：一次必须能生成 5 个变体（标准/重甲/敏捷/幸运/元素）。多一个少一个都要改契约");
 
             for (int i = 0; i < HeroVariantIds.Length; i++)
             {

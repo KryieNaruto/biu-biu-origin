@@ -37,9 +37,29 @@ MARKER_ROW = 5           # `#data` 标记行
 FIRST_DATA_ROW = 6       # 数据从第 6 行开始
 
 SHEETS_OF_FILE = {
-    "combat.xlsx": ["Tags", "Objects", "Weapons", "Projectiles", "StatPacks", "_Meta"],
-    "characters.xlsx": ["Characters", "StatPacks", "SkillLoads", "_Meta"],
+    # v2（2026-11-09）：新增 VisualPacks（模型/材质外观包）
+    "combat.xlsx": ["Tags", "Objects", "Weapons", "Projectiles", "StatPacks", "VisualPacks", "_Meta"],
+    # v4（hero-1）新增：装配 / 变体 / 外观 / 镜头 / 手柄 / 英雄武器
+    "characters.xlsx": ["Characters", "StatPacks", "SkillLoads", "Assemblies", "VariantAssembly",
+                        "VisualPacks", "CameraPacks", "InputPacks", "Weapons", "_Meta"],
 }
+
+# 各主题文件当前的 SchemaVersion（改表结构必须同时改这里 + gen_*.py 的 SCHEMA_VERSION + C# 读取）
+SCHEMA_VERSIONS = {
+    "combat.xlsx": 2,
+    "characters.xlsx": 5,
+}
+
+# ★ 外观包表（combat.xlsx 与 characters.xlsx **同名同构**，共用这一份列定义与同一套校验器）。
+#   这正是「同一套解析器」的落点：两文件各有一张 VisualPacks，列集合必须一模一样。
+VISUAL_PACK_COLUMNS: "list[tuple[str, str, str, str]]" = [
+    ("Id", "string", "外观包id", "表现层选模型/材质；本表唯一"),
+    ("ModelPath", "string", "模型路径", "res://素材/... ；★ 构建期校验磁盘真实存在"),
+    ("Scale", "float", "缩放", "1.0 = 原始大小，必须 > 0"),
+    ("TintHex", "string", "染色", "#RRGGBB；空 = 不染色"),
+    ("AnimClips", "string", "动画剪辑", "逗号分隔的剪辑名；空 = 模型自带动画全保留"),
+    ("Note", "string", "备注", "人读说明"),
+]
 
 # characters.xlsx 的表头（保持向后兼容：这张表由 gen_characters_xlsx.py 生成，列清单镜像自它）
 CHARACTERS_COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
@@ -69,9 +89,68 @@ CHARACTERS_COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
         ("SkillId", "int", "技能id", "0 = 留空"),
         ("CooldownSeconds", "float", "冷却", "秒"),
         ("ManaCost", "float", "法力消耗", "本行覆盖技能默认消耗"),
+        ("Kind", "enum:SkillKind", "实现种类", "fire_projectile / data"),
+        ("WeaponId", "string", "武器行id", "哪把枪；非射击技能留空"),
+        ("ProjectileId", "string", "子弹外观id", "非射击技能留空；不得与 WeaponId 相同"),
         ("Note", "string", "备注", "说明"),
     ],
+    # ── v4 新增（hero-1：变体装配 / 外观 / 镜头 / 手柄 / 英雄武器）──
+    "Assemblies": [
+        ("Id", "string", "装配id", "一组变体共用的模块集合"),
+        ("Note", "string", "备注", "这个装配代表什么"),
+        ("Modules", "string", "模块集合", "逗号分隔的 CharacterModuleSet 成员"),
+    ],
+    "VariantAssembly": [
+        ("Id", "string", "变体id", "一行 = 一个可玩变体"),
+        ("AssemblyId", "string", "装配id", "指向 Assemblies.Id"),
+        ("DisplayName", "string", "显示名", "人读名字"),
+        ("VariantTag", "string", "变体标签", "变体分类"),
+        ("BasePackage", "string", "基础数值包", "指向 StatPacks.PackId"),
+        ("SkillLoadout", "string", "技能包", "指向 SkillLoads.LoadoutId"),
+        ("GrowthPackage", "string", "成长数值包", "可空"),
+        ("EquipmentPackage", "string", "装备数值包", "可空"),
+        ("Weapon", "string", "武器", "指向 Weapons.Id"),
+        ("VisualPack", "string", "外观包", "指向 VisualPacks.Id"),
+        ("CameraPack", "string", "镜头包", "指向 CameraPacks.Id"),
+        ("InputPack", "string", "手柄包", "指向 InputPacks.Id"),
+        ("ExtraModules", "string", "附加模块", "额外挂的模块"),
+    ],
+    "VisualPacks": VISUAL_PACK_COLUMNS,
+    "CameraPacks": [
+        ("Id", "string", "镜头包id", "指向 VariantAssembly.CameraPack"),
+        ("Distance", "float", "距离", "米"),
+        ("Height", "float", "高度", "米"),
+        ("FollowLerp", "float", "跟随插值", "0..1"),
+        ("FovDegrees", "float", "视场角", "度"),
+    ],
+    "InputPacks": [
+        ("Id", "string", "手柄包id", "指向 VariantAssembly.InputPack"),
+        ("LookSensitivity", "float", "转向灵敏度", "倍率"),
+        ("StickDeadZone", "float", "摇杆死区", "0..1"),
+        ("AimAssistStrength", "float", "辅助瞄准强度", "0..1"),
+    ],
+    "Weapons": [
+        ("Id", "string", "武器行id", "指向 SkillLoads.WeaponId"),
+        ("WeaponId", "int", "武器数值id", "运行时武器数值槽位"),
+        ("Damage", "float", "伤害", "单发伤害"),
+        ("BulletSpeed", "float", "弹速", "米/秒"),
+        ("RangeMeters", "float", "射程", "米"),
+        ("SpreadDegrees", "float", "散布", "度"),
+        ("CriticalChance", "float", "暴击率", "0..1"),
+        ("CriticalMultiplier", "float", "暴击倍率", ">1"),
+        ("ProjectileRadius", "float", "子弹半径", "米"),
+        ("ShotCooldown", "float", "射击间隔", "秒"),
+        ("PelletsPerShot", "int", "每次弹丸数", ">=1"),
+    ],
 }
+
+# l10n.xlsx 的列：四行表头约定与其它主题表一致（字段名 / 类型 / 中文名 / 备注）
+L10N_COLUMNS = [
+    ("Key",  "string", "键",     "actor./item./proj./fx./tag. 前缀，或枚举名"),
+    ("Zh",   "string", "中文名", "★ 直接把中文写在这里"),
+    ("Note", "string", "备注",   "可空；只在语义容易误解时填"),
+]
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # 0. 已知词表（与 C# / 设计口径对齐；新增枚举成员时改这里 + 改生成器的第 2 行类型）
@@ -80,9 +159,12 @@ CHARACTERS_COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
 ENUMS: "dict[str, list[str]]" = {
     "TagCategory": ["Kind", "Stat", "Element", "Ability", "Trigger"],
     # ★ 标签轴：强化 / 图鉴 / 筛选按轴取范围（RuntimeTagAxes 的 TagFamily）
+    "TagTier": ["Logic", "Identity"],
     "TagFamily": ["Kind", "WeaponKind", "ProjectileKind", "Element", "Ability", "Trigger",
-                  "Rarity", "Race", "Role", "Effect"],
-    "TagGroup": ["ObjectKind", "WeaponKind", "ProjectileKind", "Element", "Ability", "Chain",
+                  "Rarity", "Race", "Role", "Effect",
+                  # 标识层轴
+                  "Loot", "Attract", "Faction", "Theme", "Aura", "Craft"],
+    "TagGroup": ["None", "ObjectKind", "WeaponKind", "ProjectileKind", "Element", "Ability", "Chain",
                  "Trigger", "Rarity", "Race", "Role", "Effect"],
     "WeaponTrigger": ["Auto", "Semi", "Burst", "Charge", "Hold", "Triggered", "Manual"],
     "WeaponDelivery": ["Instant", "Projectile", "Beam", "Melee", "Aura", "SpawnActor", "Throw"],
@@ -103,6 +185,7 @@ ENUMS: "dict[str, list[str]]" = {
     "ActorKind": ["Player", "Monster", "Elite", "Boss", "Summon", "Destructible"],
     "ControlScheme": ["PlayerInput", "Ai", "Script"],
     "SkillSlot": ["Dash", "PrimaryAttack", "WeaponSwap", "Signature", "Interact"],
+    "SkillKind": ["data", "fire_projectile"],
 }
 
 # 标签「组 → 轴」的唯一例外映射（其余情况下 Family 必须等于 Group）。
@@ -112,6 +195,23 @@ TAG_GROUP_TO_FAMILY: "dict[str, str]" = {
     "ObjectKind": "Kind",
     "Chain": "Ability",
 }
+
+# ── 标签分层（Tier）──────────────────────────────────────────────────────────
+# 逻辑功能层：决定玩法行为（能力位 / 配方字 / 元素抗性 / 范围索引），代码会消费
+# 标识层：只做归属 / 吸引 / 主题 / 共鸣匹配，代码不消费，可以随手加
+IDENTITY_FAMILIES = {"Loot", "Attract", "Faction", "Theme", "Aura", "Craft"}
+LOGIC_FAMILIES = {
+    "Kind", "WeaponKind", "ProjectileKind", "Element", "Ability",
+    "Trigger", "Rarity", "Race", "Role", "Effect",
+}
+
+def family_tier(family: str) -> str:
+    """轴 → 应有的层名。"""
+    if family in IDENTITY_FAMILIES:
+        return "Identity"
+    if family in LOGIC_FAMILIES:
+        return "Logic"
+    return ""
 
 # StatId 全名集 + 数值。必须与 scripts/core/StatId.cs 一致（另一位队友在该文件里加
 # Weapon* / Projectile* 号段）。新增属性时**两处都要加**：StatId.cs 与本文件。
@@ -129,6 +229,8 @@ STAT_ID_VALUES: "dict[str, int]" = {
     "Strength": 1010, "Dexterity": 1011, "Luck": 1012,
     "StrengthMul": 1013, "DexterityMul": 1014, "LuckMul": 1015,
     "Stamina": 1020, "StaminaMax": 1021, "StaminaRegenPerSec": 1022,
+    # hero-1：手感三项（加速度 / 转身 / 瞄准距离），与 StatId.cs 1023~1025 逐项一致
+    "MoveAccelTime": 1023, "TurnResponseTime": 1024, "AimRange": 1025,
     # [1030..] 武器号段（本任务新增）
     "WeaponFireRate": 1030, "WeaponDamage": 1031, "WeaponProjectileSpeed": 1032,
     "WeaponProjectileCount": 1033, "WeaponSpread": 1034, "WeaponRange": 1035,
@@ -137,6 +239,8 @@ STAT_ID_VALUES: "dict[str, int]" = {
     # [1050..] 弹体号段（本任务新增）
     "ProjectileLifeTime": 1050, "ProjectileRadius": 1051, "ProjectileBounce": 1052,
     "ProjectileHomingSpeed": 1053, "ProjectileGravity": 1054,
+    # [1055..] 冲刺号段（dash-skill，与 StatId.cs 1055/1056 逐项一致）
+    "DashSpeedMul": 1055, "DashDuration": 1056,
 }
 STAT_IDS = set(STAT_ID_VALUES)
 
@@ -721,7 +825,37 @@ def validate_tags(report: Report, t: Table) -> "dict[str, int]":
     else:
         report.ok()
 
-    return {_s(c[0]): _int_or(c[4], -1) for _, c in t.rows}
+    # ★ 按字段名取 BitMask，不按列号：多轴标签扩展在 Family 处插入了新列，
+    #   写死 c[4] 会在列结构变化后静默读成 Category → 全部 tag 变成没有配方位。
+    return {_s(c[0]): _int_or(t.cell(c, "BitMask"), -1) for _, c in t.rows}
+
+
+def check_tag_tiers(report: Report, t: Table) -> None:
+    """标签分层纪律：层与轴自洽 + **标识层不得影响玩法**。
+
+    标识层（Loot / Attract / Faction / Theme / Aura / Craft）只用于归属与吸引匹配。
+    一旦它占了配方位或产生了能力位，它就偷偷变成了逻辑标签 —— 这里把这条路堵死。
+    """
+    for row, cells in t.rows:
+        key = _s(cells[0])
+        tier = _s(t.cell(cells, "Tier"))
+        family = _s(t.cell(cells, "Family"))
+        group = _s(t.cell(cells, "Group"))
+        bitmask = _int_or(t.cell(cells, "BitMask"), -1)
+
+        expected = family_tier(family)
+        if expected and tier != expected:
+            report.cell(t.file, t.name, row, t.col("Tier"), key, "Tier",
+                        f"轴「{family}」属于 {expected} 层，Tier 却写着「{tier}」")
+
+        if tier == "Identity":
+            if group != "None":
+                report.cell(t.file, t.name, row, t.col("Group"), key, "Group",
+                            f"标识层标签的 Group 必须是 None（否则会产出能力位），实际「{group}」")
+            if bitmask != -1:
+                report.cell(t.file, t.name, row, t.col("BitMask"), key, "BitMask",
+                            f"标识层标签的 BitMask 必须是 -1（不得进配方字），实际 {bitmask}")
+        report.ok()
 
 
 def check_tag_families(report: Report, t: Table) -> "dict[str, str]":
@@ -742,6 +876,14 @@ def check_tag_families(report: Report, t: Table) -> "dict[str, str]":
         family_of[key] = family
         if not family or not group:
             continue
+
+        # ★ 标识层标签**不进 Group↔Family 对照**：它们的 Group 恒为 None（不产出能力位），
+        #   而 Family 是标识轴（Loot/Attract/...）。两者本来就是两回事，不该要求相等。
+        #   标识层的强约束改由 check_tag_tiers 把关（Group 必须 None、BitMask 必须 -1）。
+        if family in IDENTITY_FAMILIES:
+            report.ok()
+            continue
+
         expected = TAG_GROUP_TO_FAMILY.get(group, group)
         if family != expected:
             report.cell(t.file, t.name, row, t.col("Family"), key, "Family",
@@ -759,7 +901,9 @@ def check_tag_axes_per_object(report: Report, obj_t: Table, tag_family: "dict[st
     每个物体最多命中一个标签：稀有度不可能既是普通又是稀有，族裔不可能既是哥布林又是史莱姆。
     **Ability 轴刻意不互斥**（穿透 + 弹跳 + 分裂可以叠在同一个弹上），这正是 ECS 组合的意义。
     """
-    exclusive = {"Kind", "WeaponKind", "ProjectileKind", "Element", "Rarity", "Race", "Role", "Effect"}
+    # Race 是**分层轴**（祖先 tag.humanoid + 具体 tag.goblin 可以同时命中），不在这里；
+    # 这样「对人形增伤」能命中哥布林，「对哥布林增伤」只命中哥布林。
+    exclusive = {"Kind", "WeaponKind", "ProjectileKind", "Element", "Rarity", "Role", "Effect"}
     for row, cells in obj_t.rows:
         key = _s(cells[0])
         by_family: "dict[str, list[str]]" = {}
@@ -776,6 +920,164 @@ def check_tag_axes_per_object(report: Report, obj_t: Table, tag_family: "dict[st
                 bad = True
         if not bad:
             report.ok()
+
+
+def validate_structure_only(report: Report, t: Table) -> None:
+    """结构表（v4 的 Assemblies / VariantAssembly / 各种 Pack / 英雄 Weapons）：只校验结构。
+
+    这些表的业务外键由 C# 加载期校验器（tests/Characters/CharacterXlsxBinder）负责，
+    那里的报错能直接指到「缺哪个包」。本函数确认 Id 非空且格式合法。
+    """
+    for row, cells in t.rows:
+        key = _s(cells[0])
+        as_id(report, t, row, "Id", key)
+        if not key:
+            report.cell(t.file, t.name, row, 1, "", "Id", "「Id」不能为空（整行为空请直接删除该行）")
+        else:
+            report.ok()
+
+
+def _resolve_asset_path(model_path: str) -> "Path | None":
+    """把表里的模型路径解析成磁盘上的真实路径；解析不了返回 None。
+
+    Godot 的 `res://` 就是项目根 → 剥掉前缀后在 PROJECT_ROOT 下找。
+    也接受 `素材/...` 这种项目根相对写法（charsacters.xlsx 老数据用过）。
+    纯资源名（不含 `/` 也不含 `.glb` 等扩展名）视为「内置名」，无法查磁盘，返回 None。
+    """
+    p = model_path.strip().replace("\\", "/")
+    if p.startswith("res://"):
+        p = p[len("res://"):]
+    elif p.startswith("user://") or p.startswith("uid://"):
+        return None          # 引擎内部路径，不是磁盘文件
+    if not p:
+        return None
+    return PROJECT_ROOT / p
+
+
+def validate_visual_packs(report: Report, vt: "Table | None") -> "set[str]":
+    """外观包表：Scale > 0 / TintHex 形如 #RRGGBB / AnimClips 非空项 / ★ 模型路径必须真实存在。
+
+    这是本轮最关键的一条检查：正是因为「模型路径存在性」从未被校验过，
+    `res://素材/Characters/TestHero.glb` 这个根本不存在的路径才能一路潜伏到运行时，
+    加载失败后再静默退回白模胶囊，没有任何人发现。
+    """
+    ids: "set[str]" = set()
+    if vt is None:
+        return ids
+
+    seen: "dict[str, int]" = {}
+    for row, cells in vt.rows:
+        key = _s(cells[0])
+        as_id(report, vt, row, "Id", key)
+        if key in seen:
+            report.cell(vt.file, vt.name, row, vt.col("Id"), key, "Id",
+                        f"Id 重复（与第 {seen[key]} 行相同）")
+        else:
+            seen[key] = row
+            report.ok()
+        ids.add(key)
+
+        # ── 模型路径：★ 磁盘存在性 ──
+        model_path = as_string(report, vt, row, "ModelPath", key, t_cell(vt, cells, "ModelPath"),
+                               required=True)
+        if model_path:
+            resolved = _resolve_asset_path(model_path)
+            if resolved is None:
+                report.err(f"{vt.file}/{vt.name} 第{row}行{get_column_letter(vt.col('ModelPath'))}列"
+                           f"（{key}.ModelPath）",
+                           f"无法解析为磁盘路径：「{model_path}」"
+                           f"（必须是 res://素材/... 形式；引擎内部路径查不了存在性）")
+            elif not resolved.is_file():
+                # 给出最接近的候选，帮策划一眼看出是打错字还是文件根本没进库
+                hint = _suggest_similar_asset(model_path)
+                report.err(f"{vt.file}/{vt.name} 第{row}行{get_column_letter(vt.col('ModelPath'))}列"
+                           f"（{key}.ModelPath）",
+                           f"模型文件在磁盘上不存在：「{model_path}」"
+                           f"（已按 res:// = 项目根 解析为「{resolved}」）"
+                           f"{hint}")
+            else:
+                report.ok()
+
+        # ── 缩放必须 > 0 ──
+        scale = as_float(report, vt, row, "Scale", key, t_cell(vt, cells, "Scale"), required=True)
+        if scale is not None:
+            if scale <= 0:
+                report.cell(vt.file, vt.name, row, vt.col("Scale"), key, "Scale",
+                            f"缩放必须 > 0（实际 {scale:g}）；0 或负数会让模型塌成一点或镜像翻转")
+            else:
+                report.ok()
+
+        # ── 染色 #RRGGBB（可空）──
+        tint = as_string(report, vt, row, "TintHex", key, t_cell(vt, cells, "TintHex"))
+        if tint and not re.fullmatch(r"#[0-9A-Fa-f]{6}", tint):
+            report.cell(vt.file, vt.name, row, vt.col("TintHex"), key, "TintHex",
+                        f"必须是 #RRGGBB 形式（实际「{tint}」）；空 = 不染色")
+        else:
+            report.ok()
+
+        # ── 动画剪辑：逗号分隔，空项 = 空 = 模型自带动画全保留 ──
+        clips = as_string(report, vt, row, "AnimClips", key, t_cell(vt, cells, "AnimClips"))
+        if clips:
+            bad = [c for c in (x.strip() for x in clips.split(",")) if c and
+                   not re.fullmatch(r"[A-Za-z0-9_.|: -]+", c)]
+            if bad:
+                report.cell(vt.file, vt.name, row, vt.col("AnimClips"), key, "AnimClips",
+                            f"以下剪辑名含非法字符：{bad}（允许字母/数字/_ . | : 空格 -）")
+            else:
+                report.ok()
+        else:
+            report.ok()
+
+    # 表内「同一路径 + 同一染色 + 同一缩放」的重复包 = 冗余（不算错，只提醒）
+    sig: "dict[tuple, str]" = {}
+    for row, cells in vt.rows:
+        key = _s(cells[0])
+        s = (_s(t_cell(vt, cells, "ModelPath")), _s(t_cell(vt, cells, "Scale")),
+             _s(t_cell(vt, cells, "TintHex")))
+        if s in sig and s[0]:
+            report.warn(f"{vt.file}/{vt.name} 第{row}行（{key}）",
+                        f"与「{sig[s]}」的 ModelPath/Scale/TintHex 完全相同，"
+                        f"两个外观包视觉上一模一样（改 TintHex 或 Scale 才有区分意义）")
+        else:
+            sig.setdefault(s, key)
+        report.ok()
+    return ids
+
+
+def _suggest_similar_asset(model_path: str) -> str:
+    """在素材库里找同名/近名的 .glb，帮策划定位打错的路径。"""
+    name = _s(model_path).replace("\\", "/").rsplit("/", 1)[-1]
+    if not name:
+        return ""
+    stem = name[:-4] if name.lower().endswith(".glb") else name
+    asset_root = PROJECT_ROOT / "素材"
+    if not asset_root.is_dir():
+        return ""
+    exact, same_stem, loose = [], [], []
+    for p in asset_root.rglob("*.glb"):
+        rel = p.relative_to(PROJECT_ROOT).as_posix()
+        if p.name == name:
+            exact.append(rel)
+        elif p.stem == stem:
+            same_stem.append(rel)
+        elif stem and stem.lower() in p.stem.lower():
+            loose.append(rel)
+    if exact:
+        return f"；素材库里有同名文件：res://{exact[0]}"
+    if same_stem:
+        return f"；同名（不同扩展名）：res://{same_stem[0]}"
+    if loose:
+        return f"；名字相近的候选：res://{loose[0]}"
+    if stem:
+        return f"；素材库里没有任何文件名包含「{stem}」，请确认资产是否已导入 素材/"
+    return ""
+
+
+
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def _int_or(v, default: int) -> int:
@@ -1279,6 +1581,64 @@ def check_clusters(report: Report, obj_t: Table) -> None:
             report.ok()
 
 
+def check_object_visuals(report: Report, obj_t: Table, combat_vp: "set[str]",
+                         chars_vp: "set[str]") -> None:
+    """Objects 的三个外观列：VisualPack 外键闭合 + AssetPath 磁盘存在 + AssetAnim 非空即合法。
+
+    `VisualPack` 可以指向 **两个文件里任意一张** VisualPacks（两张表同名同构），
+    所以外键闭合要把 combat.xlsx 与 characters.xlsx 的 Id 合起来查。
+    """
+    if obj_t.at("VisualPack") < 0:
+        return
+    all_packs = combat_vp | chars_vp
+
+    for row, cells in obj_t.rows:
+        key = _s(cells[0])
+
+        # ── VisualPack → VisualPacks.Id（可空）──
+        pack = as_string(report, obj_t, row, "VisualPack", key, t_cell(obj_t, cells, "VisualPack"))
+        if pack:
+            if pack not in all_packs:
+                hint = ""
+                lowered = pack.lower()
+                near = sorted(p for p in all_packs if lowered in p.lower() or p.lower() in lowered)[:3]
+                if near:
+                    hint = f"（是否想写：{' / '.join(near)}）"
+                report.cell(obj_t.file, obj_t.name, row, obj_t.col("VisualPack"), key, "VisualPack",
+                            f"引用的外观包「{pack}」在 combat.xlsx 与 characters.xlsx 的 "
+                            f"VisualPacks 里都不存在{hint}")
+            else:
+                report.ok()
+
+        # ── AssetPath：res:// 路径必须真实存在（可空）──
+        asset = as_string(report, obj_t, row, "AssetPath", key, t_cell(obj_t, cells, "AssetPath"))
+        if asset:
+            resolved = _resolve_asset_path(asset)
+            if resolved is None:
+                report.cell(obj_t.file, obj_t.name, row, obj_t.col("AssetPath"), key, "AssetPath",
+                            f"无法解析为磁盘路径：「{asset}」（必须 res://素材/... 形式）")
+            elif not resolved.is_file():
+                report.cell(obj_t.file, obj_t.name, row, obj_t.col("AssetPath"), key, "AssetPath",
+                            f"模型文件在磁盘上不存在：「{asset}」"
+                            f"（已解析为「{resolved}」）{_suggest_similar_asset(asset)}")
+            else:
+                report.ok()
+        else:
+            report.ok()
+
+        # ── AssetAnim：有动画名就必须有地方放这个模型 ──
+        anim = as_string(report, obj_t, row, "AssetAnim", key, t_cell(obj_t, cells, "AssetAnim"))
+        if anim:
+            if not pack and not asset:
+                report.cell(obj_t.file, obj_t.name, row, obj_t.col("AssetAnim"), key, "AssetAnim",
+                            f"填了默认动画「{anim}」，但 VisualPack 与 AssetPath 都空 —— "
+                            f"没有模型可播这段动画（应留空或先配模型）")
+            else:
+                report.ok()
+        else:
+            report.ok()
+
+
 def check_reference_cycles(report: Report, obj_t: Table) -> None:
     """Objects 的 Weapon/Projectile/Actor/Effect 四列构成的有向图不能有环。
 
@@ -1462,6 +1822,125 @@ def check_meta(report: Report, path: Path, expected_version: int) -> None:
             report.ok()
 
 
+def _l10n_namespace(key: str) -> str:
+    """给 key 分命名空间，决定「同名中文」要不要报提醒。
+
+    `tag.*` → 标签（同名 = 玩家真分不清）
+    `actor./item./proj./fx.*` → 物件（同名 = 两张卡长得一样）
+    裸标识（枚举名）→ 枚举（与标签同名是正常的，如 Pierce 与 tag.pierce 都叫"穿透"）
+    """
+    for p in ("tag.", "actor.", "item.", "proj.", "fx."):
+        if key.startswith(p):
+            return "object" if p != "tag." else "tag"
+    return "enum"
+
+
+def validate_l10n(report: Report, path: Path,
+                  referenced: "dict[str, str]") -> None:
+    """校验 `l10n.xlsx`：中文名唯一、非空、且**覆盖所有被引用的 key**。
+
+    这张表很容易出两类静默问题：
+      · `Key` 重复 —— openpyxl 建字典时后一条覆盖前一条，图鉴会显示其中一个，没人发现；
+      · 中文名留空 / 只填空格 —— 图鉴退化成显示英文 key，看起来「像还没做」而不是「填错了」。
+
+    `referenced` = {key: 谁引用它}，用来报「缺中文名」时告诉策划到底缺哪条。
+    """
+    file = path.name
+    if not path.exists():
+        report.err(file, "缺少 l10n.xlsx（全项目中文名真源；图鉴与游戏 UI 都读它）")
+        return
+    t = read_sheet(report, path, "L10n", L10N_COLUMNS)
+    if t is None:
+        return
+
+    seen: "dict[str, int]" = {}
+    zh_owner: "dict[str, str]" = {}   # 中文名 → 第一次占用它的 key
+    for row, cell in t.rows:
+        key = _s(t_cell(t, cell, "Key"))
+        zh = _s(t_cell(t, cell, "Zh"))
+        if not key:
+            continue
+        if key in seen:
+            report.err(f"{file}/L10n 第{row}行", f"「Key」重复：{key}（首次出现在第 {seen[key]} 行）")
+        else:
+            seen[key] = row
+            report.ok()
+        if not zh.strip():
+            report.err(f"{file}/L10n 第{row}行", f"「Zh」为空：{key}（不会显示名，图鉴会退回英文 key）")
+        else:
+            report.ok()
+        # 中文名重名：只在**同一命名空间内**才算问题。
+        #   · 标签之间同名 → 玩家真的分不清（两个"近战"）
+        #   · 枚举与标签同名 → 正常且必要（Pierce 与 tag.pierce 都该叫"穿透"）
+        #   · 物件同名 → 两张卡片名字一样（两个"制式手枪"）
+        # 所以按命名空间分桶，不同桶之间不比较。
+        ns = _l10n_namespace(key)
+        if zh:
+            owner_key = zh_owner.get(zh)
+            if owner_key is not None and _l10n_namespace(owner_key) == ns:
+                report.warn(f"{file}/L10n 第{row}行",
+                            f"中文名「{zh}」与 {owner_key} 相同（同一类命名空间里重名，玩家会分不清）")
+            elif owner_key is None:
+                zh_owner[zh] = key
+        # 中文名里混进英文 id 写法，多半是复制粘贴没改
+        if zh and re.fullmatch(r"[A-Za-z0-9_.]+", zh):
+            report.warn(f"{file}/L10n 第{row}行",
+                        f"中文名「{zh}」看起来仍是英文标识，是否忘了翻译")
+
+    # ── 覆盖性：被引用的 key 必须都有中文名 ──
+    for key in sorted(referenced):
+        if key not in seen:
+            report.err(f"{file}/L10n", f"缺少中文名：{key}（被 {referenced[key]} 引用）")
+        else:
+            report.ok()
+
+
+def collect_l10n_refs(combat: Path, chars: Path) -> "dict[str, str]":
+    """扫出「图鉴与 UI 会显示、因此必须有中文名」的全部 key。
+
+    只收**确定会显示**的：DisplayKey 与 Tags.TagId。枚举名与人物武器 id 由图鉴的
+    `l10n.missing` 记账兜底（那两者是软引用，加一个新枚举不该让构建失败）。
+    """
+    refs: "dict[str, str]" = {}
+    wb = load_workbook(combat, data_only=True)
+
+    def hdr_of(ws) -> "dict[str, int]":
+        return {_s(ws.cell(row=1, column=c).value): c
+                for c in range(1, ws.max_column + 1) if ws.cell(row=1, column=c).value}
+
+    if "Objects" in wb.sheetnames:
+        ws = wb["Objects"]
+        hdr = hdr_of(ws)
+        if "DisplayKey" in hdr:
+            for r in range(6, ws.max_row + 1):
+                dk = _s(ws.cell(row=r, column=hdr["DisplayKey"]).value)
+                if dk:
+                    refs.setdefault(dk, f"Objects.{_s(ws.cell(row=r, column=hdr.get('Id', 1)).value)}")
+
+    if "Tags" in wb.sheetnames:
+        ws = wb["Tags"]
+        hdr = hdr_of(ws)
+        if "TagId" in hdr:
+            for r in range(6, ws.max_row + 1):
+                tid = _s(ws.cell(row=r, column=hdr["TagId"]).value)
+                if tid:
+                    refs.setdefault(tid, f"Tags.{tid}")
+
+    wb2 = load_workbook(chars, data_only=True)
+    if "Characters" in wb2.sheetnames:
+        ws = wb2["Characters"]
+        hdr = hdr_of(ws)
+        if "Id" in hdr:
+            for r in range(6, ws.max_row + 1):
+                cid = _s(ws.cell(row=r, column=hdr["Id"]).value)
+                if not cid:
+                    continue
+                dk = _s(ws.cell(row=r, column=hdr["DisplayKey"]).value) if "DisplayKey" in hdr else ""
+                # 人物表里 DisplayKey 可能为空 → 按约定回退查 actor.<Id>
+                refs.setdefault(dk or f"actor.{cid}", f"Characters.{cid}")
+    return refs
+
+
 def main(argv: "list[str]") -> int:
     report = Report()
     gen = load_columns()
@@ -1478,7 +1957,12 @@ def main(argv: "list[str]") -> int:
 
     for path in (combat_path, chars_path):
         check_sheet_names(report, path)
-        check_meta(report, path, gen.SCHEMA_VERSION)
+        check_meta(report, path, SCHEMA_VERSIONS.get(path.name, gen.SCHEMA_VERSION))
+
+    # ── l10n.xlsx：中文名（图鉴与游戏 UI 的唯一真源）──
+    # 覆盖性检查放在最后做：需要先知道 combat/characters 里引用了哪些 key。
+    l10n_path = EXCEL_DIR / "l10n.xlsx"
+    l10n_refs = collect_l10n_refs(combat_path, chars_path)
 
     # ── combat.xlsx ──
     tags_t = read_sheet(report, combat_path, "Tags", gen.COLUMNS["Tags"])
@@ -1486,17 +1970,34 @@ def main(argv: "list[str]") -> int:
     w_t = read_sheet(report, combat_path, "Weapons", gen.COLUMNS["Weapons"])
     p_t = read_sheet(report, combat_path, "Projectiles", gen.COLUMNS["Projectiles"])
     csp_t = read_sheet(report, combat_path, "StatPacks", gen.COLUMNS["StatPacks"])
+    cvp_t = read_sheet(report, combat_path, "VisualPacks", gen.COLUMNS["VisualPacks"])
 
     # ── characters.xlsx（向后兼容：四个业务 Sheet 一起校验）──
     ct_t = read_sheet(report, chars_path, "Characters", CHARACTERS_COLUMNS["Characters"])
     chsp_t = read_sheet(report, chars_path, "StatPacks", CHARACTERS_COLUMNS["StatPacks"])
     sl_t = read_sheet(report, chars_path, "SkillLoads", CHARACTERS_COLUMNS["SkillLoads"])
 
+    # v4 结构表：read_sheet 已覆盖「列集合 + 类型 + 枚举」，这里再确认 Id 合法
+    chars_vp_t = None
+    for name in ("Assemblies", "VariantAssembly", "VisualPacks", "CameraPacks", "InputPacks", "Weapons"):
+        v4_t = read_sheet(report, chars_path, name, CHARACTERS_COLUMNS[name])
+        if v4_t is not None:
+            # VisualPacks 在下面单独走 validate_visual_packs（要查磁盘存在性 + Scale/TintHex）
+            if name != "VisualPacks":
+                validate_structure_only(report, v4_t)
+            else:
+                chars_vp_t = v4_t
+
+    # ── 外观包（两张同名同构表共用同一套校验器，含 ★ 模型路径磁盘存在性）──
+    combat_vp_ids = validate_visual_packs(report, cvp_t)
+    chars_vp_ids = validate_visual_packs(report, chars_vp_t)
+
     if any(t is None for t in (tags_t, obj_t, w_t, p_t, csp_t, ct_t, chsp_t, sl_t)):
         return _finish(report)
 
     tags = validate_tags(report, tags_t)
     tag_family = check_tag_families(report, tags_t)
+    check_tag_tiers(report, tags_t)
     obj_tag_map = {_s(c[0]): _tag_list(t_cell(obj_t, c, "Tags")) for _, c in obj_t.rows}
 
     validate_objects(report, obj_t, tags)
@@ -1520,10 +2021,14 @@ def main(argv: "list[str]") -> int:
     check_capabilities(report, obj_t, weapon_obj, projectile_obj)
     check_tag_axes_per_object(report, obj_t, tag_family)
     check_clusters(report, obj_t)
+    check_object_visuals(report, obj_t, combat_vp_ids, chars_vp_ids)
     check_reference_cycles(report, obj_t)
     check_object_statpacks(report, obj_t, char_packs, combat_packs)
     check_weapon_has_base_pack(report, w_t, obj_t, char_packs, combat_packs)
     check_projectile_has_base_pack(report, p_t, obj_t, char_packs, combat_packs)
+
+    # ── l10n.xlsx：中文名（放最后，此时引用清单才完整）──
+    validate_l10n(report, l10n_path, l10n_refs)
 
     return _finish(report)
 
