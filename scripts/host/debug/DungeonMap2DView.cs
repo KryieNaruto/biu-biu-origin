@@ -24,6 +24,19 @@ public partial class DungeonMap2DView : Node2D
     [Export(PropertyHint.Range, "4,64,1")]
     public float CellPixels { get; set; } = 16f; // arch-ok: 调试视图的默认像素尺寸，可被场景/面板覆盖
 
+    /// <summary>格子像素上限：自动铺满时最多放这么大，再大就把图居中而不是撑满。</summary>
+    [Export(PropertyHint.Range, "4,64,1")]
+    public float MaxCellPixels { get; set; } = 40f; // arch-ok: 调试视图的显示上限，可被场景/面板覆盖
+
+    /// <summary>
+    /// 是否自动按可用空间算 <see cref="CellPixels"/>（默认开）。
+    /// <para>
+    /// 关掉它，格子像素就由面板滑条说了算 —— 也就是「手动缩放」模式。
+    /// </para>
+    /// </summary>
+    [Export]
+    public bool AutoFit { get; set; } = true;
+
     /// <summary>配色表；为空时用内置默认配色。</summary>
     [Export]
     public DungeonRoomStyleSet? Styles { get; set; }
@@ -41,6 +54,18 @@ public partial class DungeonMap2DView : Node2D
 
     /// <summary>图例左边距（像素）。</summary>
     private const float LegendMargin = 2f; // arch-ok: 图例边距（纯视觉排版）
+
+    /// <summary>自动铺满时不许缩得比这更小（再小就只剩噪点，看不清格子）。</summary>
+    private const float MinCellPixels = 2f; // arch-ok: 缩放下限（纯显示层）
+
+    /// <summary>正好夹到同一个值时不重画，避免浮点尾数导致的每帧重绘。</summary>
+    private const float CellPixelsEpsilon = 0.05f; // arch-ok: 浮点比较容差（显示层）
+
+    /// <summary>滚动条/边框预留的宽度（像素）。</summary>
+    private const float ScrollbarReserve = 16f; // arch-ok: 滚动条占位（UI 布局尺寸）
+
+    /// <summary>图例区占掉的高度（像素），配合 <see cref="ShowLegend"/> 使用。</summary>
+    private const float LegendReservedHeight = 24f; // arch-ok: 图例占位（UI 布局尺寸）
 
     private DungeonMap _map;
     private bool _hasMap;
@@ -130,6 +155,60 @@ public partial class DungeonMap2DView : Node2D
     {
         CellPixels = Mathf.Max(cellPixels, 1f);
         QueueRedraw();
+    }
+
+    /// <summary>
+    /// 按「外层容器当前可见的矩形」重算格子像素，让图铺满可视区。
+    /// <para>
+    /// 为什么不能只看自己的 <c>Size</c>：本节点是 <c>ScrollContainer</c> 的子节点，
+    /// Node2D 没有布局尺寸，<c>ScrollContainer</c> 只能拿 <c>GetRect()</c> 当内容大小，
+    /// 于是**内容变大滚动区就跟着变大**，永远「刚好装下」——图缩不小也放不大。
+    /// 所以这里用**父容器自身的 <c>Size</c>**（它才是真正的可视窗口）当基准。
+    /// </para>
+    /// <para>
+    /// 返回 true 表示格子像素真的变了（调用方据此决定要不要重画，避免每帧刷新）。
+    /// </para>
+    /// </summary>
+    /// <param name="available">可视区尺寸（像素）；非正数时视为「拿不到尺寸」，不做任何事。</param>
+    public bool FitToViewport(Vector2 available)
+    {
+        if (!_hasMap || !AutoFit || available.X <= 0f || available.Y <= 0f)
+        {
+            return false;
+        }
+
+        // 留出图例与滚动条占的高度，否则最右一列与最底一行会被滚动条压住。
+        float usable = Mathf.Min(
+            (available.X - ScrollbarReserve) / _map.Width,
+            (available.Y - ScrollbarReserve - ReservedViewportHeight()) / _map.Height);
+        float fitted = Mathf.Clamp(usable, MinCellPixels, MaxCellPixels);
+        if (Mathf.Abs(fitted - CellPixels) < CellPixelsEpsilon)
+        {
+            return false;
+        }
+        CellPixels = fitted;
+        QueueRedraw();
+        return true;
+    }
+
+    /// <summary>图例区占掉的高度（像素）：图例关闭时为 0。</summary>
+    private float ReservedViewportHeight()
+    {
+        return ShowLegend ? LegendReservedHeight : 0f;
+    }
+
+    /// <inheritdoc />
+    public override void _Process(double delta)
+    {
+        _ = delta;
+        // 每帧问一次可视区：窗口拖动没有「尺寸变了」的事件能可靠订阅到
+        // （ScrollContainer 大小变化 → 子节点 Size 变化，两者都不保证发信号），
+        // 而这里只是一次比较 + 极少次重画，成本可以忽略。
+        Godot.Control? host = GetParent() as Godot.Control;
+        if (host is not null)
+        {
+            FitToViewport(host.Size);
+        }
     }
 
     /// <inheritdoc />
