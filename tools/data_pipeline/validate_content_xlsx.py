@@ -959,9 +959,24 @@ def validate_projectiles(report: Report, t: Table, obj_tags: "dict[str, list[str
 
 
 def validate_statpacks(report: Report, t: Table, packs: "dict[str, dict[str, set[str]]]") -> None:
-    """StatPacks：StatId 白名单 / Layer 合法 / (PackId, Layer, StatId) 唯一。
-    顺带把结果填进 packs = {PackId: {Layer: {StatId}}}，供外键与能力位检查复用。"""
+    """StatPacks：StatId 白名单 / Layer 合法 / (PackId, Layer, StatId) 唯一 / **一个 PackId 只能占一层**。
+
+    顺带把结果填进 packs = {PackId: {Layer: {StatId}}}，供外键与能力位检查复用。
+
+    ★ 为什么强制「一个 PackId 只能占一层」：
+    运行时的 `StatPackageRepository.Register` 以 **PackId 为唯一键**（`Dictionary<string,
+    StatPackageLayer>`），一个 PackId 只能存一层。若表里同一个 PackId 同时出现 Base 与 Growth
+    两行，建模会得到两个 `StatPackageLayer`（同 id、不同 layer），注册时直接抛
+    「数值包 id 重复」。也就是说这是**数据表达不了的形状**，必须在建表期拦下，
+    而不是等到运行期崩在装配阶段（那时离「改了哪行 Excel」已经很远）。
+
+    真要做「同名包分层」，那是数据模型变更：键改成 (PackId, Layer)，同时 `Compose` /
+    `Find` / `GetLayerValue` 三个入口一并改。在那之前，**不同层请用不同的 PackId**
+    （例如 `hero_base` / `hero_growth`），这也是现有 31 个包的写法。
+    """
     seen: "dict[tuple[str, str, str], int]" = {}
+    # PackId -> 首次出现的 (Layer, 行号)；用来抓「同 id 跨层」
+    layer_of_pack: "dict[str, tuple[str, int]]" = {}
     for row, cells in t.rows:
         pid = _s(cells[0])
         if not pid:
@@ -996,6 +1011,21 @@ def validate_statpacks(report: Report, t: Table, packs: "dict[str, dict[str, set
                         f"（第 {seen[k]} 行已出现）")
         else:
             seen[k] = row
+
+        # ★ 一个 PackId 只能占一层（见函数 docstring 的「数据表达不了的形状」说明）
+        raw_layer = layer or _s(t.cell(cells, "Layer"))
+        if raw_layer:
+            first = layer_of_pack.get(pid)
+            if first is None:
+                layer_of_pack[pid] = (raw_layer, row)
+            elif first[0] != raw_layer:
+                report.cell(t.file, t.name, row, t.col("Layer"), pid, "Layer",
+                            f"PackId「{pid}」已作为 {first[0]} 层出现在第 {first[1]} 行，"
+                            f"此处又写成 {raw_layer} 层 —— 同一 PackId 不能跨层"
+                            f"（运行期仓库以 PackId 为唯一键，注册时会报「数值包 id 重复」）。"
+                            f"请拆成两个 PackId，如「{pid}_base」与「{pid}_{raw_layer.lower()}」")
+            else:
+                report.ok()
 
         if layer and stat in STAT_IDS:
             packs.setdefault(pid, {}).setdefault(layer, set()).add(stat)
