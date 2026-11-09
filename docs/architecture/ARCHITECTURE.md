@@ -1,6 +1,7 @@
 # BiuBiuOrigin 架构大纲
 
 > 状态: v11  最后更新: 2026-11-09（§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v11  最后更新: 2026-11-09（§7.5.2 2D 自绘图随窗口缩放；§14.8 调参面板 SpinBox→可左右拖动滑块；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置；此前 §14.9 物件随机生成）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -972,6 +973,50 @@ window/stretch/aspect="expand"
 > **这类 bug 编译、日志、架构守卫都发现不了**——stretch 配错不报任何错，只是静默缩放。
 > 所以必须靠「设尺寸 → 读回尺寸 → 比对」的探针来钉住，不能只靠肉眼。
 
+#### 7.5.2 窗口 → 2D 自绘图：**`Node2D` 子节点拿不到布局尺寸**
+
+`stretch/mode` 修好只保证「视口跟着窗口变」，**不代表画在视口里的东西也跟着变**。
+`DungeonMap2D` 的地图是 `DungeonMap2DView`（`Node2D`）用 `DrawRect` 逐格画的，格子边长固定 `16px`，
+所以窗口拉大时**已经铺满的视口里插进一片空白，图本身一像素没变**。
+
+根因在容器协议上，不在绘制代码：
+
+| 事实 | 后果 |
+|---|---|
+| `Node2D` **没有**布局尺寸（`Size` 属于 `Control`） | `ScrollContainer` 只能拿 `GetRect()` 当内容大小 |
+| 内容大小 = 图的像素尺寸 | 图放大 → 内容变大 → 滚动区跟着变大 |
+| 滚动区永远「刚好装下」图 | **图既缩不小也放不大**，形成自洽的死结 |
+
+正确做法是**用父容器自己的 `Size` 当可视区**——它才是真正的窗口，`ScrollContainer`
+自己的尺寸由 `HBoxContainer` 布局决定，与内容无关：
+
+```csharp
+// 在 _Process 里轮询，而不是订阅信号：
+// ScrollContainer 尺寸变化 → 子节点变化，两者都不保证发出可用信号，
+// 每帧一次比较 + 极少次 QueueRedraw，成本可忽略。
+Godot.Control? host = GetParent() as Godot.Control;
+FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), 下限, 上限)
+```
+
+三个配套决定：
+
+1. **上限 `MaxCellPixels=40`**：小地图在 4K 窗口里无限放大只会变成马赛克块，夹上限后居中显示。
+2. **滑条一动就关掉 `AutoFit`**：手动调过像素 = 用户接管，之后窗口缩放不再覆盖他的选择。
+3. **`SetValueNoSignal` 回填滑条**：自动算出的值要反映到 UI 上，但不能再触发一次「用户改了滑条」。
+
+实测探针 `tools/probes/dungeon_map_autofit_probe.gd`（12×28 格地图）：
+
+| 窗口 | 可视区 | 格子 | 图尺寸 |
+|---|---|---|---|
+| 800×450 | 452×450 | 14.64 px | 176×410 |
+| 1280×720 | 932×720 | 24.29 px | 291×680 |
+| 1600×900 | 1252×900 | 30.71 px | 369×860 |
+| 1920×1080 | 1572×1080 | 37.14 px | 446×1040 |
+
+四个尺寸全部「装得下」，且**大窗口格子必大于小窗口**（探针把这条写成断言）。
+对照实验：撤掉改动后格子恒为 `16.00px`、图恒为 `192×448`，探针报 2 个失败——
+说明它测的是真行为，不是自我确认。
+
 ### 7.6 下一步
 
 1. 先做**级别 0** 的 Toybox 观感基线：一套 `toybox_lit.gdshader` + `WorldEnvironment` 预设，跑通一个可看场景。
@@ -1153,6 +1198,7 @@ window/stretch/aspect="expand"
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-09 | v11 | **2D 自绘图随窗口自动缩放（§7.5.2）** | 用户反馈「拖动窗口渲染画面仍然不变大变小」，且是用 `DungeonMap2D` 场景测的——**上一版只修了视口，没修画在视口里的 2D 内容**。① 根因：地图由 `DungeonMap2DView`（`Node2D`）逐格 `DrawRect` 画在 `ScrollContainer` 里，格子边长固定 `16px`；`Node2D` 没有布局尺寸，`ScrollContainer` 只能拿 `GetRect()` 当内容大小 → **图放大就撑大滚动区，永远刚好装下，既缩不小也放不大**。② 修复：新增 `FitToViewport(available)`，**用父容器自身的 `Size`**（它才是真正的可视窗口）算格子像素，`clamp(min(可用宽/格数, 可用高/格数), 2, MaxCellPixels=40)`；在 `_Process` 里轮询而非订阅信号（尺寸变化不保证发可用信号），仅一次比较 + 极少次 `QueueRedraw`。③ 交互配套：滑条一动即置 `AutoFit=false`（用户接管），自动值用 `SetValueNoSignal` 回填滑条，避免「回填又触发一次用户改动」的循环。④ **探针** `tools/probes/dungeon_map_autofit_probe.gd` 断言「四种窗口尺寸下都装得下」+「大窗口格子必大于小窗口」：实测 14.64 → 24.29 → 30.71 → 37.14 px 全部通过；**撤掉改动后格子恒为 16.00px、探针 2 个失败**，证明它测的是真行为。守卫 `0/0`，测试 `357/357`。**经验**：视口修好 ≠ 内容跟着变；`Node2D` 放进 `ScrollContainer` 时必须显式指定滚动区尺寸，否则内容与滚动区互相撑大，永远看不到「装下」以外的状态。 | `scripts/host/debug/DungeonMap2DView.cs`、`scripts/host/debug/DungeonMap2DPanel.cs`、`tools/probes/dungeon_map_autofit_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v9 | **调参面板：数值控件换成可左右拖动的滑块** | 用户原话「数值改为左右拖动的滑块」。① `SpinBox` 只能点箭头/键盘输入，调参时视线在图、手要找小箭头，频繁打断看图；20 根控件全部换成 **`HSlider` + 定宽数值标签**（标签固定宽度，拖动时位数变化不让整列跳动），在地图旁边既能拖又能随时看到当前值。② 节流 `RebuildDebounceMs` **90 ms → 30 ms**：原值是给「点箭头一次跳一格」定的，连续拖动下明显发黏；实测重算平均 0.57 ms、稳态最差 8.92 ms（仍 < 一帧 16.6 ms），故可放宽到几乎每帧都算。③ **无头可验证**：自检新增 `sliders=` / `spinBoxes=` 计数并断言 `spinBoxes==0` —— 数的是场景树里真实存在的节点类型，不是「我写了 AddSlider 所以它是滑块」。实际结果 `sliders=20 spinBoxes=0`，并用临时探针验证「改值 → 6 帧内地图重画 `mapChanged=True`」链路通（探针已删除，不留诊断代码）。守卫 0 error | `docs/architecture/ARCHITECTURE.md`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
 | 2026-11-09 | v8 | **数值包跨层校验 + 窗口缩放修复** | ① **Excel 校验器新增「同一 PackId 不能跨层」**（§4.3.1）：运行期 `StatPackageRepository` 以 PackId 为唯一键，同 id 写两层会构造出两个同 id `StatPackageLayer`，注册时抛「数值包 id 重复」——这是**数据表达不了的形状**，必须在建表期拦下。`validate_statpacks()` 记录 (Layer, 行号)，冲突时报「已作为 X 层出现在第 N 行」并建议拆成 `hero_base`/`hero_growth`。现有 31 个包全合规（0 跨层），属预防性约束；注入测试 4/4 双向往返通过（该报的报、不该报的不报）。**刻意不改运行期键**为 `(PackId, Layer)`——那要同时改 `Compose`/`Find`/`GetLayerValue`，收益不抵成本。② **修「拖动窗口不改变渲染画面」**（§7.5.1）：`window/stretch/mode` 由 `canvas_items` 改为 `disabled`，补 `viewport_width/height=1600×900`、`resizable=true`。根因：`canvas_items` 把内容渲染到**固定基准分辨率**，未显式指定时回落引擎默认 **1152×648**，故窗口怎么拖 3D 视口都恒为 1152×648。**这类 bug 编译/日志/守卫全发现不了**，故新增只读探针 `tools/probes/viewport_resize_probe.gd` 实测对照：旧配置 **4/4 失败**（视口锁死 1152×648），新配置 **4/4 通过**（视口 == 窗口）。相机 `KeepAspect=Height` 本就正确，非病因。 | `tools/data_pipeline/validate_content_xlsx.py`、`project.godot`、`tools/probes/viewport_resize_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
@@ -1442,7 +1488,7 @@ PreUpdate → FixedUpdate×N → Update → LateUpdate → CommandFlush → 事�
 
 | 物 | 职责 | 位置 |
 |---|---|---|
-| `DungeonMap2DView` | `Node2D` 逐格 `DrawRect`；地面色取自 `DungeonRoomStyleSet.Get(category).FloorColor`（换配色只改 `.tres`）；画图例、画「起始→Boss 最短路」高亮 | `scripts/host/debug/DungeonMap2DView.cs` |
+| `DungeonMap2DView` | `Node2D` 逐格 `DrawRect`，格子像素**按父容器尺寸自动铺满**（`AutoFit`，见 §7.5.2；滑条一动即接管）；地面色取自 `DungeonRoomStyleSet.Get(category).FloorColor`（换配色只改 `.tres`）；画图例、画「起始→Boss 最短路」高亮 | `scripts/host/debug/DungeonMap2DView.cs` |
 | `DungeonMap2DPanel` | 20 根**可左右拖动的 `HSlider`**（地图形状 14 根 + 物件 6 根），每行「名字 + 滑块 + 当前值标签」；拖 30 ms 节流，松手立刻算 | `scripts/host/debug/DungeonMap2DPanel.cs` |
 | `DungeonMap2DDebugScene` | 场景根：把 View 与 Panel 接起来；自检报告 `sliders=` / `spinBoxes=` 计数 | `scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 场景 | `res://scenes/debug/DungeonMap2D.tscn`（左侧地图 / 右侧面板） | `scenes/debug/` |

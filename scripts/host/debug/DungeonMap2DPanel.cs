@@ -298,13 +298,37 @@ public partial class DungeonMap2DPanel : PanelContainer
     private void OnAnyValueChanged(double value)
     {
         _ = value;
-        if (_cellPixels is not null && _view is not null
-            && Math.Abs(_cellPixels.Value - _view.CellPixels) > 0.01)
+        if (_cellPixels is not null && _view is not null)
         {
-            _view.SetCellPixels((float)_cellPixels.Value);
+            // 滑条动过 = 用户想手动定尺寸，交出控制权（之后窗口缩放不再自动改格子像素）。
+            // 只有值**真的**变了才算，避免任何别的滑条一动就误判。
+            if (Math.Abs(_cellPixels.Value - _view.CellPixels) > 0.01)
+            {
+                _view.AutoFit = false;
+                _view.SetCellPixels((float)_cellPixels.Value);
+            }
         }
         _debounceLeft = RebuildDebounceMs;
         _pendingRebuild = 0;
+    }
+
+    /// <summary>把地图缩放到铺满左侧可视区，并让滑条显示实际生效的格子像素。</summary>
+    private void FitMapToView()
+    {
+        if (_view is null)
+        {
+            return;
+        }
+        Godot.Control? host = _view.GetParent() as Godot.Control;
+        if (host is null)
+        {
+            return;
+        }
+        if (_view.FitToViewport(host.Size) && _cellPixels is not null)
+        {
+            _cellPixels.SetValueNoSignal(Math.Clamp( // arch-ok: 显示层回填，与滑条范围一致
+                _view.CellPixels, _cellPixels.MinValue, _cellPixels.MaxValue));
+        }
     }
 
     private void OnRandomSeed()
@@ -418,6 +442,7 @@ public partial class DungeonMap2DPanel : PanelContainer
         }
         DungeonMapCheck.Report report = DungeonMapCheck.Inspect(in map);
         _view.SetMap(in map);
+        FitMapToView();
         double elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - startedAt) * 1000.0 // arch-ok: 计时单位换算（秒→毫秒）
             / System.Diagnostics.Stopwatch.Frequency;
         string timing = string.Format(CultureInfo.InvariantCulture, " · {0:F1} ms", elapsedMs);
