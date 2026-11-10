@@ -1,7 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v11  最后更新: 2026-11-09（§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
-> 状态: v11  最后更新: 2026-11-09（§7.5.2 2D 自绘图随窗口缩放；§14.8 调参面板 SpinBox→可左右拖动滑块；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置；此前 §14.9 物件随机生成）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v12  最后更新: 2026-11-09（§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -2755,7 +2754,7 @@ python tools/data_pipeline/gen_codex.py               # 0 条缺名警告
 |---|---|
 | 窗口 / 输入 | GLFW 3.4 |
 | 图形 | Vulkan 1.1（`VkContext` 自管 swapchain / render pass / depth） |
-| UI | Dear ImGui 1.92.8 + 官方 `imgui_impl_vulkan` + `imgui_impl_glfw` |
+| UI | Dear ImGui **docking 分支**（1.93.1 WIP，自带 DockSpace API）+ 官方 `imgui_impl_vulkan` + `imgui_impl_glfw` |
 | glTF 解析 | cgltf（单头文件） |
 | FBX 解析 | 自研二进制解析器 `src/loaders/fbx_loader.cpp`（覆盖 7200/7400/7500） |
 | 贴图解码 | WIC（Windows Imaging Component） |
@@ -2771,17 +2770,40 @@ tools/asset_viewer2/
 │  ├─ core/                math3d / model_data / scanner（素材扫描）/ image_io
 │  ├─ loaders/             gltf_loader（cgltf）/ fbx_loader / texture / wic_*
 │  ├─ gpu/                 vk_context（设备/交换链）/ vk_pipeline（管线/推送常量）/ camera / thumb_renderer
-│  ├─ ui/                  asset_cache（后台加载线程）/ ui_main（面板布局）
+│  ├─ ui/                  asset_cache（后台加载线程）/ ui_main（DockSpace 布局）
 │  ├─ app.cpp              Init / Frame 主循环
 │  └─ main.cpp             入口
-└─ tests/                  loader_test / tex_test / render_test（控制台自测）
+├─ tests/                  loader_test / tex_test / render_test（控制台自测）
+└─ third_party/imgui/      ImGui docking 分支源码（见 24.6，非系统预装）
 ```
 
-### 24.4 两个必须知道的坑（都踩过）
+### 24.4 三个必须知道的坑（都踩过）
 
 1. **矩阵约定**。CPU 侧 `Mat` 是**行主序 + 行向量**（`v' = v * M`）。上传前 `ToColumnMajor()` 转置成 GLSL 列主序，所以 **shader 里必须写 `row_vector * mat4`**，不能写 `mat4 * vec4`。写反了不会报错，只会让几何体飞出屏幕——表现是「什么都没画出来」。
 2. **`.spv` 不能留在 `shaders/` 源目录**。`CMakeLists.txt` 的 POST_BUILD 会把 `shaders/` 整个拷到输出目录。如果源目录里躺着一份旧的 `.spv`，它会**覆盖掉刚编译的新 shader**，导致「改了 shader 但画面不变」。现在改由 CMake 在 POST_BUILD 阶段调 `glslc` 生成，源目录只留 `.vert` / `.frag`。
+3. **`IMGUI_DIR` 必须带 `FORCE`**。`CMakeLists.txt` 里是 `set(IMGUI_DIR ... CACHE PATH ... FORCE)`。`set(... CACHE ...)` **不会覆盖已存在的缓存值**，漏了 `FORCE` 时 `build/CMakeCache.txt` 会一直指向别处的 ImGui（本机曾指向 `EasyPainter/vendor/imgui` 的 master 分支），报一堆 `error C2039: "DockBuilderRemoveNode": 不是 "ImGui" 的成员`。另配了配置期断言：`IMGUI_DIR` 下没有 `imgui_internal.h` 就直接 `FATAL_ERROR`。
 
 ### 24.5 素材过滤
 
 纯碰撞体资产不进列表：目录名等于 `Collision`，或文件名以 `_Collision` 结尾（`src/core/scanner.cpp` 的 `IsCollisionOnly`）。当前素材库扫描结果：**358 个资产 / 12 个目录**（301 glb + 57 fbx，约 132 万顶点）。
+
+### 24.6 DockSpace 布局
+
+面板全部停靠在一个铺满窗口的 DockSpace 里（三个栏位可拖动、可浮动、可保存），布局持久化到工作目录下的 `av2_layout.ini`。
+
+```text
+┌──────────┬──────────────────────────┬──────────────┐
+│ 文件夹   │                          │  检查器      │
+│  (树)    │       3D 视口            │  (四页签)    │
+├──────────┤      (无背景窗口)        ├──────────────┤
+│ 资产     │                          │  统计        │
+│  (列表)  │                          │              │
+└──────────┴──────────────────────────┴──────────────┘
+  28%                 剩余                  30%
+```
+
+**为什么 3D 视口是一个「真的 ImGui 窗口」而不是 `PassthruCentralNode` 的中央空节点**：`PassthruCentralNode` 要求中央节点为空，一旦用户把某个面板拖到中央，面板就会盖住 3D。现在中央停靠一个名为 `3D 视口` 的窗口（`NoBackground` / 无内边距 / 无边框 / 不滚动），它只做两件事——占住中央节点、上报自己的矩形。
+
+`DrawUi(..., ViewportRect* outViewport)` 把该矩形输出给 `app.cpp`，`vkCmdSetViewport` / `vkCmdSetScissor` 按它下刀；绘制 ImGui 前再恢复成全屏。这样 3D 渲染严格被裁剪在视口内，不会被左右面板遮住。菜单「重置布局」调 `RequestDockLayoutReset()` 重建默认布局。
+
+**ImGui 源码来源**：本机 `Mine/EasyPainter/vendor/imgui` 与 `ThirdLib/imgui` 都是 master 分支，**没有 DockSpace API**。现在把官方 `docking` 分支 vendored 进 `third_party/imgui/`（约 3.8 MB，含 `imgui_internal.h`——DockBuilder API 在内部头里）。
