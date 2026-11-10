@@ -1,0 +1,37 @@
+[gd_scene load_steps=4 format=3 uid="uid://ctrainingroom01"]
+
+[ext_resource type="Script" path="res://scripts/host/debug/TrainingRoomScene.cs" id="1_training"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_top_color = Color(0.3, 0.33, 0.38, 1)
+sky_horizon_color = Color(0.55, 0.57, 0.6, 1)
+ground_bottom_color = Color(0.2, 0.21, 0.24, 1)
+ground_horizon_color = Color(0.5, 0.52, 0.55, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+ambient_light_sky_contribution = 0.6
+ambient_light_energy = 0.6
+tonemap_mode = 2
+
+[node name="TrainingRoom" type="Node3D"]
+script = ExtResource("1_training")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 20, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="MainCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 14, 9)
+current = true
+fov = 50.0
+far = 200.0
