@@ -570,6 +570,37 @@ public sealed class CharacterSession : IDisposable
     /// <summary>玩家世界的当前位置（Godot 坐标，截图与调试面板用）。</summary>
     public Godot.Vector3 PlayerWorldPosition() => PlayerPositionGodot();
 
+    /// <summary>
+    /// 探针专用：把人物瞬移到指定位置（世界米）。
+    /// <para>
+    /// 用来制造<b>真实位移</b>，从而让「相机跟没跟上」成为可判定的命题。
+    /// 人物静止时，"跟随"与"不跟随"的观测值完全相同 —— 那种测法是假绿。
+    /// </para>
+    /// </summary>
+    /// <param name="position">目标位置（世界米）。</param>
+    /// <returns>是否成功写入了人物实体。</returns>
+    public bool MovePlayerForProbe(System.Numerics.Vector3 position)
+    {
+        if (_player == Entity.None || !_world.TryGet(_player, out Game.Core.Ecs.Transform3 t))
+        {
+            return false;
+        }
+
+        t.Position = position;
+        _world.Set(_player, t);
+        return true;
+    }
+
+    /// <summary>
+    /// 只读：当前相机装置（探针/调试用）。相机没建出来时为 <c>null</c>。
+    /// <para>
+    /// 暴露它是为了让「相机真的跟着人物」这件事**可被引擎内的自动化探针验证**。
+    /// 纯函数测试只能证明弹簧数学对，证明不了 <see cref="Tick"/> 里那条调用链接对了；
+    /// 而这条链路一旦断了（漏 Tick 一次、传错 focus、aim 恒为零），画面依旧能跑、日志依旧干净。
+    /// </para>
+    /// </summary>
+    public TopDownCameraRig? CameraRigForProbe => _cameraRig;
+
     private void OnWorldPointChanged(Godot.Vector3 point)
     {
         // 鼠标世界点由 CursorAimInputSource 提供，AimTarget 组件由 AimAtCursorSystem 消费；
@@ -715,12 +746,17 @@ public sealed class CharacterSession : IDisposable
         }
 
         Camera3D cam = _cameraProvider.GetCamera()!;
+        // ★ 七个值一个都不能少：FollowRatePerSecond 是「每秒收敛速率」，表现层再换算成平滑时间；
+        //   LookAhead* 是「鼠标方向偏移」的幅度与上限 —— 漏传画面照样跑，但策划在 Excel
+        //   改这两格就永远不生效（v11「配置了但没接」的同一个坑）。
         CameraPackSettings pack = new CameraPackSettings(
             _assembly.Camera.Distance,
             _assembly.Camera.PitchDeg,
             _assembly.Camera.YawDeg,
-            _assembly.Camera.FollowLerp,
-            _assembly.Camera.CursorScreenHeightRatio);
+            _assembly.Camera.FollowRatePerSecond,
+            _assembly.Camera.CursorScreenHeightRatio,
+            _assembly.Camera.LookAheadRatio,
+            _assembly.Camera.LookAheadMaxMeters);
         CameraRigSettings rig = _viewOptions.BuildCameraSettings(pack, float.NaN);
         _cameraRig = new TopDownCameraRig(cam, rig);
         _cameraRig.SnapTo(ToGodot(SpawnPosition), Godot.Vector3.Forward);

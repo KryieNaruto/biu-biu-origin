@@ -35,7 +35,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 ROOT = Path(__file__).resolve().parents[2] / "data" / "excel"
 OUT = ROOT / "characters.xlsx"
 
-SCHEMA_VERSION = 4
+# v6：CameraPacks 新增 LookAheadRatio / LookAheadMaxMeters，FollowLerp 改名为 FollowRatePerSecond（与运行时语义对齐）
+SCHEMA_VERSION = 6
 
 HEADER_FILL = PatternFill("solid", fgColor="1F4E78")
 NOTE_FILL = PatternFill("solid", fgColor="DDEBF7")
@@ -427,13 +428,19 @@ def main() -> int:
             ("Id", "string", "镜头包id", "指向 VariantAssembly.CameraPack"),
             ("Distance", "float", "距离", "米"),
             ("Height", "float", "高度", "米"),
-            ("FollowLerp", "float", "跟随平滑", "0~1，越大越跟手"),
+            ("FollowRatePerSecond", "float", "跟随收敛速率",
+             "每秒收敛速率，必须 > 0；越大越跟手（帧率无关）。"
+             "★不是每帧 lerp 系数：代码按 1-exp(-rate*dt) 算，填 0.14 会慢到几乎不动"),
             ("FovDegrees", "float", "视场角", "度"),
+            ("LookAheadRatio", "float", "瞄准偏移幅度",
+             "按可视高度的比例；0 = 不偏移。越大准星方向看得越远"),
+            ("LookAheadMaxMeters", "float", "瞄准偏移上限",
+             "米；0 = 不封顶。防止大视野下偏移把角色推出屏幕"),
         ],
         [
-            ["follow_std", 12.0, 9.0, 0.14, 55],
-            ["follow_heavy", 13.5, 9.8, 0.10, 55],
-            ["follow_fast", 11.0, 8.4, 0.18, 60],
+            ["follow_std", 12.0, 9.0, 10.0, 55, 0.18, 1.6],
+            ["follow_heavy", 13.5, 9.8, 7.0, 55, 0.14, 1.4],
+            ["follow_fast", 11.0, 8.4, 14.0, 60, 0.24, 2.0],
         ],
     )
 

@@ -427,8 +427,14 @@ public sealed class CharacterContentSet
         // ── 镜头包（俯视角正交相机；两台：标准 / 宽景） ──
         // arch-ok: 这里是 Excel 的运行时镜像，数值与 data/excel/characters.xlsx 的 CameraPacks 表逐项一致；
         //          真源是 Excel，由 tools/data_pipeline/gen_characters_xlsx.py 生成并被回归用例钉住。
-        var camStandard = new CharacterCameraPack("topdown_standard", 18f, 58f, 45f, 0.18f, 0.55f); // arch-ok: 镜像 CameraPacks 表
-        var camWide = new CharacterCameraPack("topdown_wide", 22f, 62f, 45f, 0.12f, 0.60f); // arch-ok: 镜像 CameraPacks 表
+        var camStandard = new CharacterCameraPack(
+            "topdown_standard", 18f, 58f, 45f,
+            followRatePerSecond: 10f, cursorScreenHeightRatio: 0.55f,
+            lookAheadRatio: 0.18f, lookAheadMaxMeters: 1.6f); // arch-ok: 镜像 CameraPacks 表（默认手感）
+        var camWide = new CharacterCameraPack(
+            "topdown_wide", 22f, 62f, 45f,
+            followRatePerSecond: 14f, cursorScreenHeightRatio: 0.60f,
+            lookAheadRatio: 0.24f, lookAheadMaxMeters: 2.0f); // arch-ok: 镜像 CameraPacks 表（宽景派生取值）
         Assemblies.RegisterCameraPack(camStandard);
         Assemblies.RegisterCameraPack(camWide);
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Godot;
 using Game.Actor;
 using Game.Core;
+using Game.Host.Debug;
 using Game.Core.Actors;
 using Game.Core.Ecs;
 using Game.Core.Handles;
@@ -54,6 +55,8 @@ public sealed partial class DungeonDebugScene : Node3D
 
     /// <summary>第一个人物（测试人物）的运行时装配根：出生 / 移动 / 瞄准 / 射击 / HUD 全在这里。</summary>
     private CharacterSession? _character;
+    private CameraFollowSelfCheck? _cameraProbe;
+    private bool _cameraProbeWanted;
 
     /// <summary>是否生成测试人物（命令行 <c>--hero</c> 可开；Inspector 亦可）。</summary>
     [Export]
@@ -181,6 +184,9 @@ public sealed partial class DungeonDebugScene : Node3D
     /// <inheritdoc />
     public override void _Ready()
     {
+        // ★ 必须先于 BuildHost：会话在 BuildHost 里创建，探针也挂在那里。
+        _cameraProbeWanted = Array.IndexOf(OS.GetCmdlineUserArgs(), CameraFollowSelfCheck.ArgName) >= 0;
+
         try
         {
             BuildDungeonOrPlaceholder();
@@ -221,6 +227,16 @@ public sealed partial class DungeonDebugScene : Node3D
             _fixed!.Tick(delta, 1f);
         }
         _frameCounter++;
+
+        // 相机自检探针（--camera-probe）：在会话 Tick 之后读相机节点，跑完即退出。
+        if (_cameraProbe is not null && !_cameraProbe.Finished)
+        {
+            if (_cameraProbe.Tick())
+            {
+                QuitNow($"相机自检完成：{_cameraProbe.Checks} 项检查，{_cameraProbe.Failures} 失败");
+                return;
+            }
+        }
 
         if (QuitAfterFrames > 0 && _frameCounter >= QuitAfterFrames)
         {
@@ -805,6 +821,12 @@ public sealed partial class DungeonDebugScene : Node3D
             _camera,
             WorldOptions,
             ViewOptions ?? new GameViewOptions());
+
+        if (_cameraProbeWanted && _camera is not null)
+        {
+            _cameraProbe = new CameraFollowSelfCheck(_character, _camera);
+            GD.Print("[camera-probe] 已装载相机跟随自检");
+        }
     }
 
     /// <summary>解析要生成的变体 id：命令行 <c>--hero-variant=</c> 优先，其次 Inspector。</summary>

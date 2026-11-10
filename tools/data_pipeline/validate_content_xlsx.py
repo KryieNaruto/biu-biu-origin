@@ -47,7 +47,7 @@ SHEETS_OF_FILE = {
 # 各主题文件当前的 SchemaVersion（改表结构必须同时改这里 + gen_*.py 的 SCHEMA_VERSION + C# 读取）
 SCHEMA_VERSIONS = {
     "combat.xlsx": 2,
-    "characters.xlsx": 5,
+    "characters.xlsx": 6,
 }
 
 # ★ 外观包表（combat.xlsx 与 characters.xlsx **同名同构**，共用这一份列定义与同一套校验器）。
@@ -120,8 +120,10 @@ CHARACTERS_COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
         ("Id", "string", "镜头包id", "指向 VariantAssembly.CameraPack"),
         ("Distance", "float", "距离", "米"),
         ("Height", "float", "高度", "米"),
-        ("FollowLerp", "float", "跟随插值", "0..1"),
-        ("FovDegrees", "float", "视场角", "度"),
+        ("FollowRatePerSecond", "float", "跟随收敛速率", ">0，每秒（不是每帧 lerp 系数）"),
+        ("FovDegrees", "float", "视场角", "米"),
+        ("LookAheadRatio", "float", "瞄准偏移幅度", ">=0，按可视高度比例"),
+        ("LookAheadMaxMeters", "float", "瞄准偏移上限", ">=0，米（0 = 不封顶）"),
     ],
     "InputPacks": [
         ("Id", "string", "手柄包id", "指向 VariantAssembly.InputPack"),
@@ -1333,6 +1335,65 @@ def validate_statpacks(report: Report, t: Table, packs: "dict[str, dict[str, set
             packs.setdefault(pid, {}).setdefault(layer, set()).add(stat)
 
 
+def validate_camera_packs(report: Report, t: Table) -> None:
+    """CameraPacks：Id 唯一 / FollowRatePerSecond > 0 / LookAheadRatio >= 0 / LookAheadMaxMeters >= 0。
+
+    ★ 为什么 FollowRatePerSecond 一定要 > 0：
+    代码里 `TopDownCameraRig.Convergence` 用 `1 - exp(-rate * dt)` 计算每帧推进比例。
+    rate = 0 时该式恒为 0 —— 相机永远停在原地不跟随，而**不会报任何错**（画面只是不动）。
+    这正是本项目反复踩到的「静默失效」类型，必须在建表期拦下。
+
+    ★ 为什么这里卡 <= 0 而不是卡 0..1：
+    旧表头写「0~1，越大越跟手」，诱导策划填 0.14。但代码一直把它当**每秒速率**用，
+    填 0.14 等于「每秒只收敛 13%」——开局几乎不动，看起来像相机坏了。
+    照 0..1 去校验等于把这个 bug 固化下来，所以这里改按物理量纲校验。
+    """
+    seen: "dict[str, int]" = {}
+    for row, cells in t.rows:
+        pid = _s(cells[0])
+        if not pid:
+            report.cell(t.file, t.name, row, 1, "", "Id", "必填，不能为空")
+            continue
+        as_id(report, t, row, "Id", pid)
+
+        if pid in seen:
+            report.cell(t.file, t.name, row, t.col("Id"), pid, "Id",
+                        f"镜头包 id 重复（首次出现在第 {seen[pid]} 行）")
+        else:
+            seen[pid] = row
+
+        rate = as_float(report, t, row, "FollowRatePerSecond", pid,
+                        t.cell(cells, "FollowRatePerSecond"))
+        if rate is None or rate <= 0:
+            raw = t.cell(cells, "FollowRatePerSecond")
+            hint = ""
+            if rate is not None and 0 < rate < 1:
+                hint = ("；这个值看起来像「每帧 lerp 系数」——本列是**每秒**收敛速率，"
+                        "填 0.14 会让相机几乎不跟随。镜头手感典型值在 7~14 之间")
+            report.cell(t.file, t.name, row, t.col("FollowRatePerSecond"), pid,
+                        "FollowRatePerSecond", f"必须 > 0（当前 {raw!r}）" + hint)
+        else:
+            report.ok()
+
+        ratio = as_float(report, t, row, "LookAheadRatio", pid,
+                         t.cell(cells, "LookAheadRatio"))
+        if ratio is None or ratio < 0:
+            report.cell(t.file, t.name, row, t.col("LookAheadRatio"), pid,
+                        "LookAheadRatio",
+                        f"必须 >= 0（0 = 不偏移；负值会让镜头往瞄准反方向跑，当前 {t.cell(cells, 'LookAheadRatio')!r}）")
+        else:
+            report.ok()
+
+        maxm = as_float(report, t, row, "LookAheadMaxMeters", pid,
+                        t.cell(cells, "LookAheadMaxMeters"))
+        if maxm is None or maxm < 0:
+            report.cell(t.file, t.name, row, t.col("LookAheadMaxMeters"), pid,
+                        "LookAheadMaxMeters",
+                        f"必须 >= 0（0 = 不封顶；当前 {t.cell(cells, 'LookAheadMaxMeters')!r}）")
+        else:
+            report.ok()
+
+
 def validate_characters(report: Report, t: Table, packs: "dict[str, dict[str, set[str]]]",
                         loadouts: "dict[str, set[str]]") -> None:
     """characters.xlsx 的 Characters 表（向后兼容）。"""
@@ -1979,14 +2040,20 @@ def main(argv: "list[str]") -> int:
 
     # v4 结构表：read_sheet 已覆盖「列集合 + 类型 + 枚举」，这里再确认 Id 合法
     chars_vp_t = None
+    chars_cam_t = None
     for name in ("Assemblies", "VariantAssembly", "VisualPacks", "CameraPacks", "InputPacks", "Weapons"):
         v4_t = read_sheet(report, chars_path, name, CHARACTERS_COLUMNS[name])
         if v4_t is not None:
             # VisualPacks 在下面单独走 validate_visual_packs（要查磁盘存在性 + Scale/TintHex）
-            if name != "VisualPacks":
-                validate_structure_only(report, v4_t)
-            else:
+            if name == "VisualPacks":
                 chars_vp_t = v4_t
+            elif name == "CameraPacks":
+                # 镜头包除结构外还有手感参数的量纲约束（收敛速率 > 0 等）
+                chars_cam_t = v4_t
+                validate_structure_only(report, v4_t)
+                validate_camera_packs(report, v4_t)
+            else:
+                validate_structure_only(report, v4_t)
 
     # ── 外观包（两张同名同构表共用同一套校验器，含 ★ 模型路径磁盘存在性）──
     combat_vp_ids = validate_visual_packs(report, cvp_t)
