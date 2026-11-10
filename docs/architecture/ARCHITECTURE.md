@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v13  最后更新: 2026-11-10（§17.10 「抽象没贯彻到底」全面体检与整改 + 契约硬规则；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v14  最后更新: 2026-11-10（§14.10 训练房 3D 测试场景；§17.10 「抽象没贯彻到底」全面体检与整改 + 契约硬规则；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1197,6 +1197,7 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-10 | v14 | **训练房（§14.10）：一间灰房 + 一个人 + 一个假人** | 用户要求「做一个3D测试场景，只有一个灰色房间，四面有墙，地板是斑马网格，一个人物，一个测试假人」。新增 `scenes/debug/TrainingRoom.tscn` + `scripts/host/debug/TrainingRoomScene.cs`（约 380 行）。① **场地**：`RoomCells×RoomCells`（默认 8×8、1m 格）逐格 `BoxMesh` 拼棋盘格地板（`(x+z)&1` 深浅灰交替），四面墙独立尺寸封住四角；房间大小/格数/墙高/配色**全部 `[Export]`** 可在 Inspector 改。② **人物**：整块交给 `CharacterSession` + `test_hero` 全套（复用组合根，不另写一个人），本场景 0 行玩法逻辑。③ **假人**：用户明确选「先只要站着的模型、打不动」→ 做成**纯表现节点**（胶囊身体 + 球头），**不进 ECS**、子弹直接穿过；这是**写在文档里的有意欠账**，要可打时换成 `ActorSpawnRequest` 即可。④ **素材**：全部几何体 + 纯色材质，**不引用 `素材/` 任何 `.glb`**，与 §17.10.1「全部先跑白模」一致。⑤ **两个坑**：`CharacterSession` 构造时自己装系统并调 `pipeline.Build()`（宿主再 `Add` 会重复移动/抛异常）；自检不能在 `_Ready` 数 `Player`（要到第一次 `Tick` 才出生，会误报「没出生」），改延迟 5 帧。**验证**：`dotnet build` 0 错 0 警；架构守卫 `new=0 existing=0 errors=0 warnings=0`；headless 实跑自检 `floors=64/64 walls=4/4 dummy=True parts=2 hero=True`。 | `scripts/host/debug/TrainingRoomScene.cs`、`scenes/debug/TrainingRoom.tscn`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v13 | **「抽象没贯彻到底」全面体检 + 契约硬规则** | 用户发现「只有人物有模型，怪物/武器/子弹连字段都没有」并质问抽象为何没贯彻。**诊断**：抽象**不缺**，断的是"谁兑现"——`View`+`ViewAppearance` 组件与整套桥接都在且设计正确，但全项目唯一的外观注册调用只在 `CharacterSession.cs:308`（人物一条路）。**最值钱的证据链**：`combat.xlsx` 26 行全填 `VisualPack` → 校验器 4553 项全过（连磁盘文件都存在）→ `scripts/` 里运行期读取点 **= 0**。数据填满、校验通过、一个都不读。**为什么既有防线全没拦住**：编译器（组件合法只是没人 Set）、守卫 GS001~007（只查文件位置）、356 个测试（只测局部行为）、校验器（只验数据对不对不验有没有人用）、代码评审（单看每处都对，缺口在跨文件接缝）——**共同特征：每个局部都对，整体是断的**。**整改**：① 渲染接线收敛到唯一入口 `ContentSpawner.FillAppearanceBySlot`，三条产物路径（弹/人/特效）无条件经过；② 修掉真实陷阱——`VisualSlot` 默认 `0` 但 `0` 是合法外观号（"忘了配"与"配成第 0 号"运行期同义），改为显式哨兵 `UnresolvedVisualSlot = -1`；③ 新增 `AppearanceCoverageTests` 两条用例钉住"三种产物组件齐备"与"未配置仍带组件且可断言"；④ **规则升格为硬约束**：`docs/rules/03` 新增 §3.4「概念的唯一定义权」+ §6.1「契约完备四问」，`AGENTS.md` 规则5 判据扩充 + 红线新增第 11~15 条，四条硬规则 A单一契约 / B齐备原则 / C消费闭合 / D成员闭合。**如实说明（未修，已登记 §17.10.4）**：子弹仍有 4 套平行组件集合、`WeaponState` 死组件致生产与测试跑两条管线、`WeaponAimKind`(11)/`ProjectileHitPolicy`(8) 零消费者、`EcsObjectFactory.OnExpire` 静默吞 `Explode`/`Inherit`、`FireProjectileSkill.cs:202` 硬编码 `DamageType.Kinetic`、武器/子弹在 3D 里仍不渲染。测试 356 通过（另 3 条 `HeroAssembly_*` 是既有失败，与本次无关） | `scripts/combat/Factory/ContentSpawner.cs`、`scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`scripts/core/Content/TagFamily.cs`、`tests/Content/Factory/AppearanceCoverageTests.cs`、`docs/rules/03-abstract-first.md`、`AGENTS.md`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v11 | **2D 自绘图随窗口自动缩放（§7.5.2）** | 用户反馈「拖动窗口渲染画面仍然不变大变小」，且是用 `DungeonMap2D` 场景测的——**上一版只修了视口，没修画在视口里的 2D 内容**。① 根因：地图由 `DungeonMap2DView`（`Node2D`）逐格 `DrawRect` 画在 `ScrollContainer` 里，格子边长固定 `16px`；`Node2D` 没有布局尺寸，`ScrollContainer` 只能拿 `GetRect()` 当内容大小 → **图放大就撑大滚动区，永远刚好装下，既缩不小也放不大**。② 修复：新增 `FitToViewport(available)`，**用父容器自身的 `Size`**（它才是真正的可视窗口）算格子像素，`clamp(min(可用宽/格数, 可用高/格数), 2, MaxCellPixels=40)`；在 `_Process` 里轮询而非订阅信号（尺寸变化不保证发可用信号），仅一次比较 + 极少次 `QueueRedraw`。③ 交互配套：滑条一动即置 `AutoFit=false`（用户接管），自动值用 `SetValueNoSignal` 回填滑条，避免「回填又触发一次用户改动」的循环。④ **探针** `tools/probes/dungeon_map_autofit_probe.gd` 断言「四种窗口尺寸下都装得下」+「大窗口格子必大于小窗口」：实测 14.64 → 24.29 → 30.71 → 37.14 px 全部通过；**撤掉改动后格子恒为 16.00px、探针 2 个失败**，证明它测的是真行为。守卫 `0/0`，测试 `357/357`。**经验**：视口修好 ≠ 内容跟着变；`Node2D` 放进 `ScrollContainer` 时必须显式指定滚动区尺寸，否则内容与滚动区互相撑大，永远看不到「装下」以外的状态。 | `scripts/host/debug/DungeonMap2DView.cs`、`scripts/host/debug/DungeonMap2DPanel.cs`、`tools/probes/dungeon_map_autofit_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v9 | **调参面板：数值控件换成可左右拖动的滑块** | 用户原话「数值改为左右拖动的滑块」。① `SpinBox` 只能点箭头/键盘输入，调参时视线在图、手要找小箭头，频繁打断看图；20 根控件全部换成 **`HSlider` + 定宽数值标签**（标签固定宽度，拖动时位数变化不让整列跳动），在地图旁边既能拖又能随时看到当前值。② 节流 `RebuildDebounceMs` **90 ms → 30 ms**：原值是给「点箭头一次跳一格」定的，连续拖动下明显发黏；实测重算平均 0.57 ms、稳态最差 8.92 ms（仍 < 一帧 16.6 ms），故可放宽到几乎每帧都算。③ **无头可验证**：自检新增 `sliders=` / `spinBoxes=` 计数并断言 `spinBoxes==0` —— 数的是场景树里真实存在的节点类型，不是「我写了 AddSlider 所以它是滑块」。实际结果 `sliders=20 spinBoxes=0`，并用临时探针验证「改值 → 6 帧内地图重画 `mapChanged=True`」链路通（探针已删除，不留诊断代码）。守卫 0 error | `docs/architecture/ARCHITECTURE.md`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs` |
@@ -1592,6 +1593,53 @@ ERROR: 地牢调试场景初始化失败：System.InvalidOperationException:
 可破坏圆点 / 不可破坏小方块）——形状比颜色更可靠，色弱和小屏都认得出。
 
 ---
+
+
+### 14.10 训练房（2026-11-10 落地）：一间灰房 + 一个人 + 一个假人
+
+> **需求原话**：「现在做一个3D测试场景，场景中只有一个灰色房间，四面有墙，地板是斑马网格。一个人物，一个测试假人。」
+
+**它解决的痛点**：地牢调试场景要跑整套「布局 → 栅格化 → 物件 → 视图」，一次 12×28 图、四类物件全上。
+想安静看一个人物的前后左右、验证移动手感和子弹方向时，满屏都是干扰。
+训练房只保留最小一片场地，**没有随机、没有生成、每次打开都是同一张图**。
+
+**边界（本节最重要的一段）**：`TrainingRoomScene` 只做「摆场地 + 摆两个东西」，
+**不碰** ECS 内核、不碰地牢生成、**0 行玩法逻辑**。
+人物整块交给 `CharacterSession`（它自己管意图/技能/相机/HUD），所以调移速/伤害/血量仍然是改表，不是改这里。
+
+| 组成 | 实现 | 为什么这么选 |
+|---|---|---|
+| 灰色房间 | `RoomCells × RoomCells`（默认 8×8）× `CellMeters`（默认 1m） | 房间大小是 Inspector 参数，不是常量 |
+| 斑马网格地板 | **逐格** `MeshInstance3D` + `BoxMesh`，深/浅灰按 `(x+z)&1` 交替 | 逐格而非贴图：格数一变只改循环次数，格线天然对齐；用盒子而非 `PlaneMesh`：Plane 单面，侧看会消失 |
+| 四面墙 | 4 面 `BoxMesh`，长度取「房间全长 + 墙厚」封住四角 | 墙高 `WallHeightMeters`（默认 2.4m）独立于格边长——按格比例算出来的墙会矮得像围栏 |
+| 人物 | `CharacterSession` + `test_hero` 全套（WASD / 左键射击 / HUD） | 复用组合根，不另写一个人 |
+| 测试假人 | 纯表现节点：`Node3D` + 胶囊（身体）+ 球（头），**不进 ECS** | 见下 |
+
+**为什么假人不是 ECS 实体**（用户明确选择「先只要一个站着的模型，打不动」）：
+真做成实体就要给它 `Health / SkillState / ActorIntent` 一整套组件和系统，那是「可被打的靶子」才需要的形状。
+所以子弹会**直接穿过去**。等要测伤害时，把它换成 `ActorSpawnRequest` 生成的真实体即可——
+**这是一次有意的、写在文档里的欠账，不是漏做**。
+
+**素材**：假人和房间全部用几何体 + 纯色材质，**不引用 `素材/` 下任何 `.glb`**。
+与 §17.10.1「全部先跑白模」的决定一致：训练房不该依赖外部素材路径，素材库大改也不会把它弄挂。
+
+**自检（无头可验）**：`TrainingRoomScene.EmitSelfCheck()` 在出生落地后数**场景树里真实存在的节点**——
+「没报错」不等于「东西真的在」，所以数的是地板格数 / 墙数 / 假人部件数 / `Player` 是否非空。实测输出：
+
+```text
+[训练房 自检] room=8x8 cells cell=1.0m floors=64/64 walls=4/4 dummy=True parts=2 hero=True variant=test_hero
+```
+
+**踩到的坑（记下来省下一次）**：`CharacterSession` 构造时会**自己**按变体模块拼装
+移动/瞄准/射击/冲刺系统，并在末尾调 `pipeline.Build()`。宿主**不能再 `pipeline.Add`**——
+重复注册会让同一实体被移动两次，且 `Build()` 之后再 `Add` 直接抛异常。
+
+**踩到的第二个坑**：自检不能在 `_Ready` 里立刻数 `Player`。
+`CharacterSession` 要到**第一次 `Tick`** 才把出生请求交给装配系统，`_Ready` 阶段数必然是空的，
+会把「正常」误报成「没出生」。改为延迟 5 帧后自检。
+
+**扩展点**：① 房间大小/格数/墙高/配色全部是 `[Export]`，Inspector 改；② 可打的靶子 → 假人换成
+`ActorSpawnRequest`（改一处调用）；③ 多几个假人 → `DummyOffsetCells` 改成数组。
 
 ## 15. 角色抽象（2026-11-05 落地）
 
