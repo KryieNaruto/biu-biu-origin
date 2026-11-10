@@ -1,21 +1,29 @@
-﻿using System;
+using System;
+using Game.Core.Camera;
 using Godot;
 
 namespace Game.Host.Presentation;
 
 /// <summary>
-/// 正交（<see cref="Camera3D.ProjectionType.Orthogonal"/>）俯视跟随相机。
+/// 正交（<see cref="Camera3D.ProjectionType.Orthogonal"/>）俯视跟随相机 —— <b>薄壳</b>。
 /// <para>
-/// <b>职责边界</b>：只负责「相机在哪、朝哪、取多大景」，<u>不读任何数据表</u>。
-/// 全部参数来自构造时注入的 <see cref="CameraRigSettings"/>（纯值结构体，由 Lead 的
-/// <c>CharacterSession</c> 从「镜头包」合并后传入），因此本类不认识 <c>Game.Data</c>，
-/// 换一套镜头包 = 换一个 <see cref="CameraRigSettings"/>，本文件 0 行改动（规则7）。
+/// <b>职责边界</b>：本类只做三件事 —— ① 持有弹簧状态（聚焦点 / 速度 / 瞄准偏移）；
+/// ② 每帧调用 <see cref="CameraFeel"/> 的<u>纯函数</u>推进状态；③ 把结果写进 <see cref="Camera3D"/>。
+/// <b>所有手感数学都在 <see cref="CameraFeel"/> 里</b>（零引擎依赖、可逐帧断言），
+/// 本文件不含任何积分/插值公式 —— 这样「帧率无关性」才能在没有引擎的进程里被证明。
 /// </para>
 /// <para>
-/// <b>为什么跟随要用指数收敛而不是 <c>Lerp(a, b, t)</c></b>：<c>Lerp</c> 的第三种写法
-/// <c>1 - exp(-rate * dt)</c> 让「每秒收敛比例」与帧率无关——144Hz 与 60Hz 下同样的 rate
-/// 得到同样的手感；而 <c>Lerp(a, b, 0.2f)</c> 在 144Hz 下会比 60Hz 快 2.4 倍。手感优先的项目
-/// 里帧率无关是硬要求（拖影/抖动会直接毁掉瞄准体验）。
+/// <b>为什么跟随用「临界阻尼弹簧」而不是 <c>Lerp</c> / 指数收敛</b>：指数收敛是<u>一阶低通</u>，
+/// 只记位置、不记速度——起步瞬间就按比例贴上去，没有速度积累，观感是「粘着走」。
+/// 临界阻尼弹簧是<u>二阶系统</u>（位置 + 速度两个状态）：起步时速度从 0 逐渐攒起来 → 加速冲出，
+/// 临近目标时阻尼吃掉速度 → 自然减速且<u>不过冲</u>。这就是动作游戏相机「滑动感」的物理来源。
+/// 详细的三段轨迹见 <see cref="CameraFeel.SmoothDampStep"/> 的文档。
+/// </para>
+/// <para>
+/// <b>帧率无关性怎么保证</b>：三重保障（全部实现在 <see cref="CameraFeel"/> 里）——
+/// ① 每个子步用<u>解析解</u>推进，不是显式欧拉（后者 dt 稍大就发散）；
+/// ② 一帧 dt 拆成不超过 <see cref="CameraFeel.MaxSubStepSeconds"/> 的固定上限子步；
+/// ③ 整帧 dt 先夹到 [0, <see cref="CameraFeel.MaxFrameSeconds"/>]，防止切窗口回来时 dt 巨大把相机弹飞。
 /// </para>
 /// <para>
 /// <b>为什么永远 <c>LookAt</c> 玩家</b>：正交投影下「看向哪」决定了画面里的一切是否正面朝向玩家；
@@ -33,8 +41,10 @@ public sealed class TopDownCameraRig
     private CameraRigSettings _settings;
 
     private bool _hasFocus;
-    private Vector3 _focus;          // 平滑后的聚焦点（权威：下一帧从这里继续收敛）
-    private Vector3 _lookAhead;      // 平滑后的前瞻位移（水平面内）
+    private Vector3 _focus;             // 平滑后的聚焦点（权威：下一帧从这里继续推进）
+    private Vector3 _focusVelocity;     // 聚焦点速度（米/秒）—— 弹簧的第二个状态
+    private Vector3 _lookAhead;         // 平滑后的前瞻位移（水平面内）
+    private Vector3 _lookAheadVelocity; // 前瞻位移速度（米/秒）
 
     /// <summary>构造并立即把相机配置成俯视正交（第一帧就位，避免开局从原点飞过去）。</summary>
     /// <param name="camera">要被驱动的相机（必须是已在场景树上的节点）。</param>
@@ -51,6 +61,12 @@ public sealed class TopDownCameraRig
 
     /// <summary>平滑后的聚焦点（= 相机看向的世界点）。诊断/截图脚本可读。</summary>
     public Vector3 Focus => _focus;
+
+    /// <summary>聚焦点当前速度（米/秒）。诊断用；也可用来做「速度越大 FOV 越大」之类的后续效果。</summary>
+    public Vector3 FocusVelocity => _focusVelocity;
+
+    /// <summary>当前平滑后的瞄准偏移（水平面内，米）。诊断用。刻意不叫 LookAheadOffset：那名字被静态纯函数占用了。</summary>
+    public Vector3 CurrentLookAhead => _lookAhead;
 
     /// <summary>最近一次计算的相机世界位置。</summary>
     public Vector3 CameraPosition => _camera.GlobalPosition;
@@ -75,26 +91,11 @@ public sealed class TopDownCameraRig
     /// <param name="maxXZ">最大角。</param>
     /// <param name="enabled">是否立即启用。</param>
     public void SetBounds(Vector2 minXZ, Vector2 maxXZ, bool enabled)
-    {
-        _settings = new CameraRigSettings(
-            _settings.Distance,
-            _settings.PitchDegrees,
-            _settings.YawDegrees,
-            _settings.FollowLerp,
-            _settings.OrthoHeight,
-            _settings.LookAheadRatio,
-            _settings.LookAheadMaxMeters,
-            _settings.FollowHeight,
-            _settings.NearMeters,
-            _settings.FarMeters,
-            enabled,
-            minXZ,
-            maxXZ,
-            _settings.BoundsPadding);
-    }
+        => _settings = _settings.WithBounds(minXZ, maxXZ, enabled);
 
     /// <summary>
-    /// 立即把相机贴到目标点（不做平滑）。用于开局、传送、切场景：希望「没有飞过去的过程。」
+    /// 立即把相机贴到目标点（不做平滑）。用于开局、传送、切场景：希望「没有飞过去的过程」。
+    /// <para>速度状态一并清零——否则贴过去之后残余速度会让相机继续滑一段。</para>
     /// </summary>
     /// <param name="target">跟随目标的世界位置。</param>
     /// <param name="aimDirection">瞄准方向（水平面单位向量；零向量表示无前瞻）。</param>
@@ -102,17 +103,22 @@ public sealed class TopDownCameraRig
     {
         Vector3 clamped = ClampToBounds(target);
         _focus = clamped;
-        _lookAhead = ComputeLookAhead(aimDirection, clamped);
+        _focusVelocity = Vector3.Zero;
+        _lookAhead = ComputeLookAheadTarget(aimDirection, clamped);
+        _lookAheadVelocity = Vector3.Zero;
         _hasFocus = true;
         ApplyTransform();
     }
 
     /// <summary>
     /// 推一帧跟随。由视图层的每帧回调调用（<c>_Process</c>）。
+    /// <para>
+    /// 内部把 dt 拆成固定上限子步，每个子步对「聚焦点」和「瞄准偏移」各推进一个独立的临界阻尼弹簧。
+    /// </para>
     /// </summary>
     /// <param name="target">跟随目标的世界位置（通常 = 玩家的 <c>Transform3.Position</c>）。</param>
     /// <param name="aimDirection">瞄准方向（水平面单位向量；零向量表示无前瞻）。</param>
-    /// <param name="deltaSeconds">本帧时长（秒）。用于帧率无关的指数收敛。</param>
+    /// <param name="deltaSeconds">本帧时长（秒）。</param>
     public void Tick(Vector3 target, Vector3 aimDirection, float deltaSeconds)
     {
         if (!_hasFocus)
@@ -121,45 +127,161 @@ public sealed class TopDownCameraRig
             return;
         }
 
+        float dt = CameraFeel.ClampFrameDelta(deltaSeconds);
+        if (!(dt > 0f))
+        {
+            // dt 为 0 / NaN：什么都不推进，但相机可能被别人动过，仍重写一次变换。
+            ApplyTransform();
+            return;
+        }
+
         // ① 目标点先夹到边界内；边界夹取发生在「目标」而不是「结果」上，
         //    否则相机撞边界时会被反复拉扯（结果一直被推出界外再被拉回），画面会抖。
         Vector3 desired = ClampToBounds(target);
 
-        // ② 前瞻：沿瞄准方向前移，让准星不贴边（轻量，按可见高度成比例，上限封顶）。
-        Vector3 desiredAhead = ComputeLookAhead(aimDirection, desired);
+        // ② 前瞻：算出「最终该偏移到哪」（纯函数），平滑交给下面的弹簧。
+        Vector3 desiredAhead = ComputeLookAheadTarget(aimDirection, desired);
 
-        // ③ 帧率无关的指数收敛。
-        float t = Convergence(deltaSeconds, _settings.FollowLerp);
-
-        // ④ 竖直轴：正交俯视通常不跟高度（地面是平的），免得上下坡时画面抖。
+        // ③ 竖直轴：正交俯视通常不跟高度（地面是平的），免得上下坡时画面抖。
         if (!_settings.FollowHeight)
         {
             desired.Y = _focus.Y;
             desiredAhead.Y = 0f;
         }
 
-        _focus = _focus.Lerp(desired, t);
-        _lookAhead = _lookAhead.Lerp(desiredAhead, t);
+        // ④ 拆子步推进两个独立弹簧（跟随 / 瞄准偏移各有一套 smoothTime）。
+        int steps = CameraFeel.SubStepCount(dt);
+        float step = dt / steps;
+        for (int i = 0; i < steps; i++)
+        {
+            (float fx, float fz, float fvx, float fvz) = CameraFeel.SmoothDampStepXZ(
+                _focus.X, _focus.Z, desired.X, desired.Z,
+                _focusVelocity.X, _focusVelocity.Z,
+                _settings.FollowSmoothTime, step);
+            _focus = new Vector3(fx, desired.Y, fz);
+            _focusVelocity = new Vector3(fvx, 0f, fvz);
+
+            (float lx, float lz, float lvx, float lvz) = CameraFeel.SmoothDampStepXZ(
+                _lookAhead.X, _lookAhead.Z, desiredAhead.X, desiredAhead.Z,
+                _lookAheadVelocity.X, _lookAheadVelocity.Z,
+                _settings.LookAheadSmoothTime, step);
+            _lookAhead = new Vector3(lx, 0f, lz);
+            _lookAheadVelocity = new Vector3(lvx, 0f, lvz);
+        }
+
         ApplyTransform();
     }
 
+    // =========================================================================
+    // 纯函数代理（全部委托给 Game.Core.Camera.CameraFeel）
+    //
+    // 这些 static 转发并非多余：① 测试与诊断脚本按「相机」的语义找它们；
+    // ② 让表现层调用点集中在此，将来 Game.Core 拆库时只改一行。
+    // =========================================================================
+
+    /// <summary>临界阻尼弹簧单步（单轴）。见 <see cref="CameraFeel.SmoothDampStep"/>。</summary>
+    /// <param name="current">当前位置。</param>
+    /// <param name="target">目标位置。</param>
+    /// <param name="velocity">当前速度。</param>
+    /// <param name="smoothTime">平滑时间（秒）。</param>
+    /// <param name="deltaSeconds">本步时长（秒）。</param>
+    /// <returns>推进后的 (值, 速度)。</returns>
+    public static (float value, float velocity) SmoothDampStep(
+        float current, float target, float velocity, float smoothTime, float deltaSeconds)
+        => CameraFeel.SmoothDampStep(current, target, velocity, smoothTime, deltaSeconds);
+
+    /// <summary>临界阻尼弹簧单步（XZ 平面，两轴独立）。见 <see cref="CameraFeel.SmoothDampStepXZ"/>。</summary>
+    /// <param name="x">当前 X。</param>
+    /// <param name="z">当前 Z。</param>
+    /// <param name="targetX">目标 X。</param>
+    /// <param name="targetZ">目标 Z。</param>
+    /// <param name="vx">X 速度。</param>
+    /// <param name="vz">Z 速度。</param>
+    /// <param name="smoothTime">平滑时间（秒）。</param>
+    /// <param name="deltaSeconds">本步时长（秒）。</param>
+    /// <returns>推进后的 (x, z, vx, vz)。</returns>
+    public static (float x, float z, float vx, float vz) SmoothDampStepXZ(
+        float x, float z, float targetX, float targetZ, float vx, float vz,
+        float smoothTime, float deltaSeconds)
+        => CameraFeel.SmoothDampStepXZ(x, z, targetX, targetZ, vx, vz, smoothTime, deltaSeconds);
+
     /// <summary>
-    /// 指数收敛系数：<c>1 - exp(-rate * dt)</c>，夹到 [0,1]。rate &lt;= 0 表示硬锁（返回 1）。
+    /// 指数收敛系数：<c>1 - exp(-rate * dt)</c>。见 <see cref="CameraFeel.Convergence"/>。
+    /// <para>相机跟随已不再使用它；保留供准星跟随 / HUD 数值滚动等一阶平滑场景。</para>
     /// </summary>
     /// <param name="deltaSeconds">本帧时长。</param>
-    /// <param name="rate">每秒收敛速率。</param>
+    /// <param name="rate">每秒速率；小于等于 0 返回 1（硬锁）。</param>
+    /// <returns>本帧推进比例（0..1）。</returns>
     public static float Convergence(float deltaSeconds, float rate)
+        => CameraFeel.Convergence(deltaSeconds, rate);
+
+    /// <summary>「每秒速率」→「平滑时间」换算。见 <see cref="CameraFeel.SmoothTimeFromRate"/>。</summary>
+    /// <param name="ratePerSecond">每秒速率。</param>
+    /// <param name="fallbackSmoothTime">速率无效时的保底平滑时间（秒）。</param>
+    /// <returns>平滑时间（秒）。</returns>
+    public static float SmoothTimeFromRate(float ratePerSecond, float fallbackSmoothTime)
+        => CameraFeel.SmoothTimeFromRate(ratePerSecond, fallbackSmoothTime);
+
+    /// <summary>
+    /// 计算瞄准偏移的<b>未平滑目标值</b>（世界空间，水平面内）。纯函数，不读实例状态。
+    /// <para>
+    /// <b>为什么不能直接用瞄准方向的水平分量</b>：相机有偏航角时，世界 X/Z 与屏幕左右/上下不对应。
+    /// 「朝屏幕外推」的正确做法是把瞄准方向投影到相机的<u>屏幕平面基</u>上：
+    /// 取相机的 right 轴（屏幕右）与「世界 -Y 在屏幕平面上的投影」得到屏幕上方向，
+    /// 再按分量加权合成世界位移。yaw = 0 时它退化成「瞄准方向的水平分量」，yaw 不为 0 时也能正确跟随。
+    /// </para>
+    /// <para>
+    /// 死区 / 封顶 / 比例全部由 <see cref="CameraFeel.LookAheadOffset"/> 负责（纯、可测）。
+    /// </para>
+    /// </summary>
+    /// <param name="aimDirection">瞄准方向（水平面；零向量表示无方向）。</param>
+    /// <param name="settings">镜头设置。</param>
+    /// <returns>未平滑的偏移（世界空间，Y 恒为 0）。</returns>
+    public static Vector3 LookAheadOffset(Vector3 aimDirection, CameraRigSettings settings)
     {
-        if (!(rate > 0f) || !(deltaSeconds > 0f))
+        // 只取水平面分量：瞄准方向带一点点竖直分量时不该把相机推到地下或天上。
+        Vector3 flatAim = new Vector3(aimDirection.X, 0f, aimDirection.Z);
+        if (flatAim.LengthSquared() <= float.Epsilon || !(settings.LookAheadRatio > 0f))
         {
-            return 1f;
+            return Vector3.Zero;
         }
-        float t = 1f - MathF.Exp(-rate * deltaSeconds);
-        return t < 0f ? 0f : (t > 1f ? 1f : t);
+        flatAim = flatAim.Normalized();
+
+        // 屏幕平面基。
+        Vector3 toCamera = DirectionToCamera(settings.PitchDegrees, settings.YawDegrees);
+        Vector3 forward = -toCamera;
+        Vector3 right = forward.Cross(Vector3.Up);
+        if (right.LengthSquared() <= float.Epsilon)
+        {
+            // 正俯视（pitch ≈ 90°）时 forward 与 Up 平行，叉乘退化 —— 用偏航角直接给出 right。
+            // 注意：这里绝不能写 pitch == 90f，32 位浮点下 cos 会有 -4.37E-08 的残差。
+            float yaw = Mathf.DegToRad(settings.YawDegrees);
+            right = new Vector3(MathF.Cos(yaw), 0f, -MathF.Sin(yaw));
+        }
+        right = right.Normalized();
+
+        Vector3 screenUp = right.Cross(forward).Normalized();
+        Vector3 screenUpFlat = new Vector3(screenUp.X, 0f, screenUp.Z);
+        if (screenUpFlat.LengthSquared() <= float.Epsilon)
+        {
+            return Vector3.Zero;
+        }
+        screenUpFlat = screenUpFlat.Normalized();
+
+        // 把世界瞄准方向投到屏幕平面上，得到 (往屏幕右, 往屏幕上) 两个分量。
+        float aimRight = flatAim.Dot(right);
+        float aimUp = flatAim.Dot(screenUpFlat);
+
+        // 手感数学（死区 / 比例 / 封顶）全部在 Game.Core.Camera.CameraFeel 里，纯函数。
+        (float offsetRight, float offsetUp) = CameraFeel.LookAheadOffset(
+            aimRight, aimUp, settings.OrthoHeight,
+            settings.LookAheadRatio, settings.LookAheadMaxMeters, settings.LookAheadDeadZoneRatio);
+
+        return right * offsetRight + screenUpFlat * offsetUp;
     }
 
     /// <summary>
-    /// 计算给定聚焦点对应的相机**世界位置**（纯函数，便于裸测）。
+    /// 计算给定聚焦点对应的相机世界位置（纯函数，便于裸测）。
     /// <para>
     /// 几何：俯仰 pitch、偏航 yaw 定义一条从「聚焦点朝反方向」的单位向量，
     /// 相机 = 聚焦点 - 该方向 × 距离。pitch = 90° 时相机正上方，pitch = 0° 时相机在水平面。
@@ -176,7 +298,7 @@ public sealed class TopDownCameraRig
     }
 
     /// <summary>
-    /// 「聚焦点 → 相机」的单位方向（俯仰/偏航，度）。yaw = 0、pitch = 90° 时返回 <c>+Y</c>。
+    /// 「聚焦点 → 相机」的单位方向（俯仰/偏航，度）。yaw = 0、pitch = 90° 时返回 +Y。
     /// </summary>
     /// <param name="pitchDegrees">俯仰角（度）。</param>
     /// <param name="yawDegrees">偏航角（度）。</param>
@@ -192,67 +314,21 @@ public sealed class TopDownCameraRig
     }
 
     /// <summary>
-    /// 计算前瞻位移（水平面内，长度受 <see cref="CameraRigSettings.LookAheadMaxMeters"/> 封顶）。
-    /// <para>
-    /// <b>为什么不能直接用瞄准方向的水平分量</b>：相机有偏航角时，世界 X/Z 与屏幕左右/上下不对应。
-    /// 「朝屏幕外推」的正确做法是把瞄准方向投影到相机的<u>屏幕平面基</u>上：
-    /// 取相机的 right 轴（屏幕右）与「世界 -Y 在屏幕平面上的投影」得到屏幕上方向，
-    /// 再按分量加权合成世界位移。yaw = 0 时它退化成「瞄准方向的水平分量」，yaw ≠ 0 时也能正确跟随。
-    /// </para>
+    /// 计算「平滑后的偏移该朝哪走」—— 这是<u>状态机</u>部分，与纯函数
+    /// <see cref="LookAheadOffset"/> 分开：瞄准方向为零时保持上一帧，而不是让相机弹回中心。
     /// </summary>
-    private Vector3 ComputeLookAhead(Vector3 aimDirection, Vector3 focus)
+    private Vector3 ComputeLookAheadTarget(Vector3 aimDirection, Vector3 focus)
     {
-        float ratio = _settings.LookAheadRatio;
-        if (!(ratio > 0f))
-        {
-            return Vector3.Zero;
-        }
-        // 只取水平面分量：瞄准方向带一点点竖直分量时不该把相机推到地下或天上。
-        Vector3 flatAim = new Vector3(aimDirection.X, 0f, aimDirection.Z);
-        if (flatAim.LengthSquared() <= float.Epsilon)
-        {
-            return _hasFocus ? _lookAhead : Vector3.Zero;
-        }
-        flatAim = flatAim.Normalized();
-
-        // 屏幕基：right = 相机的 +X；screenUp = 「世界里指向画面上方」的方向，
-        // 由 forward（聚焦点→相机）与 right 叉乘得到，再投影回水平面。
-        Vector3 toCamera = DirectionToCamera(_settings.PitchDegrees, _settings.YawDegrees);
-        Vector3 forward = -toCamera;
-        Vector3 right = forward.Cross(Vector3.Up);
-        if (right.LengthSquared() <= float.Epsilon)
-        {
-            // 正俯视（pitch = 90°）时 forward 与 Up 平行，叉乘退化 —— 用偏航角直接给出 right。
-            float yaw = Mathf.DegToRad(_settings.YawDegrees);
-            right = new Vector3(MathF.Cos(yaw), 0f, -MathF.Sin(yaw));
-        }
-        right = right.Normalized();
-        Vector3 screenUp = right.Cross(forward).Normalized();   // 世界里的「屏幕上方向」（含竖直分量）
-        Vector3 screenUpFlat = new Vector3(screenUp.X, 0f, screenUp.Z);
-        if (screenUpFlat.LengthSquared() <= float.Epsilon)
-        {
-            return _hasFocus ? _lookAhead : Vector3.Zero;
-        }
-        screenUpFlat = screenUpFlat.Normalized();
-
-        // 瞄准方向在屏幕平面上的分量（X = 往屏幕右，Y = 往屏幕上）。
-        float sx = flatAim.Dot(right);
-        float sy = flatAim.Dot(screenUpFlat);
-
-        float want = _settings.OrthoHeight * ratio;
-        float max = _settings.LookAheadMaxMeters;
-        float len = MathF.Sqrt(sx * sx + sy * sy) * want;
-        if (max > 0f && len > max)
-        {
-            float scale = max / len;
-            sx *= scale;
-            sy *= scale;
-        }
         _ = focus;
-        return right * (sx * want) + screenUpFlat * (sy * want);
+        if (!(aimDirection.X * aimDirection.X + aimDirection.Z * aimDirection.Z > float.Epsilon))
+        {
+            // 没有瞄准方向（鼠标没指向地面 / headless）：保持上一帧偏移，避免画面突然回中。
+            return _hasFocus ? _lookAhead : Vector3.Zero;
+        }
+        return LookAheadOffset(aimDirection, _settings);
     }
 
-    /// <summary>把聚焦点夹进跟随边界（内缩 <see cref="CameraRigSettings.BoundsPadding"/>）。</summary>
+    /// <summary>把聚焦点夹进跟随边界（内缩 BoundsPadding）。</summary>
     private Vector3 ClampToBounds(Vector3 p)
     {
         if (!_settings.BoundsEnabled)
@@ -308,6 +384,7 @@ public sealed class TopDownCameraRig
         _camera.GlobalPosition = position;
         // 朝向聚焦点：正交下这决定了画面里一切物的朝向（见类文档「为什么永远 LookAt 玩家」）。
         // 传入的 up 必须与视线不平行，否则 LookAt 会退化；俯仰 90° 时用 -Z（画面「上方」= 世界 +Z 方向）。
+        // 注意：用|相减| < eps 而不是 == 90f —— 32 位浮点下 90° 会有残差。
         Vector3 up = MathF.Abs(_settings.PitchDegrees - RightAngleDegrees) < UpDegenerateEpsilon
             ? Vector3.Forward
             : Vector3.Up;
@@ -317,6 +394,6 @@ public sealed class TopDownCameraRig
     /// <summary>直角（度）：俯仰恰好 90° 时 LookAt 的 up 不能是 +Y。</summary>
     private const float RightAngleDegrees = 90f; // arch-ok: 几何常量（直角定义），不是玩法数值
 
-    /// <summary>判定「俯仰接近 90°」的角度容差（度）。</summary>
+    /// <summary>判定「俯仰接近 90°」的角度容差（度）。32 位浮点下 90° 有 -4.37E-08 残差，必须留容差。</summary>
     private const float UpDegenerateEpsilon = 0.01f; // arch-ok: 浮点安全阈值
 }

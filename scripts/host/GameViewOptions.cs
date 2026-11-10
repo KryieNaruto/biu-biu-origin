@@ -46,11 +46,29 @@ public partial class GameViewOptions : Resource
     public float CameraYawDegrees { get; set; } = CameraYawDegreesDefault;
 
     /// <summary>
-    /// 跟随平滑（指数收敛速率，每秒）。值越大越「硬」，0 = 瞬移（硬锁）。
-    /// 实现为 <c>1 - exp(-rate * dt)</c>，因此与帧率无关（144Hz 与 60Hz 手感一致）。
+    /// 跟随平滑时间（秒）：临界阻尼弹簧的「时间尺度」，值越大镜头越慢、越有「滑动感」。
+    /// <para>
+    /// 0 = 硬锁（瞬移跟死）。手感参考：0.05 偏硬 / <b>0.12 推荐</b> / 0.25 偏飘 / 0.4 以上像在拖拽。
+    /// 数学关系 <c>ω = 2 / T</c>（阻尼比 ζ = 1），约 <c>2.5T</c> 秒收敛到位。
+    /// </para>
+    /// <para>
+    /// <b>为什么不再是「每秒速率」</b>：速率是一阶低通的参数（只记位置不记速度 → 粘着走）；
+    /// 二阶弹簧需要「时间」这个量纲才能定义加速/减速的节奏。镜头包里的
+    /// <c>FollowRatePerSecond</c> 会在 <see cref="BuildCameraSettings"/> 里换算成秒（<c>1 / rate</c>）。
+    /// </para>
     /// </summary>
-    [Export(PropertyHint.Range, "0,40,0.1")]
-    public float CameraFollowLerp { get; set; } = CameraFollowLerpDefault;
+    [Export(PropertyHint.Range, "0,1,0.01")]
+    public float CameraFollowSmoothTime { get; set; } = CameraFollowSmoothTimeDefault;
+
+    /// <summary>
+    /// 瞄准偏移（前瞻）的平滑时间（秒），与跟随<u>独立</u>。
+    /// <para>
+    /// 应<u>慢于</u>跟随（推荐 0.2~0.3，即跟随的 2 倍量级）：鼠标划过时偏移慢慢漂过去，
+    /// 观感是「顺手」；若与跟随同速甚至更快，就会变成「镜头跟着鼠标抽搐」，即所谓「晕」。
+    /// </para>
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1,0.01")]
+    public float CameraLookAheadSmoothTime { get; set; } = CameraLookAheadSmoothTimeDefault;
 
     /// <summary>
     /// 正交相机的**可见高度**（米）。这是正交投影下唯一决定「看多大范围」的参数。
@@ -69,6 +87,17 @@ public partial class GameViewOptions : Resource
     /// <summary>前瞻的最大位移（米）：防止准星贴边时相机甩得太远。</summary>
     [Export(PropertyHint.Range, "0,20,0.1")]
     public float CameraLookAheadMaxMeters { get; set; } = CameraLookAheadMaxMetersDefault;
+
+    /// <summary>
+    /// 瞄准偏移的**死区**（0..1，相对满偏比例）。0 = 无死区。
+    /// <para>
+    /// 为什么需要：角色站在画面中心时，鼠标在中心附近微动（手抖、点射时的小幅调整）
+    /// 若直接映射成位移，镜头会持续以毫米级抖动，久看极累。死区把这部分吃掉，
+    /// 越过死区后偏移量从 0 <u>连续</u>增长（不是阶跃），所以不会有「一下弹出去」的突兀感。
+    /// </para>
+    /// </summary>
+    [Export(PropertyHint.Range, "0,0.9,0.01")]
+    public float CameraLookAheadDeadZoneRatio { get; set; } = CameraLookAheadDeadZoneRatioDefault;
 
     /// <summary>跟随的竖直轴（Y）：正交俯视下地面是平面，通常不跟随高度，免得上下坡时画面抖。</summary>
     [Export]
@@ -290,24 +319,39 @@ public partial class GameViewOptions : Resource
         float distance = imported.Distance > 0f ? imported.Distance : CameraDistance;
         float pitch = imported.PitchDegrees > 0f ? imported.PitchDegrees : CameraPitchDegrees;
         float yaw = float.IsNaN(imported.YawDegrees) ? CameraYawDegrees : imported.YawDegrees;
-        float follow = imported.FollowLerp >= 0f ? imported.FollowLerp : CameraFollowLerp;
+        // 镜头包给的是「每秒速率」（策划友好单位），镜头设置要的是「平滑时间（秒）」。
+        // 在边界上换算一次：smoothTime = 1 / rate。rate <= 0 属于「表里没给」，用本资源默认。
+        // 注意：旧实现把 rate 直接当指数收敛速率喂给相机，而 Excel 里填的 0.14/0.10/0.18
+        // 是「插值系数」语义 → 60fps 下每帧只收敛 0.2%，相机几乎不动。本次换算一并修掉。
+        float followSmoothTime = imported.FollowLerp > 0f
+            ? Game.Core.Camera.CameraFeel.SmoothTimeFromRate(imported.FollowLerp, CameraFollowSmoothTime)
+            : CameraFollowSmoothTime;
         float ortho = orthoHeightOverride > 0f ? orthoHeightOverride : CameraOrthoHeight;
+
+        // 前瞻同样「表优先，资源保底」。注意 0 是合法值（= 完全不偏移），
+        // 所以判据是「>= 0」而不是「> 0」—— 否则策划把表填成 0 关掉前瞻会被忽略。
+        float lookAheadRatio = imported.LookAheadRatio >= 0f ? imported.LookAheadRatio : CameraLookAheadRatio;
+        float lookAheadMax = imported.LookAheadMaxMeters >= 0f
+            ? imported.LookAheadMaxMeters
+            : CameraLookAheadMaxMeters;
 
         return new CameraRigSettings(
             distance,
             pitch,
             yaw,
-            follow,
+            followSmoothTime,
             ortho,
-            CameraLookAheadRatio,
-            CameraLookAheadMaxMeters,
+            lookAheadRatio,
+            lookAheadMax,
             CameraFollowHeight,
             CameraNearPlaneMeters,
             CameraFarPlaneMeters,
             CameraBoundsEnabled,
             CameraBoundsMin,
             CameraBoundsMax,
-            CameraBoundsPadding);
+            CameraBoundsPadding,
+            CameraLookAheadSmoothTime,
+            CameraLookAheadDeadZoneRatio);
     }
 
     /// <summary>
@@ -346,10 +390,32 @@ public partial class GameViewOptions : Resource
                 nameof(GameViewOptions), ".", nameof(CameraPitchDegrees), " 必须在 (0, ",
                 AngleLimitDegrees.ToString(System.Globalization.CultureInfo.InvariantCulture), "] 度之间。"));
         }
-        if (CameraFollowLerp < 0f)
+        if (CameraFollowSmoothTime < 0f || float.IsNaN(CameraFollowSmoothTime))
         {
-            throw new System.InvalidOperationException(
-                string.Concat(nameof(GameViewOptions), ".", nameof(CameraFollowLerp), " 不能为负。"));
+            throw new System.InvalidOperationException(string.Concat(
+                nameof(GameViewOptions), ".", nameof(CameraFollowSmoothTime), " 不能为负（0 = 硬锁）。"));
+        }
+        if (CameraLookAheadSmoothTime < 0f || float.IsNaN(CameraLookAheadSmoothTime))
+        {
+            throw new System.InvalidOperationException(string.Concat(
+                nameof(GameViewOptions), ".", nameof(CameraLookAheadSmoothTime), " 不能为负（0 = 硬锁）。"));
+        }
+        if (CameraLookAheadDeadZoneRatio < 0f || CameraLookAheadDeadZoneRatio >= 1f
+            || float.IsNaN(CameraLookAheadDeadZoneRatio))
+        {
+            throw new System.InvalidOperationException(string.Concat(
+                nameof(GameViewOptions), ".", nameof(CameraLookAheadDeadZoneRatio),
+                " 必须在 [0, 1) 之间（1 会让偏移永远为 0）。"));
+        }
+        if (CameraLookAheadRatio < 0f || float.IsNaN(CameraLookAheadRatio))
+        {
+            throw new System.InvalidOperationException(string.Concat(
+                nameof(GameViewOptions), ".", nameof(CameraLookAheadRatio), " 不能为负。"));
+        }
+        if (CameraLookAheadMaxMeters < 0f || float.IsNaN(CameraLookAheadMaxMeters))
+        {
+            throw new System.InvalidOperationException(string.Concat(
+                nameof(GameViewOptions), ".", nameof(CameraLookAheadMaxMeters), " 不能为负。"));
         }
         if (CameraOrthoHeight <= 0f)
         {
@@ -396,8 +462,16 @@ public partial class GameViewOptions : Resource
     /// <summary>相机偏航默认值（度）。</summary>
     public const float CameraYawDegreesDefault = 0f;
 
-    /// <summary>相机跟随平滑默认值（每秒）。</summary>
-    public const float CameraFollowLerpDefault = 10f; // arch-ok: 表现参数默认值，由 .tres / 镜头包覆盖
+    /// <summary>相机跟随平滑时间默认值（秒）。0.12s ≈ ω=16.7，约 0.3 秒到位，滑动感明显但不拖泥带水。</summary>
+    public const float CameraFollowSmoothTimeDefault = 0.12f; // arch-ok: 表现参数默认值，由 .tres / 镜头包覆盖
+
+    /// <summary>
+    /// 瞄准偏移平滑时间默认值（秒）。刻意取跟随的 2 倍：偏移滞后于鼠标，「顺手」而不晕。
+    /// </summary>
+    public const float CameraLookAheadSmoothTimeDefault = 0.25f; // arch-ok: 表现参数默认值，由 .tres 覆盖
+
+    /// <summary>瞄准偏移死区默认值：中心 15% 的半径内不产生偏移，抵掉手抖。</summary>
+    public const float CameraLookAheadDeadZoneRatioDefault = 0.15f; // arch-ok: 表现参数默认值，由 .tres 覆盖
 
     /// <summary>正交可见高度默认值（米）。</summary>
     public const float CameraOrthoHeightDefault = 14f; // arch-ok: 表现参数默认值，由 .tres / 镜头包覆盖
@@ -509,8 +583,10 @@ public enum ActorBodyShape
 /// <para>
 /// 与 <c>Game.Data.CharacterCameraPack</c> 的对应关系：<see cref="Distance"/> ← <c>Distance</c>、
 /// <see cref="PitchDegrees"/> ← <c>PitchDeg</c>、<see cref="YawDegrees"/> ← <c>YawDeg</c>、
-/// <see cref="FollowLerp"/> ← <c>FollowLerp</c>、<see cref="CursorScreenHeightRatio"/> ←
-/// <c>CursorScreenHeightRatio</c>。后三表没给时留 <c>NaN</c> 或负数，表示「用默认」。
+/// <see cref="FollowLerp"/> ← <c>FollowRatePerSecond</c>、<see cref="CursorScreenHeightRatio"/> ←
+/// <c>CursorScreenHeightRatio</c>、<see cref="LookAheadRatio"/> ← <c>LookAheadRatio</c>、
+/// <see cref="LookAheadMaxMeters"/> ← <c>LookAheadMaxMeters</c>。
+/// 表没给的项留 <c>NaN</c> 或负数，表示「用本资源默认」。
 /// </para>
 /// <para>
 /// <b>为什么要这层中转</b>：<c>scripts/host/view/**</c> 不认识 <c>Game.Data</c>（保持视图层可裸测、
@@ -528,24 +604,53 @@ public readonly struct CameraPackSettings
     /// <summary>偏航角（度）；<c>NaN</c> 表示表里没给。</summary>
     public readonly float YawDegrees;
 
-    /// <summary>跟随平滑（每秒）；&lt; 0 表示表里没给。</summary>
+    /// <summary>
+    /// 跟随<u>每秒收敛速率</u>；&lt;= 0 表示表里没给。
+    /// <para>
+    /// 名字里的 <c>Lerp</c> 是历史包袱（Excel 旧列叫 FollowLerp），语义其实是「每秒」。
+    /// 它会在 <see cref="GameViewOptions.BuildCameraSettings"/> 里换算成相机的平滑时间（<c>1 / rate</c>），
+    /// 本 struct 自己不做换算 —— 它只是数据中转。
+    /// </para>
+    /// </summary>
     public readonly float FollowLerp;
 
     /// <summary>光标屏幕高度比例（0..1，镜头包自带；本类实现不消费，留给 Lead 决定是否用于准星）。</summary>
     public readonly float CursorScreenHeightRatio;
 
+    /// <summary>前瞻比例（镜头包自带，0 = 不偏移）；负数表示表里没给，用本资源默认。</summary>
+    public readonly float LookAheadRatio;
+
+    /// <summary>前瞻最大位移（米，0 = 不封顶）；负数表示表里没给，用本资源默认。</summary>
+    public readonly float LookAheadMaxMeters;
+
     /// <summary>构造镜头包中转值。</summary>
-    public CameraPackSettings(float distance, float pitchDegrees, float yawDegrees, float followLerp, float cursorScreenHeightRatio)
+    /// <param name="distance">相机距离（米）。</param>
+    /// <param name="pitchDegrees">俯仰角（度）。</param>
+    /// <param name="yawDegrees">偏航角（度）。</param>
+    /// <param name="followLerp">跟随每秒速率（&lt;= 0 = 表里没给）。</param>
+    /// <param name="cursorScreenHeightRatio">光标屏幕高度比例。</param>
+    /// <param name="lookAheadRatio">前瞻比例（&lt; 0 = 表里没给）。</param>
+    /// <param name="lookAheadMaxMeters">前瞻封顶（米，&lt; 0 = 表里没给）。</param>
+    public CameraPackSettings(
+        float distance,
+        float pitchDegrees,
+        float yawDegrees,
+        float followLerp,
+        float cursorScreenHeightRatio,
+        float lookAheadRatio = -1f,
+        float lookAheadMaxMeters = -1f)
     {
         Distance = distance;
         PitchDegrees = pitchDegrees;
         YawDegrees = yawDegrees;
         FollowLerp = followLerp;
         CursorScreenHeightRatio = cursorScreenHeightRatio;
+        LookAheadRatio = lookAheadRatio;
+        LookAheadMaxMeters = lookAheadMaxMeters;
     }
 
     /// <summary>「表里什么都没给」的空值：全部用默认机身。</summary>
-    public static CameraPackSettings Empty => new(float.NaN, float.NaN, float.NaN, -1f, 0f);
+    public static CameraPackSettings Empty => new(float.NaN, float.NaN, float.NaN, -1f, 0f, -1f, -1f);
 }
 
 /// <summary>
@@ -563,8 +668,20 @@ public readonly struct CameraRigSettings
     /// <summary>偏航角（度）。</summary>
     public readonly float YawDegrees;
 
-    /// <summary>跟随平滑速率（每秒，0 = 硬锁）。</summary>
-    public readonly float FollowLerp;
+    /// <summary>
+    /// 跟随平滑时间（秒，0 = 硬锁）。
+    /// <para>
+    /// 语义是<u>临界阻尼弹簧的时间尺度</u>（ω = 2 / T），不是「每秒速率」。
+    /// 名字里的 <c>SmoothTime</c> 就是 Unity <c>SmoothDamp</c> 的同名参数含义，便于美术/策划对齐。
+    /// </para>
+    /// </summary>
+    public readonly float FollowSmoothTime;
+
+    /// <summary>瞄准偏移的平滑时间（秒，0 = 硬锁），与 <see cref="FollowSmoothTime"/> 独立。</summary>
+    public readonly float LookAheadSmoothTime;
+
+    /// <summary>瞄准偏移死区（0..1，相对满偏比例；0 = 无死区）。</summary>
+    public readonly float LookAheadDeadZoneRatio;
 
     /// <summary>正交可见高度（米）。</summary>
     public readonly float OrthoHeight;
@@ -611,12 +728,16 @@ public readonly struct CameraRigSettings
         bool boundsEnabled,
         Vector2 boundsMin,
         Vector2 boundsMax,
-        float boundsPadding)
+        float boundsPadding,
+        float lookAheadSmoothTime = float.NaN,
+        float lookAheadDeadZoneRatio = 0f)
     {
         Distance = distance;
         PitchDegrees = pitchDegrees;
         YawDegrees = yawDegrees;
-        FollowLerp = followLerp;
+        // 参数名保持 followLerp（历史调用点按位置传参，Lead 的 CharacterSession 与
+        // tests/Camera/CameraRigTests.cs 都依赖这个位置/名字）；含义已变为「平滑时间（秒）」。
+        FollowSmoothTime = followLerp;
         OrthoHeight = orthoHeight;
         LookAheadRatio = lookAheadRatio;
         LookAheadMaxMeters = lookAheadMaxMeters;
@@ -627,6 +748,8 @@ public readonly struct CameraRigSettings
         BoundsMin = boundsMin;
         BoundsMax = boundsMax;
         BoundsPadding = boundsPadding;
+        LookAheadSmoothTime = lookAheadSmoothTime > 0f ? lookAheadSmoothTime : followLerp;
+        LookAheadDeadZoneRatio = lookAheadDeadZoneRatio;
     }
 
     /// <summary>用 <see cref="GameViewOptions"/> 的默认机身构造（等同「表里没给镜头包」）。</summary>
@@ -634,5 +757,25 @@ public readonly struct CameraRigSettings
     public static CameraRigSettings FromOptions(GameViewOptions options)
     {
         return options.BuildCameraSettings(CameraPackSettings.Empty, 0f);
+    }
+
+    /// <summary>
+    /// 换一套跟随边界（只改边界，其余字段照抄）。纯值 struct 因此返回新实例。
+    /// <para>
+    /// <b>为什么必须给不可变 struct 提供这个</b>：<c>TopDownCameraRig.SetBounds</c> 要能在运行期
+    /// 换房间时调整边界，而 <c>readonly struct</c> 的字段不能直接赋值——没有这个方法，
+    /// 调用方就只能手工把 14 个字段再抄一遍，一改字段就漏。
+    /// </para>
+    /// </summary>
+    /// <param name="minXZ">最小角（X/Z）。</param>
+    /// <param name="maxXZ">最大角（X/Z）。</param>
+    /// <param name="enabled">是否启用。</param>
+    /// <returns>换过边界的设置副本。</returns>
+    public CameraRigSettings WithBounds(Vector2 minXZ, Vector2 maxXZ, bool enabled)
+    {
+        return new CameraRigSettings(
+            Distance, PitchDegrees, YawDegrees, FollowSmoothTime, OrthoHeight,
+            LookAheadRatio, LookAheadMaxMeters, FollowHeight, NearMeters, FarMeters,
+            enabled, minXZ, maxXZ, BoundsPadding, LookAheadSmoothTime, LookAheadDeadZoneRatio);
     }
 }

@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v16  最后更新: 2026-11-10（§14.10 训练房 3D 测试场景；§17.11 「抽象没贯彻到底」全面体检 + 契约硬规则；§17.10.1 全部先跑白模：`ModelPath` 一律留空、占位路径清零；§17.10 模型属性收敛为唯一入口 `VisualPack`；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v17  最后更新: 2026-11-10（§15.8 相机跟随手感：临界阻尼弹簧 + 鼠标方向可调偏移；§14.10 训练房 3D 测试场景；§17.11 「抽象没贯彻到底」全面体检 + 契约硬规则；§17.10.1 全部先跑白模：`ModelPath` 一律留空、占位路径清零；§17.10 模型属性收敛为唯一入口 `VisualPack`；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -259,7 +259,6 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 2. **`Game.Core.Ecs` 是 `Game.Core` 的子命名空间，不得依赖任何业务命名空间。** 它同时也是「不含引擎类型」的：内核里只有 `System.Numerics.Vector3/Quaternion`，测试工程因此可以在**不加载 Godot 的进程**里跑（`tests/` 用 `<Compile Include="..\scripts\core\**\*.cs">` 而不是 `ProjectReference`，正是为了绕开 GodotSharp 的运行时依赖）。
 3. `Game.Native` 的左下角全部为 ❌，但 ECS 批量求解器（§9.4）是「Core 登记接口 → Host 注入实现 → Native 提供加速」的翻转依赖，**不是** Core 直连 Native。
 
-
 ### 2.4 禁止的反向依赖与典型违规
 
 | 违规 | 例子 | 守卫 | 正确做法 |
@@ -362,7 +361,6 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 | `ViewRegistry` | 实体 → `Node3D` 的视图池（ECS 侧只存 `View.Slot` 这个 int） | `Rent(...)` / `Return(int)` / `SyncTransform(...)` | `scripts/host/ViewRegistry.cs` | ✅ |
 
 > **`HostEventQueue` 为什么在 Host 而不在 Core**：`EventBus.Publish` 是**同步立即派发**——core 不该知道「帧边界」这个概念。而 ECS.md §6 要求「Flush 之后、视图桥之前」统一派发，这是**宿主的时间图职责**。所以「帧内排队的容器」放 Host，「事件总线本身」留 Core。**Lead 裁决，改动需先回写本节。**
-
 
 ### 3.2.1 声明位置 vs 实现位置（为什么分两列）
 
@@ -756,7 +754,6 @@ user://saves/<slot>.json
 > **为什么命中检测放 `FixedUpdate` 而结算放 `Update`**：命中检测要积分位移、必须恒定 dt（确定性）；结算涉及「打得死不死」，一帧内只该判一次，放 `Update`。这个拆分让「同 seed 同结果」在位移层面成立，而结算策略（暴击、斩杀）可以有帧级随机。
 >
 > **纪律**：`scripts/combat/` 里的系统**不得**自己 `World.Create`/`Destroy`——一律 `World.Commands`。这条由 `tests/Kernel/ChunkAndPipelineTests.StructuralChange_InsideForEach_Throws` 守护。
-
 
 ### 6.2 目标：单帧结算顺序
 
@@ -1197,10 +1194,12 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-10 | v17 | **相机跟随手感：临界阻尼弹簧 + 鼠标方向可调偏移（§15.8）** | 用户要求「① 相机丝滑跟随人物，要有滑动感 ② 基于鼠标（射击方向）的可调参幅度偏移」。**修两个「配置了但没接」的老问题**：① `FollowLerp` 存的是**逐帧 lerp 系数**（0.14），却被当成**每秒速率**喂给 `1-exp(-rate*dt)` → 收敛仅 ~13%/s，相机几乎不动；② `LookAheadRatio`/`LookAheadMaxMeters` **只活在 Resource 上**，从未进 `CameraPackSettings`，Excel 改这两格零效果。**做法**：把数学拆成零引擎依赖的 `scripts/core/Camera/CameraFeel.cs`（`grep -c "using Godot"` = 0，故 `tests/` 那条「不引 GodotSharp 也能编 `scripts/core/**`」的结构性守卫继续成立），`TopDownCameraRig` 退化为薄壳。跟随改用**二阶临界阻尼弹簧**（zeta=1，解析解 `x' = target + (A+B*dt)*e^(-w*dt)`），位移严格单调、**过冲恒为 0**、任意 dt 稳定；瞄准偏移独立弹簧 + 死区（边界连续、`[dz,1]` 重映射到 `[0,1]`）+ 封顶。**数据层**：`CameraPacks` 5 列 → 7 列，`FollowLerp` **改名** `FollowRatePerSecond`（语义从「系数」变「速率」，改名而非加列，让旧调用点编译期就断），新增 `LookAheadRatio`/`LookAheadMaxMeters`；`follow_std 10.0/0.18/1.6`、`follow_heavy 7.0/0.14/1.4`、`follow_fast 14.0/0.24/2.0`。**踩坑（记下来别再犯）**：速度必须取自解析式，**禁止**用 `(x_next-x)/dt` 反推——后者在起步段把「位置被阻尼缩回的部分」当速度再喂回去（正反馈），实测 60 帧后发散到 **2,355,357**。**验证（两层）**：① 纯函数测试 26 用例全绿 + **4 个变异全部被抓**；其中「1 秒终点残差」原理上区分不了弹簧与固定 lerp（lerp 残差 1.5e-5 反而更小），**只有中段 0.15s 才暴露 1.27m 差异**，故帧率守卫职责交给三点检查。② 新增引擎内探针 `--camera-probe` 8 项全绿：人物移动 5m 后 `focus` 距新位置 **0.0029m**、瞄准 ±X 时偏移 **+1.5903/-1.5903**（摆动 3.1807m、不超 1.600m 上限）；同样做变异（改成跟出生点 → 偏差恰好 5.0000m；改成常数偏置 → 符号不变号 + 超上限）。**最关键的教训**：第一版探针让人物**静止**就断言「focus 贴着人物」，**变异测试骗过了它**——人物不动时「跟」与「不跟」观测值完全相同，必须**制造真实位移**才能让命题可判定。**已知债务（刻意不做）**：`CameraPacks.Height` 被灌进 `PitchDeg`、`FovDegrees` 从未被读——修它会改掉所有镜头俯仰角、污染本轮调参的因果判断，单独排期。**测试** 382 通过 / 3 失败，3 失败经 stash 纯净基线对照证实与相机无关（另一会话 `characters.xlsx` 在途改动）；架构守卫 **0 error / 0 warning** | `scripts/core/Camera/CameraFeel.cs`、`scripts/host/view/TopDownCameraRig.cs`、`scripts/host/GameViewOptions.cs`、`scripts/host/CharacterSession.cs`、`scripts/host/DungeonDebugScene.cs`、`scripts/host/debug/CameraFollowSelfCheck.cs`、`scripts/data/CharacterAssemblySpec.cs`、`scripts/data/CharacterContentSet.cs`、`data/excel/characters.xlsx`、`tools/data_pipeline/gen_characters_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`tests/Camera/CameraRigTests.cs`、`tools/probes/camera_follow_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-10 | v16 | **训练房（§14.10）：一间灰房 + 一个人 + 一个假人** | 用户要求「做一个3D测试场景，只有一个灰色房间，四面有墙，地板是斑马网格，一个人物，一个测试假人」。新增 `scenes/debug/TrainingRoom.tscn` + `scripts/host/debug/TrainingRoomScene.cs`（约 380 行）。① **场地**：`RoomCells×RoomCells`（默认 8×8、1m 格）逐格 `BoxMesh` 拼棋盘格地板（`(x+z)&1` 深浅灰交替），四面墙独立尺寸封住四角；房间大小/格数/墙高/配色**全部 `[Export]`** 可在 Inspector 改。② **人物**：整块交给 `CharacterSession` + `test_hero` 全套（复用组合根，不另写一个人），本场景 0 行玩法逻辑。③ **假人**：用户明确选「先只要站着的模型、打不动」→ 做成**纯表现节点**（胶囊身体 + 球头），**不进 ECS**、子弹直接穿过；这是**写在文档里的有意欠账**，要可打时换成 `ActorSpawnRequest` 即可。④ **素材**：全部几何体 + 纯色材质，**不引用 `素材/` 任何 `.glb`**，与 §17.10.1「全部先跑白模」一致。⑤ **两个坑**：`CharacterSession` 构造时自己装系统并调 `pipeline.Build()`（宿主再 `Add` 会重复移动/抛异常）；自检不能在 `_Ready` 数 `Player`（要到第一次 `Tick` 才出生，会误报「没出生」），改延迟 5 帧。**验证**：`dotnet build` 0 错 0 警；架构守卫 `new=0 existing=0 errors=0 warnings=0`；headless 实跑自检 `floors=64/64 walls=4/4 dummy=True parts=2 hero=True`。 | `scripts/host/debug/TrainingRoomScene.cs`、`scenes/debug/TrainingRoom.tscn`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-10 | v14 | **全部先跑白模：占位路径清零（§17.10.1）** | 用户看了 §17.10 交回的占位配型后决定：「先全部用白模即可，占位不要使用"素材"的路径，后续需要挑选让如项目资源文件夹中。」**上一轮的问题**：占位配型虽诚实标注，本质仍是用素材库原料区假装成品——`素材/` 是美术原料区，不是项目运行时资源，路径随时会挪动（历史上 `res://素材/Characters/TestHero.glb` 正因如此不存在却静默回退白模，长期无人发现）。**本轮收敛**：① `combat.xlsx` 20 个 + `characters.xlsx` 4 个 = **24 个外观包的 `ModelPath` 全部留空**，`TintHex`/`AnimClips` 一并清空（死字段），`Scale` 保留待模型回来生效；② **包壳（Id）全部保留**当桶键用，`Objects.VisualPack` 的 26 条引用一条未改——以后挑好资产**只改 `ModelPath` 一格**，不合并成 `vp_none` 是为了不丢「手枪≠子弹≠哥布林」的分类信息；③ `vp_none` 语义收敛为「★ **永远**不要模型」；④ **校验器第 ③ 条由 error 降为 `[提醒]`**：全白模后 26 个物件会全红、校验直接失败，但删掉又会丢掉「谁还在等资产」的追踪——降级后白模能跑，同时每个待配模型的物件留一条提醒，回填即消失。**原则**：「暂时没有」要能被看见（提醒清单），「永远没有」要能被声明（`vp_none`），两者都不能靠空着表达。⑤ 改动落在**生成器**（`gen_combat_xlsx.py`/`gen_characters_xlsx.py`）而非手改 xlsx，表由生成器重新产出。**验证**：校验 **4510 项通过** exit 0（含 23 条「等配模型」提醒）；`dotnet build` 0 错 0 警；`ContentBinder` 20 个用例全绿；全套 374 通过 / 2 失败（两条均为另一会话 `CharacterContentSet.cs` 在途改动，已用备份表对照复现，与本轮无关）；架构守卫 `errors=0`，5 条 GS005 全在 `CharacterContentSet.cs`（另一会话），本轮文件零命中 | `tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/gen_characters_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v13 | **模型属性收敛为唯一入口（§17.10）** | 用户问「角色/怪物/武器/子弹是否有模型属性？能在 3D 中看到资产吗？」，随后发现真表里「有的有、有的没有」并追问「当时没抽象吗？」。**诚实的答复**：`RenderId` 从 §17 起就在，抽象没缺；真缺陷是**同一概念有三条并存写入路径**（`VisualPack` / `AssetPath` / 都不填）而**没有唯一入口**。按用户决定「删掉 AssetPath/AssetAnim，全部走 VisualPack」收敛：① 从 `ObjectArchetype`、`ContentBinder`、`combat.xlsx`、生成器、校验器删掉两列，全工程只剩 `ObjectArchetype.VisualPackId`；② **「有意没有模型」变成取值而非空缺**——特效三个 `fx_*` 填新包 `vp_none`（`ModelPath` 留空），于是「有意为空」与「忘了填」在数据上永远可区分；③ 校验器三条新规则：`Objects.VisualPack` **必填**、外键闭合、**有 Actor/Weapon/Projectile 能力位的物件不许指向无模型包**（否则玩家永远看不见它且不报错）；`VisualPacks.ModelPath` 由必填改可空，但空包填 `TintHex`/`AnimClips` 报错（死字段）。检查数 2217 → **4553，exit 0**。④ 补齐 26 个物件的外观包（20 个包；新增 `vp_slime_skull` / `vp_slime_bomb` / `vp_none`）。⑤ 四个用例钉住，测试 **374 通过**（另 2 个失败是并行会话的 `characters.xlsx` 缺口，非本次）。**如实说明**：视图层未接（用户要求本轮只补字段与绑定），武器与子弹在 3D 里仍不渲染；素材库 301 个 `.glb` 无怪物/子弹素材，食人魔用炮台、史莱姆用骷髅/炸弹、子弹用小矿石/金币/宝石代替，`VisualPacks.Note` 逐条写明。另补 `l10n.xlsx` 缺的 `actor.player`。守卫 `new=5 existing=0 errors=0`（5 条 warning 全是并行会话 `CharacterContentSet.cs` 的既有 GS005）。 | `scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`data/excel/combat.xlsx`、`data/excel/l10n.xlsx`、`tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`tests/Content/Data/ContentBinderTests.cs`、`docs/architecture/ARCHITECTURE.md` |
-| 2026-11-09 | v15 | **「抽象没贯彻到底」全面体检 + 契约硬规则** | 用户发现「只有人物有模型，怪物/武器/子弹连字段都没有」并质问抽象为何没贯彻。**诊断**：抽象**不缺**，断的是"谁兑现"——`View`+`ViewAppearance` 组件与整套桥接都在且设计正确，但全项目唯一的外观注册调用只在 `CharacterSession.cs:308`（人物一条路）。**最值钱的证据链**：`combat.xlsx` 26 行全填 `VisualPack` → 校验器 4553 项全过（连磁盘文件都存在）→ `scripts/` 里运行期读取点 **= 0**。数据填满、校验通过、一个都不读。**为什么既有防线全没拦住**：编译器（组件合法只是没人 Set）、守卫 GS001~007（只查文件位置）、356 个测试（只测局部行为）、校验器（只验数据对不对不验有没有人用）、代码评审（单看每处都对，缺口在跨文件接缝）——**共同特征：每个局部都对，整体是断的**。**整改**：① 渲染接线收敛到唯一入口 `ContentSpawner.FillAppearanceBySlot`，三条产物路径（弹/人/特效）无条件经过；② 修掉真实陷阱——`VisualSlot` 默认 `0` 但 `0` 是合法外观号（"忘了配"与"配成第 0 号"运行期同义），改为显式哨兵 `UnresolvedVisualSlot = -1`；③ 新增 `AppearanceCoverageTests` 两条用例钉住"三种产物组件齐备"与"未配置仍带组件且可断言"；④ **规则升格为硬约束**：`docs/rules/03` 新增 §3.4「概念的唯一定义权」+ §6.1「契约完备四问」，`AGENTS.md` 规则5 判据扩充 + 红线新增第 11~15 条，四条硬规则 A单一契约 / B齐备原则 / C消费闭合 / D成员闭合。**如实说明（未修，已登记 §17.11.4）**：子弹仍有 4 套平行组件集合、`WeaponState` 死组件致生产与测试跑两条管线、`WeaponAimKind`(11)/`ProjectileHitPolicy`(8) 零消费者、`EcsObjectFactory.OnExpire` 静默吞 `Explode`/`Inherit`、`FireProjectileSkill.cs:202` 硬编码 `DamageType.Kinetic`、武器/子弹在 3D 里仍不渲染。测试 356 通过（另 3 条 `HeroAssembly_*` 是既有失败，与本次无关） | `scripts/combat/Factory/ContentSpawner.cs`、`scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`scripts/core/Content/TagFamily.cs`、`tests/Content/Factory/AppearanceCoverageTests.cs`、`docs/rules/03-abstract-first.md`、`AGENTS.md`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-09 | v12 | **「抽象没贯彻到底」全面体检 + 契约硬规则** | 用户发现「只有人物有模型，怪物/武器/子弹连字段都没有」并质问抽象为何没贯彻。**诊断**：抽象**不缺**，断的是"谁兑现"——`View`+`ViewAppearance` 组件与整套桥接都在且设计正确，但全项目唯一的外观注册调用只在 `CharacterSession.cs:308`（人物一条路）。**最值钱的证据链**：`combat.xlsx` 26 行全填 `VisualPack` → 校验器 4553 项全过（连磁盘文件都存在）→ `scripts/` 里运行期读取点 **= 0**。数据填满、校验通过、一个都不读。**为什么既有防线全没拦住**：编译器（组件合法只是没人 Set）、守卫 GS001~007（只查文件位置）、356 个测试（只测局部行为）、校验器（只验数据对不对不验有没有人用）、代码评审（单看每处都对，缺口在跨文件接缝）——**共同特征：每个局部都对，整体是断的**。**整改**：① 渲染接线收敛到唯一入口 `ContentSpawner.FillAppearanceBySlot`，三条产物路径（弹/人/特效）无条件经过；② 修掉真实陷阱——`VisualSlot` 默认 `0` 但 `0` 是合法外观号（"忘了配"与"配成第 0 号"运行期同义），改为显式哨兵 `UnresolvedVisualSlot = -1`；③ 新增 `AppearanceCoverageTests` 两条用例钉住"三种产物组件齐备"与"未配置仍带组件且可断言"；④ **规则升格为硬约束**：`docs/rules/03` 新增 §3.4「概念的唯一定义权」+ §6.1「契约完备四问」，`AGENTS.md` 规则5 判据扩充 + 红线新增第 11~15 条，四条硬规则 A单一契约 / B齐备原则 / C消费闭合 / D成员闭合。**如实说明（未修，已登记 §17.11.4）**：子弹仍有 4 套平行组件集合、`WeaponState` 死组件致生产与测试跑两条管线、`WeaponAimKind`(11)/`ProjectileHitPolicy`(8) 零消费者、`EcsObjectFactory.OnExpire` 静默吞 `Explode`/`Inherit`、`FireProjectileSkill.cs:202` 硬编码 `DamageType.Kinetic`、武器/子弹在 3D 里仍不渲染。测试 356 通过（另 3 条 `HeroAssembly_*` 是既有失败，与本次无关） | `scripts/combat/Factory/ContentSpawner.cs`、`scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`scripts/core/Content/TagFamily.cs`、`tests/Content/Factory/AppearanceCoverageTests.cs`、`docs/rules/03-abstract-first.md`、`AGENTS.md`、`docs/architecture/ARCHITECTURE.md` |
+
 | 2026-11-09 | v11 | **2D 自绘图随窗口自动缩放（§7.5.2）** | 用户反馈「拖动窗口渲染画面仍然不变大变小」，且是用 `DungeonMap2D` 场景测的——**上一版只修了视口，没修画在视口里的 2D 内容**。① 根因：地图由 `DungeonMap2DView`（`Node2D`）逐格 `DrawRect` 画在 `ScrollContainer` 里，格子边长固定 `16px`；`Node2D` 没有布局尺寸，`ScrollContainer` 只能拿 `GetRect()` 当内容大小 → **图放大就撑大滚动区，永远刚好装下，既缩不小也放不大**。② 修复：新增 `FitToViewport(available)`，**用父容器自身的 `Size`**（它才是真正的可视窗口）算格子像素，`clamp(min(可用宽/格数, 可用高/格数), 2, MaxCellPixels=40)`；在 `_Process` 里轮询而非订阅信号（尺寸变化不保证发可用信号），仅一次比较 + 极少次 `QueueRedraw`。③ 交互配套：滑条一动即置 `AutoFit=false`（用户接管），自动值用 `SetValueNoSignal` 回填滑条，避免「回填又触发一次用户改动」的循环。④ **探针** `tools/probes/dungeon_map_autofit_probe.gd` 断言「四种窗口尺寸下都装得下」+「大窗口格子必大于小窗口」：实测 14.64 → 24.29 → 30.71 → 37.14 px 全部通过；**撤掉改动后格子恒为 16.00px、探针 2 个失败**，证明它测的是真行为。守卫 `0/0`，测试 `357/357`。**经验**：视口修好 ≠ 内容跟着变；`Node2D` 放进 `ScrollContainer` 时必须显式指定滚动区尺寸，否则内容与滚动区互相撑大，永远看不到「装下」以外的状态。 | `scripts/host/debug/DungeonMap2DView.cs`、`scripts/host/debug/DungeonMap2DPanel.cs`、`tools/probes/dungeon_map_autofit_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v9 | **调参面板：数值控件换成可左右拖动的滑块** | 用户原话「数值改为左右拖动的滑块」。① `SpinBox` 只能点箭头/键盘输入，调参时视线在图、手要找小箭头，频繁打断看图；20 根控件全部换成 **`HSlider` + 定宽数值标签**（标签固定宽度，拖动时位数变化不让整列跳动），在地图旁边既能拖又能随时看到当前值。② 节流 `RebuildDebounceMs` **90 ms → 30 ms**：原值是给「点箭头一次跳一格」定的，连续拖动下明显发黏；实测重算平均 0.57 ms、稳态最差 8.92 ms（仍 < 一帧 16.6 ms），故可放宽到几乎每帧都算。③ **无头可验证**：自检新增 `sliders=` / `spinBoxes=` 计数并断言 `spinBoxes==0` —— 数的是场景树里真实存在的节点类型，不是「我写了 AddSlider 所以它是滑块」。实际结果 `sliders=20 spinBoxes=0`，并用临时探针验证「改值 → 6 帧内地图重画 `mapChanged=True`」链路通（探针已删除，不留诊断代码）。守卫 0 error | `docs/architecture/ARCHITECTURE.md`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
@@ -1596,7 +1595,6 @@ ERROR: 地牢调试场景初始化失败：System.InvalidOperationException:
 
 ---
 
-
 ### 14.10 训练房（2026-11-10 落地）：一间灰房 + 一个人 + 一个假人
 
 > **需求原话**：「现在做一个3D测试场景，场景中只有一个灰色房间，四面有墙，地板是斑马网格。一个人物，一个测试假人。」
@@ -1741,6 +1739,126 @@ data/excel/characters.xlsx
 ③ AI 意图源（`scripts/actor/` 的 `AiIntentSource`），让怪物真正用上自己的技能包；
 ④ 数值快照查询入口（`StatsOf(actorId)` 目前返回 `null`），供技能计算伤害与 HUD 显示；
 ⑤ 升级/装备/增益对 Growth/Equipment/Buff 层的写入路径。
+
+---
+
+### 15.8 相机跟随手感（2026-11-10 落地）
+
+> 本章回答两个需求：**① 相机怎么丝滑跟随人物？② 怎么按鼠标方向（=射击方向）做可调偏移？**
+> 答案：一个**临界阻尼弹簧**（zeta=1）+ 一个**独立的瞄准偏移弹簧**，数学部分全部是零引擎依赖的纯函数。
+
+#### 15.8.1 两个需求各自的机制
+
+| 需求 | 机制 | 数据来源 |
+|---|---|---|
+| ① 丝滑跟随 | 二阶**临界阻尼弹簧**跟踪人物位置（不是逐帧 `lerp`） | `characters.xlsx` 的 `CameraPacks.FollowRatePerSecond` |
+| ② 鼠标方向偏移 | 把瞄准方向投到**屏幕基**上，按比例偏移并封顶，再过一个独立弹簧 | `CameraPacks.LookAheadRatio` / `LookAheadMaxMeters` |
+
+**为什么不能用逐帧 `lerp`**：`a = lerp(a, b, k)` 的收敛速度**依赖帧率**——144fps 下比 60fps 快约 2.4 倍，
+配置出来的「手感」换个显示器就变了。临界阻尼弹簧用解析解推进，任意 dt 下轨迹一致。
+
+#### 15.8.2 分层：数学 / 表现 / 数据
+
+```text
+data/excel/characters.xlsx  CameraPacks 行（唯一真源）
+        |  FollowRatePerSecond . LookAheadRatio . LookAheadMaxMeters
+        v
+scripts/data/CharacterAssemblySpec.cs   CharacterCameraPack（读表）
+        v
+scripts/host/GameViewOptions.cs         CameraPackSettings -> CameraRigSettings
+        |                              （速率/秒 -> 平滑时间/秒：T = 1/rate）
+        v
+scripts/core/Camera/CameraFeel.cs       * 纯数学，零 using Godot，可裸测
+        v
+scripts/host/view/TopDownCameraRig.cs   薄壳：读节点、写 transform
+```
+
+**关键约束**：`CameraFeel.cs` **不得** `using Godot`。`tests/` 工程刻意不引用 GodotSharp，
+它靠一条 glob 把 `scripts/core/**` 编进不依赖引擎的测试进程——这个文件一旦引入引擎依赖，
+**整条结构性守卫就失效了**。判据：`grep -c "using Godot" scripts/core/Camera/CameraFeel.cs` 必须为 0。
+
+#### 15.8.3 弹簧方程与「滑动感」从哪来
+
+用**偏离量** `u = x - target` 推导（用误差量 `e = target - x` 会让 `e'(0) = -v`，翻车三次）：
+
+```
+u(0) = A = x0 - target ,  u'(0) = v0        ==>  B = v0 + wA,  w = 2/T
+r = exp(-w*dt)
+x' = target + (A + B*dt)*r
+v' = (B - wA - wB*dt)*r
+```
+
+**必须用解析式取速度，禁止用 `(x_next - x)/dt` 反推**。后者在起步段交替输出 `161, 0, 150, 0, ...`
+（把「位置被阻尼缩回的部分」当成速度再喂回去 = 正反馈），实测 60 帧后发散到 **2,355,357**。
+
+「滑动感」来自**速度曲线而非位置曲线**：静止起步追 10m，`t=0.03s` 时速度已 53.1 m/s 而位置才挪 1.075m
+（「犹豫」），`t=0.058s` 达峰值 61.0 m/s ≈ 理论 `0.736*e0/T = 61.33`，然后指数回落。
+位置上是单调逼近，**过冲严格为 0**（实测 maxOver = -1.05e-5）。
+
+#### 15.8.4 参数（策划只改这三格）
+
+| 列 | 含义 | `follow_std` | `follow_heavy` | `follow_fast` |
+|---|---|---|---|---|
+| `FollowRatePerSecond` | 每秒收敛速率（越大越跟手） | 10.0 | 7.0 | 14.0 |
+| `LookAheadRatio` | 偏移幅度 = 该比例 x 正交视野高 | 0.18 | 0.14 | 0.24 |
+| `LookAheadMaxMeters` | 偏移封顶（米） | 1.6 | 1.4 | 2.0 |
+
+表现层默认值：`CameraFollowSmoothTime = 0.12s`（约 0.3s 到位）、`CameraLookAheadSmoothTime = 0.25s`
+（**刻意取跟随的 2 倍**：偏移稍滞后于鼠标才「顺手」，同速会晕）、`CameraLookAheadDeadZoneRatio = 0.15`
+（吃掉中心 15% 半径的手抖；死区边界**连续**，把 `[dz,1]` 重映射到 `[0,1]`，不会一下弹出去）。
+
+#### 15.8.5 怎么验证的（两层，缺一不可）
+
+**第一层——纯函数测试**（`tests/Camera/CameraRigTests.cs`，26 用例，全绿）：
+
+| 组 | 数 | 覆盖 |
+|---|---|---|
+| A 收敛性 | 4 | 1 秒到位 / 给足时间必到 / 不过冲 / 轨迹单调 |
+| B 帧率无关性 | 3 | 60vs144 / **三点检查** / 30-60-240 三档 |
+| C 稳定性 | 5 | dt=0.5 / dt=5 / dt=0 / dt<0 / smoothTime=0 |
+| D 瞄准偏移 | 9 | 方向 / 封顶 / 只看方向不看模长 / 零向量 / 死区内外 / **死区连续性** |
+| E 平滑 | 2 | 反向过渡 / 时间越长越慢 |
+| F 收敛函数 | 3 | `Convergence` 帧率无关 / 非正值硬锁 / 极端 dt 有界 |
+
+**做了变异测试证明用例真的能抓 bug**（4/4 被抓）：固定 `Lerp` 被三点检查抓到（0.15s 处 60fps=8.66
+vs 144fps=9.93，**差 1.27m**）；去掉封顶、偏移取反、死区做成真台阶各被对应用例抓到。
+
+> **经验**：「1 秒终点残差」这个指标**原理上**区分不了弹簧和固定 lerp —— 固定 lerp 跑满 1 秒后残差
+> 1.5e-5，比正确实现还小。只有**中段**（0.15s）才暴露。所以帧率守卫的职责必须交给三点检查，
+> 不要把收敛阈值收得极紧来「替代」它。
+
+**第二层——引擎内探针**（`scripts/host/debug/CameraFollowSelfCheck.cs`，`--camera-probe`，8 项全绿）：
+
+纯函数测试证明「数学对」，证明不了 `CharacterSession.Tick()` **真的把人物位置和鼠标方向喂给了相机**。
+这条链路断了时画面照样能跑、日志照样干净（v11 那轮「配置了但没接」就是同类）。所以探针直接读
+`Camera3D` 与 `TopDownCameraRig.Focus`：
+
+| 检查 | 实测 |
+|---|---|
+| 正交投影生效 | `projection=Orthogonal size=14.000` |
+| 聚焦点贴合人物 | `focus=(48,0,60)` vs 人物 `(48,0,60)`，**距 0.0000m** |
+| 人物移动 5m 后相机跟过去 | `focus` 距新位置 **0.0029m** |
+| 瞄准 +X / -X 横向分量反向 | **+1.5903 / -1.5903**，摆动 3.1807m |
+| 偏移不超上限 | `1.5903 <= 1.600m` |
+
+**同样做了变异测试**：把 `Tick(playerPos, ...)` 改成 `Tick(SpawnPosition, ...)` → 2 条 FAIL，偏差精确
+等于 5.0000m；把偏移改成常数偏置 → 2 条 FAIL（符号不变号 + 超上限）。撤掉变异后 8/8 恢复。
+
+> **踩坑记录（重要）**：第一版探针让人物**静止**就断言「focus 贴着人物」——**变异测试骗过了它**，
+> 因为人物不动时「跟」和「不跟」的观测值完全相同。必须**制造真实位移**才能让「跟没跟上」成为可判定命题。
+> 这是「测试看起来通过、其实没测」的典型，只能靠变异测试发现。
+
+#### 15.8.6 已知债务（本轮刻意不做）
+
+| 债务 | 说明 |
+|---|---|
+| `CameraPacks.Height` 被灌进 `PitchDeg` | 列口径错位：表里第 2 列叫 `Height`，但读出来赋给了 `PitchDegrees`；`FovDegrees` 列从未被读取。**修它会改掉所有镜头包的俯仰角**，会污染本轮手感调参的因果判断，故单独排期。当前实测生效俯仰角 = 61.17 度 |
+| 相机不响应缩放 / 不撞墙 | 正交尺寸固定；无遮挡拉近（`ClampToBounds` 只管地图边界） |
+| 无震屏 / 无 FOV 动态 | 留给战斗反馈系统 |
+| `tools/probes/camera_follow_probe.gd` | 早期 GDScript 探针，已被 C# 探针取代（GDScript 版无法访问 ECS 人物）。保留作参考，不参与验收 |
+
+**新增一个镜头包 / 改手感要动几个文件？** —— **1 个**：只改 `data/excel/characters.xlsx` 的
+`CameraPacks` 一行。C# 0 行改动（规则 7 的判据）。
 
 ---
 
@@ -2333,7 +2451,7 @@ public const int UnresolvedVisualSlot = -1;
 
 | 层 | 落地物 | 位置 | 职责边界 |
 |---|---|---|---|
-| 数据（真源） | `Characters` / `StatPacks` / `SkillLoads` / `Assemblies` 四张表 | `data/excel/characters.xlsx` | 策划唯一编辑区 |
+| 数据（真源） | `Characters` / `StatPacks` / `SkillLoads` / `Assemblies` / `VariantAssembly` / `VisualPacks` / **`CameraPacks`** / `InputPacks` / `Weapons` 九张表 | `data/excel/characters.xlsx` | 策划唯一编辑区 | 策划唯一编辑区；`CameraPacks` 的镜头手感（跟随收敛速率 / 瞄准偏移幅度与上限）也在这里 
 | 数据（运行时镜像） | `CharacterContentSet`、`CharacterAssemblyRepository`、`CharacterVariantSpec`、`CharacterWeaponSpec`、`CharacterSkillSpec`、`CharacterModuleSet` | `scripts/data/` | 只做**读取与校验**，不认识技能实现类 |
 | 组件 | `Transform3` `Team` `Health` `Mana` `Hurtbox` `ActorIdentity` `SkillState` `ActorIntent` `MoveIntent` `AimTarget` `ViewAppearance` `WeaponStats` `ActorTag` | `scripts/actor/`、`scripts/combat/` | 全是 `unmanaged` 值类型，只存**槽位号/数值**，不存对象引用（J2） |
 | 系统 | `ActorIntentSystem`(PreUpdate) → `ActorAssemblySystem` → `SkillCastSystem` → `MoveAimSystem` / `AimAtCursorSystem` → `ProjectileSystem` / `HitDetectionSystem` / `ImpactEventSystem`(FixedUpdate) | `scripts/actor|skill|combat/` | 每帧纯函数式推进，不碰引擎 |
@@ -2982,8 +3100,6 @@ python tools/data_pipeline/gen_codex.py               # 0 条缺名警告
 
 > **加任何新内容（人物/怪物/武器/子弹/标签）时，`l10n.xlsx` 必须同步加一行中文名。**
 > 忘了不会崩，但校验器会报「缺少中文名：xxx（被 Yyy 引用）」，图鉴生成也会打警告。
-
-
 
 ---
 

@@ -308,25 +308,75 @@ public sealed class CharacterCameraPack
     /// <summary>相机水平偏航（度）。</summary>
     public float YawDeg { get; }
 
-    /// <summary>跟随插值系数（0..1，每帧向目标插值多少）。</summary>
-    public float FollowLerp { get; }
+    /// <summary>
+    /// 跟随收敛速率（每秒，必须 &gt; 0）。
+    /// <para>
+    /// <b>为什么叫 Rate 而不叫 Lerp</b>：这个值不是"每帧 lerp 系数"（0..1的插值权重），
+    /// 而是得到速度量纲的收敛率：容器按 <c>1 - exp(-rate * dt)</c> 计算本帧推进多少。
+    /// 两者的区别不只是叫法：后者每帧固定权重会随帧率变化（60fps 与 144fps 手感不同），
+    /// 而按秒表达的收敛率在任意帧率下轨迹一致（见 <c>TopDownCameraRig.Convergence</c>）。
+    /// </para>
+    /// <para>
+    /// 历史备注：Excel 旧列叫 <c>FollowLerp</c>、表头写"、0~1，越大越跟手"，
+    /// 但运行时从来就是当每秒速率用的——是表头说明错了，不是代码错了。
+    /// 现已改名收敛为一列，避免"同一概念两条路"。
+    /// </para>
+    /// </summary>
+    public float FollowRatePerSecond { get; }
+
+    /// <summary>准星弱偏幅度（按可视高度的比例，0 = 不偏移）。越大则准星方向看得越远。</summary>
+    public float LookAheadRatio { get; }
+
+    /// <summary>准星偏移上限（米，0 = 不封顶）：防止大视野下偏移把角色推出屏幕。</summary>
+    public float LookAheadMaxMeters { get; }
 
     /// <summary>光标在屏幕高度上的比例：0.5 = 屏幕中心，越大视野越小（更"狙击镜"）。</summary>
     public float CursorScreenHeightRatio { get; }
 
     /// <summary>构造（全部字段来自数据表一行）。</summary>
-    public CharacterCameraPack(string id, float distance, float pitchDeg, float yawDeg, float followLerp, float cursorScreenHeightRatio)
+    public CharacterCameraPack(
+        string id,
+        float distance,
+        float pitchDeg,
+        float yawDeg,
+        float followRatePerSecond,
+        float cursorScreenHeightRatio,
+        float lookAheadRatio,
+        float lookAheadMaxMeters)
     {
         if (string.IsNullOrEmpty(id))
         {
             throw new ArgumentException("镜头包 Id 不能为空：它是 Excel CameraPacks 的主键。", nameof(id));
         }
+        if (followRatePerSecond <= 0f)
+        {
+            throw new ArgumentException(
+                string.Concat("镜头包 '", id, "' 的 FollowRatePerSecond 必须 > 0（每秒收敛速率）。",
+                    "拿常规的 0~1 lerp 系数（0.14 之类）填这里会让相机几乎不动；",
+                    "典型取值在 7~14 之间。"),
+                nameof(followRatePerSecond));
+        }
+        if (lookAheadRatio < 0f)
+        {
+            throw new ArgumentException(
+                string.Concat("镜头包 '", id, "' 的 LookAheadRatio 不能为负（0 = 不偏移）。"),
+                nameof(lookAheadRatio));
+        }
+        if (lookAheadMaxMeters < 0f)
+        {
+            throw new ArgumentException(
+                string.Concat("镜头包 '", id, "' 的 LookAheadMaxMeters 不能为负（0 = 不封顶）。"),
+                nameof(lookAheadMaxMeters));
+        }
+
         Id = id;
         Distance = distance;
         PitchDeg = pitchDeg;
         YawDeg = yawDeg;
-        FollowLerp = followLerp;
+        FollowRatePerSecond = followRatePerSecond;
         CursorScreenHeightRatio = cursorScreenHeightRatio;
+        LookAheadRatio = lookAheadRatio;
+        LookAheadMaxMeters = lookAheadMaxMeters;
     }
 
     /// <inheritdoc />
