@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v13  最后更新: 2026-11-10（§17.10 「抽象没贯彻到底」全面体检与整改 + 契约硬规则；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v15  最后更新: 2026-11-10（§17.11 「抽象没贯彻到底」全面体检 + 契约硬规则；§17.10.1 全部先跑白模：`ModelPath` 一律留空、占位路径清零；§17.10 模型属性收敛为唯一入口 `VisualPack`；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1197,7 +1197,9 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
-| 2026-11-09 | v13 | **「抽象没贯彻到底」全面体检 + 契约硬规则** | 用户发现「只有人物有模型，怪物/武器/子弹连字段都没有」并质问抽象为何没贯彻。**诊断**：抽象**不缺**，断的是"谁兑现"——`View`+`ViewAppearance` 组件与整套桥接都在且设计正确，但全项目唯一的外观注册调用只在 `CharacterSession.cs:308`（人物一条路）。**最值钱的证据链**：`combat.xlsx` 26 行全填 `VisualPack` → 校验器 4553 项全过（连磁盘文件都存在）→ `scripts/` 里运行期读取点 **= 0**。数据填满、校验通过、一个都不读。**为什么既有防线全没拦住**：编译器（组件合法只是没人 Set）、守卫 GS001~007（只查文件位置）、356 个测试（只测局部行为）、校验器（只验数据对不对不验有没有人用）、代码评审（单看每处都对，缺口在跨文件接缝）——**共同特征：每个局部都对，整体是断的**。**整改**：① 渲染接线收敛到唯一入口 `ContentSpawner.FillAppearanceBySlot`，三条产物路径（弹/人/特效）无条件经过；② 修掉真实陷阱——`VisualSlot` 默认 `0` 但 `0` 是合法外观号（"忘了配"与"配成第 0 号"运行期同义），改为显式哨兵 `UnresolvedVisualSlot = -1`；③ 新增 `AppearanceCoverageTests` 两条用例钉住"三种产物组件齐备"与"未配置仍带组件且可断言"；④ **规则升格为硬约束**：`docs/rules/03` 新增 §3.4「概念的唯一定义权」+ §6.1「契约完备四问」，`AGENTS.md` 规则5 判据扩充 + 红线新增第 11~15 条，四条硬规则 A单一契约 / B齐备原则 / C消费闭合 / D成员闭合。**如实说明（未修，已登记 §17.10.4）**：子弹仍有 4 套平行组件集合、`WeaponState` 死组件致生产与测试跑两条管线、`WeaponAimKind`(11)/`ProjectileHitPolicy`(8) 零消费者、`EcsObjectFactory.OnExpire` 静默吞 `Explode`/`Inherit`、`FireProjectileSkill.cs:202` 硬编码 `DamageType.Kinetic`、武器/子弹在 3D 里仍不渲染。测试 356 通过（另 3 条 `HeroAssembly_*` 是既有失败，与本次无关） | `scripts/combat/Factory/ContentSpawner.cs`、`scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`scripts/core/Content/TagFamily.cs`、`tests/Content/Factory/AppearanceCoverageTests.cs`、`docs/rules/03-abstract-first.md`、`AGENTS.md`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-10 | v14 | **全部先跑白模：占位路径清零（§17.10.1）** | 用户看了 §17.10 交回的占位配型后决定：「先全部用白模即可，占位不要使用"素材"的路径，后续需要挑选让如项目资源文件夹中。」**上一轮的问题**：占位配型虽诚实标注，本质仍是用素材库原料区假装成品——`素材/` 是美术原料区，不是项目运行时资源，路径随时会挪动（历史上 `res://素材/Characters/TestHero.glb` 正因如此不存在却静默回退白模，长期无人发现）。**本轮收敛**：① `combat.xlsx` 20 个 + `characters.xlsx` 4 个 = **24 个外观包的 `ModelPath` 全部留空**，`TintHex`/`AnimClips` 一并清空（死字段），`Scale` 保留待模型回来生效；② **包壳（Id）全部保留**当桶键用，`Objects.VisualPack` 的 26 条引用一条未改——以后挑好资产**只改 `ModelPath` 一格**，不合并成 `vp_none` 是为了不丢「手枪≠子弹≠哥布林」的分类信息；③ `vp_none` 语义收敛为「★ **永远**不要模型」；④ **校验器第 ③ 条由 error 降为 `[提醒]`**：全白模后 26 个物件会全红、校验直接失败，但删掉又会丢掉「谁还在等资产」的追踪——降级后白模能跑，同时每个待配模型的物件留一条提醒，回填即消失。**原则**：「暂时没有」要能被看见（提醒清单），「永远没有」要能被声明（`vp_none`），两者都不能靠空着表达。⑤ 改动落在**生成器**（`gen_combat_xlsx.py`/`gen_characters_xlsx.py`）而非手改 xlsx，表由生成器重新产出。**验证**：校验 **4510 项通过** exit 0（含 23 条「等配模型」提醒）；`dotnet build` 0 错 0 警；`ContentBinder` 20 个用例全绿；全套 374 通过 / 2 失败（两条均为另一会话 `CharacterContentSet.cs` 在途改动，已用备份表对照复现，与本轮无关）；架构守卫 `errors=0`，5 条 GS005 全在 `CharacterContentSet.cs`（另一会话），本轮文件零命中 | `tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/gen_characters_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-09 | v13 | **模型属性收敛为唯一入口（§17.10）** | 用户问「角色/怪物/武器/子弹是否有模型属性？能在 3D 中看到资产吗？」，随后发现真表里「有的有、有的没有」并追问「当时没抽象吗？」。**诚实的答复**：`RenderId` 从 §17 起就在，抽象没缺；真缺陷是**同一概念有三条并存写入路径**（`VisualPack` / `AssetPath` / 都不填）而**没有唯一入口**。按用户决定「删掉 AssetPath/AssetAnim，全部走 VisualPack」收敛：① 从 `ObjectArchetype`、`ContentBinder`、`combat.xlsx`、生成器、校验器删掉两列，全工程只剩 `ObjectArchetype.VisualPackId`；② **「有意没有模型」变成取值而非空缺**——特效三个 `fx_*` 填新包 `vp_none`（`ModelPath` 留空），于是「有意为空」与「忘了填」在数据上永远可区分；③ 校验器三条新规则：`Objects.VisualPack` **必填**、外键闭合、**有 Actor/Weapon/Projectile 能力位的物件不许指向无模型包**（否则玩家永远看不见它且不报错）；`VisualPacks.ModelPath` 由必填改可空，但空包填 `TintHex`/`AnimClips` 报错（死字段）。检查数 2217 → **4553，exit 0**。④ 补齐 26 个物件的外观包（20 个包；新增 `vp_slime_skull` / `vp_slime_bomb` / `vp_none`）。⑤ 四个用例钉住，测试 **374 通过**（另 2 个失败是并行会话的 `characters.xlsx` 缺口，非本次）。**如实说明**：视图层未接（用户要求本轮只补字段与绑定），武器与子弹在 3D 里仍不渲染；素材库 301 个 `.glb` 无怪物/子弹素材，食人魔用炮台、史莱姆用骷髅/炸弹、子弹用小矿石/金币/宝石代替，`VisualPacks.Note` 逐条写明。另补 `l10n.xlsx` 缺的 `actor.player`。守卫 `new=5 existing=0 errors=0`（5 条 warning 全是并行会话 `CharacterContentSet.cs` 的既有 GS005）。 | `scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`data/excel/combat.xlsx`、`data/excel/l10n.xlsx`、`tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`tests/Content/Data/ContentBinderTests.cs`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-09 | v15 | **「抽象没贯彻到底」全面体检 + 契约硬规则** | 用户发现「只有人物有模型，怪物/武器/子弹连字段都没有」并质问抽象为何没贯彻。**诊断**：抽象**不缺**，断的是"谁兑现"——`View`+`ViewAppearance` 组件与整套桥接都在且设计正确，但全项目唯一的外观注册调用只在 `CharacterSession.cs:308`（人物一条路）。**最值钱的证据链**：`combat.xlsx` 26 行全填 `VisualPack` → 校验器 4553 项全过（连磁盘文件都存在）→ `scripts/` 里运行期读取点 **= 0**。数据填满、校验通过、一个都不读。**为什么既有防线全没拦住**：编译器（组件合法只是没人 Set）、守卫 GS001~007（只查文件位置）、356 个测试（只测局部行为）、校验器（只验数据对不对不验有没有人用）、代码评审（单看每处都对，缺口在跨文件接缝）——**共同特征：每个局部都对，整体是断的**。**整改**：① 渲染接线收敛到唯一入口 `ContentSpawner.FillAppearanceBySlot`，三条产物路径（弹/人/特效）无条件经过；② 修掉真实陷阱——`VisualSlot` 默认 `0` 但 `0` 是合法外观号（"忘了配"与"配成第 0 号"运行期同义），改为显式哨兵 `UnresolvedVisualSlot = -1`；③ 新增 `AppearanceCoverageTests` 两条用例钉住"三种产物组件齐备"与"未配置仍带组件且可断言"；④ **规则升格为硬约束**：`docs/rules/03` 新增 §3.4「概念的唯一定义权」+ §6.1「契约完备四问」，`AGENTS.md` 规则5 判据扩充 + 红线新增第 11~15 条，四条硬规则 A单一契约 / B齐备原则 / C消费闭合 / D成员闭合。**如实说明（未修，已登记 §17.11.4）**：子弹仍有 4 套平行组件集合、`WeaponState` 死组件致生产与测试跑两条管线、`WeaponAimKind`(11)/`ProjectileHitPolicy`(8) 零消费者、`EcsObjectFactory.OnExpire` 静默吞 `Explode`/`Inherit`、`FireProjectileSkill.cs:202` 硬编码 `DamageType.Kinetic`、武器/子弹在 3D 里仍不渲染。测试 356 通过（另 3 条 `HeroAssembly_*` 是既有失败，与本次无关） | `scripts/combat/Factory/ContentSpawner.cs`、`scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`scripts/core/Content/TagFamily.cs`、`tests/Content/Factory/AppearanceCoverageTests.cs`、`docs/rules/03-abstract-first.md`、`AGENTS.md`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v11 | **2D 自绘图随窗口自动缩放（§7.5.2）** | 用户反馈「拖动窗口渲染画面仍然不变大变小」，且是用 `DungeonMap2D` 场景测的——**上一版只修了视口，没修画在视口里的 2D 内容**。① 根因：地图由 `DungeonMap2DView`（`Node2D`）逐格 `DrawRect` 画在 `ScrollContainer` 里，格子边长固定 `16px`；`Node2D` 没有布局尺寸，`ScrollContainer` 只能拿 `GetRect()` 当内容大小 → **图放大就撑大滚动区，永远刚好装下，既缩不小也放不大**。② 修复：新增 `FitToViewport(available)`，**用父容器自身的 `Size`**（它才是真正的可视窗口）算格子像素，`clamp(min(可用宽/格数, 可用高/格数), 2, MaxCellPixels=40)`；在 `_Process` 里轮询而非订阅信号（尺寸变化不保证发可用信号），仅一次比较 + 极少次 `QueueRedraw`。③ 交互配套：滑条一动即置 `AutoFit=false`（用户接管），自动值用 `SetValueNoSignal` 回填滑条，避免「回填又触发一次用户改动」的循环。④ **探针** `tools/probes/dungeon_map_autofit_probe.gd` 断言「四种窗口尺寸下都装得下」+「大窗口格子必大于小窗口」：实测 14.64 → 24.29 → 30.71 → 37.14 px 全部通过；**撤掉改动后格子恒为 16.00px、探针 2 个失败**，证明它测的是真行为。守卫 `0/0`，测试 `357/357`。**经验**：视口修好 ≠ 内容跟着变；`Node2D` 放进 `ScrollContainer` 时必须显式指定滚动区尺寸，否则内容与滚动区互相撑大，永远看不到「装下」以外的状态。 | `scripts/host/debug/DungeonMap2DView.cs`、`scripts/host/debug/DungeonMap2DPanel.cs`、`tools/probes/dungeon_map_autofit_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v9 | **调参面板：数值控件换成可左右拖动的滑块** | 用户原话「数值改为左右拖动的滑块」。① `SpinBox` 只能点箭头/键盘输入，调参时视线在图、手要找小箭头，频繁打断看图；20 根控件全部换成 **`HSlider` + 定宽数值标签**（标签固定宽度，拖动时位数变化不让整列跳动），在地图旁边既能拖又能随时看到当前值。② 节流 `RebuildDebounceMs` **90 ms → 30 ms**：原值是给「点箭头一次跳一格」定的，连续拖动下明显发黏；实测重算平均 0.57 ms、稳态最差 8.92 ms（仍 < 一帧 16.6 ms），故可放宽到几乎每帧都算。③ **无头可验证**：自检新增 `sliders=` / `spinBoxes=` 计数并断言 `spinBoxes==0` —— 数的是场景树里真实存在的节点类型，不是「我写了 AddSlider 所以它是滑块」。实际结果 `sliders=20 spinBoxes=0`，并用临时探针验证「改值 → 6 帧内地图重画 `mapChanged=True`」链路通（探针已删除，不留诊断代码）。守卫 0 error | `docs/architecture/ARCHITECTURE.md`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
@@ -1959,20 +1961,23 @@ FixedUpdate ProjectileAdvanceSystem   位置积分 + 寿命递减 + OnExpire 到
 ```text
 data/excel/
 ├─ characters.xlsx   ← 角色（Characters / StatPacks / SkillLoads）——见 §15
-└─ combat.xlsx       ← 物件（Tags / Objects / Weapons / Projectiles / StatPacks / _Meta）
+└─ combat.xlsx       ← 物件（Tags / Objects / Weapons / Projectiles / StatPacks / VisualPacks / _Meta）
    ├─ Tags          ← 位矩阵的"列定义"：TagId / TagIndex / Category / Group / BitMask
    ├─ Objects       ← ★唯一的物体原型表：人物/怪物/武器/子弹/特效全在这里
    │                   Id / Tags / Cluster / ClusterWeight / StatPacks / Weapon / Projectile / Actor / Effect
+   │                   / RenderId / **VisualPack** / Radius / Height / Note
+   ├─ VisualPacks   ← 外观包（模型路径 / 缩放 / 染色 / 动画剪辑）——见 §17.10
    ├─ Weapons       ← 武器契约（8 行 × 28 列，13 个规则值列）
    ├─ Projectiles   ← 子弹契约（7 行 × 20 列，8 个规则值列）
    └─ StatPacks     ← 武器/子弹自己的五层数值包（与 characters.xlsx 同构，合并进同一个仓库）
 ```
 
 - 生成器 `tools/data_pipeline/gen_combat_xlsx.py` 保证四行表头（字段名/类型/中文名/备注）+ `#data` 标记行合规；
-- **构建期闸门 `tools/data_pipeline/validate_content_xlsx.py`**：2217 项检查 —— 四行表头、类型、外键闭合
+- **构建期闸门 `tools/data_pipeline/validate_content_xlsx.py`**：4553 项检查 —— 四行表头、类型、外键闭合
   （四个引用必须指向 `Objects.Id`）、能力位一致（`tag.weapon ⇔ 被 Weapons 引用`、`tag.projectile ⇔ 被 Projectiles 引用`、
   `tag.actor ⇔ Base 包非空`）、`TagIndex` 连续 + `BitMask` 唯一、**规则值语法真解析**、
-  `StatPacks` 唯一性、**同簇能力位一致**（防"熔炉把子弹换成枪"）、`ClusterWeight>0`。exit≠0 即中止构建；
+  `StatPacks` 唯一性、**同簇能力位一致**（防"熔炉把子弹换成枪"）、`ClusterWeight>0`、
+  **外观包必填 + 外键闭合 + `ModelPath` 磁盘存在性**（§17.10）；
 - **闭环证明**：`ContentBinderTests` / `ValueRefParserTests` / `ContentPlayLoopTests` 直接用**零第三方包**的
   `XlsxReader` 读**真 xlsx** → 绑定 → 真 `CastSystem` 铸造成实体，验证"武器射出怪物""子弹到期生成子弹"
   "子弹变成怪物""改 `BaseDamage`/`ClusterWeight` 后运行期行为随之改变"。**运行期代码不读 xlsx**（§4.8 不变）。
@@ -2008,6 +2013,87 @@ data/excel/
 > （「每个 X 都必须能查到 Y」），也不要只写"负向会报错"用例。
 
 加载器**只产出 `ModelData`**，所以新增格式不会波及渲染与 UI —— 这是 §16.3 那条边界带来的收益。
+
+### 17.10 模型属性：外观只走「外观包」这一条路（2026-11-09 收敛）
+
+**问题**：用户问「当前的角色/怪物/武器/子弹，是否有模型属性？能在 3D 中看到资产吗？」——
+答案是**有字段，但没有唯一入口**。`RenderId` 从 §17 起就存在（它只是给视图层选槽位的标识符，
+**不是路径**，全工程没有任何代码能靠它找到磁盘模型），但「这个物件用哪个模型」当时有三条并存的写法：
+
+| 写法 | 当时的意思 |
+|---|---|
+| `Objects.VisualPack` → `VisualPacks` | 走外观包（模型+缩放+染色+动画）|
+| `Objects.AssetPath` | 直连 `.glb` 路径，绕过外观包 |
+| 两个都不填 | 回落白模胶囊 |
+
+于是真表里必然长出「有的有、有的没有」（怪物走包、史莱姆走直连路径、特效什么都不填），
+同一个概念有三种答案。**抽象本身没缺，缺的是唯一入口。**
+
+**收敛后的形状**（用户决定：「删掉 AssetPath/AssetAnim，全部走 VisualPack」）：
+
+```text
+Objects.VisualPack  (必填)  ──→  VisualPacks.Id
+                                    ├─ ModelPath  : 项目资源路径 / 空（空 = 暂用白模）
+                                    ├─ Scale      : > 0
+                                    ├─ TintHex    : #RRGGBB / 空
+                                    └─ AnimClips  : 逗号分隔剪辑名 / 空
+```
+
+- **`AssetPath` / `AssetAnim` 两列已从表、生成器、`ContentBinder`、`ObjectArchetype` 全部删除**，
+  全工程只剩 `ObjectArchetype.VisualPackId` 一个外观字段。
+- **「有意没有模型」是一个取值，不是一个空缺**：特效/纯逻辑物件填 `vp_none`（该包 `ModelPath` 留空）。
+  这样「有意为空」（`vp_none`）与「忘了填」（空串，校验器直接报错）在数据上**永远可区分**。
+  这是本节最重要的一条口径 —— 只要允许留空，"留空"就同时背了两个含义，问题必然复发。
+- 校验器三条新规则（`validate_content_xlsx.py`）：
+  ① `Objects.VisualPack` **必填**；
+  ② 外键必须落在 `combat.xlsx` 或 `characters.xlsx` 的 `VisualPacks` 里；
+  ③ 有 `Actor`/`Weapon`/`Projectile` 能力位的物件指向无模型的包时，留一条 `[提醒]`
+  （**2026-11-10 由 error 降为 warning**，理由见下节「全部先跑白模」）。
+  另：`VisualPacks.ModelPath` 由必填改为可空，但空包若填了 `TintHex`/`AnimClips` 会报错（死字段）。
+- 三个用例钉住：`Binder_EveryObject_HasExactlyOneExistingVisualPack`（每行都有且只有一个真实存在的包）、
+  `Binder_TableWithoutVisualColumns_StillBindsWithEmptyVisualFields`（老表缺列仍能装配，规则7）、
+  `Binder_VisualColumns_DoNotAffectLogicIdentity`（换模型不改 `IdHash`/`Capabilities`/四个引用）。
+
+**本轮如实说明的两件事**（不粉饰）：
+
+1. **视图层未接**：`ActorViewDirector` 仍按 `VisualPack.ModelPath → 白模 Box/Capsule` 的优先级渲染，
+   且**武器与子弹在 3D 里根本不渲染**（`scripts/host/**` 没有 `ProjectileState` 的引用）。
+   用户明确要求「先补字段与绑定，视图层保持现有白模」，故本轮只到数据层。
+2. **部分配型是占位**：素材库 301 个 `.glb` 里**没有怪物素材、没有子弹素材**，所以
+   食人魔用炮台、史莱姆用骷髅/炸弹、子弹用小矿石/金币/宝石代替，`VisualPacks.Note` 逐个写明了。
+   → **这一条已被下节的「全部白模」决定取代，占位路径已全部清空。**
+
+#### 17.10.1 全部先跑白模：`ModelPath` 一律留空（2026-11-10）
+
+**用户决定**（原话）：「先全部用白模即可，占位不要使用"素材"的路径，后续需要挑选让如项目资源文件夹中。」
+
+上一小节的占位配型虽然"诚实标注"了，但本质仍是**用素材库的东西假装成品**——素材库 `素材/`
+是美术的原料区，不是项目运行时资源，路径随时会被挪动/清理，指过去就是埋雷
+（历史上 `res://素材/Characters/TestHero.glb` 正因如此不存在却静默回退白模，长期无人发现）。
+
+**收敛结果**：
+
+| 项 | 决定 |
+|---|---|
+| `VisualPacks.ModelPath` | **全部 24 个包一律留空**（`combat.xlsx` 20 个 + `characters.xlsx` 4 个） |
+| `TintHex` / `AnimClips` | 一并清空（依赖模型才生效，留着就是死字段，校验器会报错） |
+| 包壳（Id 本身） | **全部保留**，只当「桶键」用 —— `Objects.VisualPack` 的 26 条引用一条都不用改 |
+| `Scale` | **保留**，等模型回来直接生效 |
+| `vp_none` | 语义改为「★ **永远**不要模型」（特效/纯逻辑物件），与「暂时没模型」区分 |
+
+**为什么不把这些包全合并成 `vp_none`**：合并会丢掉「手枪 ≠ 子弹 ≠ 哥布林」的分类信息，
+以后挑资产时得重新分类一遍。保留桶键，则回填时**只改 `ModelPath` 一格，其它列不动**。
+
+**校验器口径随之调整**（这条很关键）：原第 ③ 条规则是 `error`——有 Actor/Weapon/Projectile
+能力位的物件不许指向无模型的包。全部白模后，26 个物件会全红、整个校验直接失败，等于谁也干不了活；
+而彻底删掉它又会丢掉「谁还在等资产」的追踪。**故降为 `[提醒]`**：白模能跑，
+同时每个待配模型的物件留一条提醒，回填 `ModelPath` 后自动消失。
+
+> 判断标准：**"暂时没有"要能被看见，"永远没有"要能被声明**。前者是 `[提醒]` 清单，
+> 后者是 `vp_none`。两者都不能靠"空着"来表达 —— 这正是 §17.10 整节的立意。
+
+**配套**：`gen_combat_xlsx.py` / `gen_characters_xlsx.py` 里的数据已改为空路径并在注释里写清缘由；
+`combat.xlsx` / `characters.xlsx` 由生成器重新产出（不是手改）；校验 **4510 项通过**。
 
 ### 17.9 武器触发与弹道运动学（2026-11-05 补齐）
 
@@ -2070,7 +2156,7 @@ data/excel/
 > 而是写"**行为必须不同**"——`DifferentMotions_ProduceDifferentTrajectories` 收集 8 种运动的落点，
 > 断言至少 6 条互不相同；哪个枚举值退化成直线，它会指名道姓地失败。
 
-### 17.10 「抽象没贯彻到底」全面体检与整改（2026-11-09）
+### 17.11 「抽象没贯彻到底」全面体检与整改（2026-11-09）
 
 > **触发**：用户加完模型后质问——
 > 「我让其他会话添加模型，居然发现只有人物有模型，其他的没有这个字段甚至。
@@ -2078,7 +2164,7 @@ data/excel/
 > 例如攻击应该是个 C，然后里面放不同的实现即可实现不同的攻击方式。
 > 诸如此类的问题必须在项目初期就掐死！这一条抽象规则必须写进硬性 SKILL 中！」
 
-#### 17.10.1 诊断：抽象**不缺**，断的是"谁来兑现"
+#### 17.11.1 诊断：抽象**不缺**，断的是"谁来兑现"
 
 体检结论与用户直觉略有出入，但**问题比想象的更隐蔽**：
 
@@ -2096,7 +2182,7 @@ data/excel/
 即：**数据填满了、校验通过了、运行期一个都不读**。
 这比"字段缺失"更危险——字段在的时候，所有人（包括 AI）都以为它是通的。
 
-#### 17.10.2 为什么既有防线全都没拦住
+#### 17.11.2 为什么既有防线全都没拦住
 
 | 防线 | 为什么没报错 |
 |---|---|
@@ -2108,7 +2194,7 @@ data/excel/
 
 **共同特征：每个局部都对，整体是断的。** 这类缺陷只能靠**契约级**的断言抓住。
 
-#### 17.10.3 整改（本轮已落地）
+#### 17.11.3 整改（本轮已落地）
 
 **① 渲染接线：把"谁来写外观"收敛到唯一入口**
 
@@ -2166,7 +2252,7 @@ public const int UnresolvedVisualSlot = -1;
 | C | **消费闭合** | 「这列谁在读？」只有生成器/校验器读过不算 |
 | D | **成员闭合** | 「这几支谁处理？」静默 `default: return false;` 禁止 |
 
-#### 17.10.4 如实说明：本轮**没有**做完的部分
+#### 17.11.4 如实说明：本轮**没有**做完的部分
 
 以下问题**真实存在但本轮未修**，已登记，不得当作已完成：
 

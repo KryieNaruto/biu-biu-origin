@@ -262,14 +262,12 @@ public sealed class ContentBinder
     /// <summary>
     /// Objects 表的<b>可选</b>列 <c>VisualPack</c>：外观包 id（指向任一 xlsx 的 <c>VisualPacks.Id</c>）。
     /// <para>与 <see cref="ClusterWeightColumn"/> 同款处理：缺列 = 没有外观包（白模），不是装配失败。</para>
+    /// <para>
+    /// <b>模型只有这一条路</b>：2026-11-09 删除了并存的 <c>AssetPath</c> / <c>AssetAnim</c> 旁路列。
+    /// 一个物件的外观 = 一个包，「包里有模型 / 包里没模型（特效）/ 没有包」三态清晰可分。
+    /// </para>
     /// </summary>
     private const string VisualPackColumn = "VisualPack";
-
-    /// <summary>Objects 表可选列 <c>AssetPath</c>：直接钉死模型路径（<c>res://</c>），优先于外观包。</summary>
-    private const string AssetPathColumn = "AssetPath";
-
-    /// <summary>Objects 表可选列 <c>AssetAnim</c>：默认动画剪辑名（空 = 不主动播）。</summary>
-    private const string AssetAnimColumn = "AssetAnim";
 
     /// <summary>Weapons 表必需列。</summary>
     private static readonly string[] WeaponColumns =
@@ -788,7 +786,8 @@ public sealed class ContentBinder
             weaponContract: weapon,
             projectileContract: projectile,
             // 模型属性：VisualPackId 是唯一入口（见 ARCHITECTURE §17.10 / 规则5）。
-            // AssetPath / AssetAnim 两条旁路已删除——同一概念并存三条写入路径 = 没有唯一入口。
+            // 「有意没有模型」= 指向 vp_none（包里 ModelPath 留空），不是靠这一列空着表达；
+            // 因而缺列（老表）与空值都退化为白模，都不报错。
             visualPackId: OptionalCell(row, VisualPackColumn));
     }
 
@@ -802,10 +801,8 @@ public sealed class ContentBinder
     /// </summary>
     private static string OptionalCell(ContentRow row, string column)
     {
-        // 不调 HasColumn(ContentTable, ...)：ContentRow.Table 是「表名字符串」而不是表对象，
-        // 两者类型不同（HEAD 里此处曾直接传 row.Table，导致 CS1503 编译不过）。
-        // row.Get 对不存在的列返回空串，语义正是「可选列缺列」。
-        return row.Get(column).Trim();
+        // 缺列与空值是两种语义：Has 先判列在不在（老表），Get 再取值。
+        return row.Has(column) ? row.Get(column).Trim() : string.Empty;
     }
 
     /// <summary>绑定 Weapons 表的一行。外键指向 Objects 时必须已建索引。</summary>

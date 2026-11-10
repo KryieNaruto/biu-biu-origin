@@ -217,7 +217,8 @@ public sealed class ObjectArchetype
         WeaponContract? weaponContract = null,
         ProjectileContract? projectileContract = null,
         ObjectBitMatrix? bitMatrix = null,
-        string hitboxAnchor = "")
+        string hitboxAnchor = "",
+        string visualPackId = "")
     {
         if (string.IsNullOrEmpty(id))
         {
@@ -246,6 +247,7 @@ public sealed class ObjectArchetype
         ProjectileContract = projectileContract;
         BitMatrix = bitMatrix;
         HitboxAnchor = hitboxAnchor ?? string.Empty;
+        VisualPackId = visualPackId ?? string.Empty;
     }
 
     /// <summary>物件定义 id（Excel 主键，如 <c>bullet_pistol_basic</c>）。</summary>
@@ -281,8 +283,35 @@ public sealed class ObjectArchetype
     /// <summary>数值包组合（五层）：人物 / 怪物 / 武器 / 子弹走同一套（规则6）。</summary>
     public StatPackageIds Stats { get; }
 
-    /// <summary>表现资源 id（视图槽位池 / 模型 id；逻辑层不知道它长什么样）。</summary>
+    /// <summary>
+    /// 表现资源 id（视图槽位池 / 模型 id；逻辑层不知道它长什么样）。
+    /// <para>
+    /// <b>它不是路径</b>：只是一串标识符（如 <c>capsule_player</c> / <c>orb_small</c>），
+    /// 全工程没有任何代码能靠它找到磁盘上的模型文件。要找模型请看
+    /// <see cref="VisualPackId"/> —— 那是唯一的入口。
+    /// </para>
+    /// </summary>
     public string RenderId { get; }
+
+    /// <summary>
+    /// 外观包 id（指向 <c>VisualPacks.Id</c>）。<b>这是模型的唯一入口</b>。
+    /// <para>
+    /// <b>为什么只留这一个字段</b>：模型路径、缩放、色调、动画剪辑全部收进外观包，
+    /// 物件行只说「我用哪个包」。三种写法并存（包 / 直连路径 / 都不填）会让「这个物件
+    /// 用什么模型」有多个答案，也必然长出「有的有、有的没有」——2026-11-09 已收敛掉
+    /// <c>AssetPath</c> / <c>AssetAnim</c> 两个旁路字段，全工程只有这一条路。
+    /// </para>
+    /// <para>
+    /// <b>特效怎么办</b>：特效的外观由表现层（shader / 粒子）自己决定，物件行填
+    /// <c>vp_none</c>（<c>ModelPath</c> 留空）——「有意没有模型」是一个被显式表达的取值，
+    /// 而不是一个空缺，这样它和「忘了填」在数据上永远可区分。
+    /// </para>
+    /// <para>
+    /// <b>逻辑层不读它</b>：它只是给宿主层选模型用的字符串，不参与任何玩法结算，
+    /// 也不改变 <see cref="IdHash"/> / <see cref="Capabilities"/>。
+    /// </para>
+    /// </summary>
+    public string VisualPackId { get; }
 
     /// <summary>碰撞 / 视觉半径（数值本身来自表；这里只是从表搬过来的常量，不参与规则求值）。</summary>
     public float Radius { get; }
