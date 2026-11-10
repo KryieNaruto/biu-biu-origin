@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v12  最后更新: 2026-11-09（§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v13  最后更新: 2026-11-10（§17.10 「抽象没贯彻到底」全面体检与整改 + 契约硬规则；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1197,6 +1197,7 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-09 | v13 | **「抽象没贯彻到底」全面体检 + 契约硬规则** | 用户发现「只有人物有模型，怪物/武器/子弹连字段都没有」并质问抽象为何没贯彻。**诊断**：抽象**不缺**，断的是"谁兑现"——`View`+`ViewAppearance` 组件与整套桥接都在且设计正确，但全项目唯一的外观注册调用只在 `CharacterSession.cs:308`（人物一条路）。**最值钱的证据链**：`combat.xlsx` 26 行全填 `VisualPack` → 校验器 4553 项全过（连磁盘文件都存在）→ `scripts/` 里运行期读取点 **= 0**。数据填满、校验通过、一个都不读。**为什么既有防线全没拦住**：编译器（组件合法只是没人 Set）、守卫 GS001~007（只查文件位置）、356 个测试（只测局部行为）、校验器（只验数据对不对不验有没有人用）、代码评审（单看每处都对，缺口在跨文件接缝）——**共同特征：每个局部都对，整体是断的**。**整改**：① 渲染接线收敛到唯一入口 `ContentSpawner.FillAppearanceBySlot`，三条产物路径（弹/人/特效）无条件经过；② 修掉真实陷阱——`VisualSlot` 默认 `0` 但 `0` 是合法外观号（"忘了配"与"配成第 0 号"运行期同义），改为显式哨兵 `UnresolvedVisualSlot = -1`；③ 新增 `AppearanceCoverageTests` 两条用例钉住"三种产物组件齐备"与"未配置仍带组件且可断言"；④ **规则升格为硬约束**：`docs/rules/03` 新增 §3.4「概念的唯一定义权」+ §6.1「契约完备四问」，`AGENTS.md` 规则5 判据扩充 + 红线新增第 11~15 条，四条硬规则 A单一契约 / B齐备原则 / C消费闭合 / D成员闭合。**如实说明（未修，已登记 §17.10.4）**：子弹仍有 4 套平行组件集合、`WeaponState` 死组件致生产与测试跑两条管线、`WeaponAimKind`(11)/`ProjectileHitPolicy`(8) 零消费者、`EcsObjectFactory.OnExpire` 静默吞 `Explode`/`Inherit`、`FireProjectileSkill.cs:202` 硬编码 `DamageType.Kinetic`、武器/子弹在 3D 里仍不渲染。测试 356 通过（另 3 条 `HeroAssembly_*` 是既有失败，与本次无关） | `scripts/combat/Factory/ContentSpawner.cs`、`scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`scripts/core/Content/TagFamily.cs`、`tests/Content/Factory/AppearanceCoverageTests.cs`、`docs/rules/03-abstract-first.md`、`AGENTS.md`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v11 | **2D 自绘图随窗口自动缩放（§7.5.2）** | 用户反馈「拖动窗口渲染画面仍然不变大变小」，且是用 `DungeonMap2D` 场景测的——**上一版只修了视口，没修画在视口里的 2D 内容**。① 根因：地图由 `DungeonMap2DView`（`Node2D`）逐格 `DrawRect` 画在 `ScrollContainer` 里，格子边长固定 `16px`；`Node2D` 没有布局尺寸，`ScrollContainer` 只能拿 `GetRect()` 当内容大小 → **图放大就撑大滚动区，永远刚好装下，既缩不小也放不大**。② 修复：新增 `FitToViewport(available)`，**用父容器自身的 `Size`**（它才是真正的可视窗口）算格子像素，`clamp(min(可用宽/格数, 可用高/格数), 2, MaxCellPixels=40)`；在 `_Process` 里轮询而非订阅信号（尺寸变化不保证发可用信号），仅一次比较 + 极少次 `QueueRedraw`。③ 交互配套：滑条一动即置 `AutoFit=false`（用户接管），自动值用 `SetValueNoSignal` 回填滑条，避免「回填又触发一次用户改动」的循环。④ **探针** `tools/probes/dungeon_map_autofit_probe.gd` 断言「四种窗口尺寸下都装得下」+「大窗口格子必大于小窗口」：实测 14.64 → 24.29 → 30.71 → 37.14 px 全部通过；**撤掉改动后格子恒为 16.00px、探针 2 个失败**，证明它测的是真行为。守卫 `0/0`，测试 `357/357`。**经验**：视口修好 ≠ 内容跟着变；`Node2D` 放进 `ScrollContainer` 时必须显式指定滚动区尺寸，否则内容与滚动区互相撑大，永远看不到「装下」以外的状态。 | `scripts/host/debug/DungeonMap2DView.cs`、`scripts/host/debug/DungeonMap2DPanel.cs`、`tools/probes/dungeon_map_autofit_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-09 | v9 | **调参面板：数值控件换成可左右拖动的滑块** | 用户原话「数值改为左右拖动的滑块」。① `SpinBox` 只能点箭头/键盘输入，调参时视线在图、手要找小箭头，频繁打断看图；20 根控件全部换成 **`HSlider` + 定宽数值标签**（标签固定宽度，拖动时位数变化不让整列跳动），在地图旁边既能拖又能随时看到当前值。② 节流 `RebuildDebounceMs` **90 ms → 30 ms**：原值是给「点箭头一次跳一格」定的，连续拖动下明显发黏；实测重算平均 0.57 ms、稳态最差 8.92 ms（仍 < 一帧 16.6 ms），故可放宽到几乎每帧都算。③ **无头可验证**：自检新增 `sliders=` / `spinBoxes=` 计数并断言 `spinBoxes==0` —— 数的是场景树里真实存在的节点类型，不是「我写了 AddSlider 所以它是滑块」。实际结果 `sliders=20 spinBoxes=0`，并用临时探针验证「改值 → 6 帧内地图重画 `mapChanged=True`」链路通（探针已删除，不留诊断代码）。守卫 0 error | `docs/architecture/ARCHITECTURE.md`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs` |
 | 2026-11-07 | v8 | **物件随机生成（§14.9）+ 2D 图例带色** | 在 2D 栅格地图之上加一层**物件生成**，并修掉 2D 视图「图例没颜色」的体验缺陷。① **四类物件 = 四种放置规则**：`DungeonProp`（多格矩形 + `Kind` + `Variant`）、`DungeonPropConfig`（数量/尺寸/离墙，`With()` 派生 + `Validate()`）、`DungeonPropPlanner.Populate(in map, seed, cfg)` → **新地图**（`readonly struct` 值语义，原图不动）。顺序 **建筑 → 不可破坏 → 可破坏 → 奖励**（大件优先，否则大建筑被小物件饿死）；**可破坏在连通性上等同墙**（没子弹的玩家打不烂箱子），**奖励不挡路**（踩过去就捡）。② **两个真 bug**：(a) 四个阶段各建一张 `blocked` 掩码 ⇒ 建筑占的格在摆奖励时「看不见」，奖励可叠在建筑上、连通性检查拿的是残缺掩码；改为**一张掩码贯穿全部阶段**。(b) 校验器把 `Reward` 也算挡路 ⇒ 正常地图被判「堵死通路」；改为生成器与校验器**共用同一口径**。③ **离墙格数是「尽量」**：小房间两边各留 1 格后只剩 1 格，`TryPickOrigin` 逐格退让 `WallClearance→0`；房间边长 < `BuildingMinRoomSide` 直接不摆建筑（与其检验事后拒绝，不如挑选时排除）。④ **2D 视图**：图例从一行纯文字改为**每项先画真颜色色块再写名字**（色块取自 `DungeonRoomStyleSet`，换 `.tres` 自动同步）；四类物件用**形状**区分（建筑整块铺满+描边 / 奖励菱形 / 可破坏圆点 / 不可破坏小方块）；面板新增 6 根物件滑条；自检输出追加 `props(B/R/b/o)` 计数。⑤ **验收**：`dungeon_check --props --seeds 500` → 地图 500/500、建筑 5.65·奖励 5.80·可破坏 11.85·不可破坏 7.50、**堵路 0 / 压门 0 / 压非地面 0**；headless 自检 `props(B=26 R=6 b=12 o=8)`。守卫 0 error / 0 warning | `docs/architecture/ARCHITECTURE.md`、`scripts/spawn/rooms/{DungeonProp,DungeonPropConfig,DungeonPropPlanner,DungeonMap}.cs`、`scripts/host/debug/{DungeonMap2DView,DungeonMap2DPanel,DungeonMap2DDebugScene}.cs`、`tools/dungeon_check/{PropCheck.cs,DungeonCheck.csproj,Program.cs}` |
@@ -2068,6 +2069,120 @@ data/excel/
 > 教训与 §17.8 一致：**这类错误不抛异常，只会静默降级**。因此本轮的测试不写"不崩溃"，
 > 而是写"**行为必须不同**"——`DifferentMotions_ProduceDifferentTrajectories` 收集 8 种运动的落点，
 > 断言至少 6 条互不相同；哪个枚举值退化成直线，它会指名道姓地失败。
+
+### 17.10 「抽象没贯彻到底」全面体检与整改（2026-11-09）
+
+> **触发**：用户加完模型后质问——
+> 「我让其他会话添加模型，居然发现只有人物有模型，其他的没有这个字段甚至。
+> 这个理论上应该抽象出渲染，里面就可以理所当然地放模型路径了。
+> 例如攻击应该是个 C，然后里面放不同的实现即可实现不同的攻击方式。
+> 诸如此类的问题必须在项目初期就掐死！这一条抽象规则必须写进硬性 SKILL 中！」
+
+#### 17.10.1 诊断：抽象**不缺**，断的是"谁来兑现"
+
+体检结论与用户直觉略有出入，但**问题比想象的更隐蔽**：
+
+| 层 | 抽象是否存在 | 是否接通 | 说明 |
+|---|---|---|---|
+| **渲染** | ✅ 在（`View` + `ViewAppearance` 组件、`ViewRegistry` / `VisualBridge` / `TransformBridge` / `ActorViewDirector`） | ❌ **只通了人物一条** | 全项目唯一的 `_viewDirector.Register(...)` 调用在 `CharacterSession.cs:308` |
+| **攻击** | ⚠️ 在但**分裂成 4 套** | ❌ 生产跑一条、测试跑另一条 | `FireProjectileSkill`(5 组件) / `ContentSpawner`(5) / `SpawnDirectorSystem`(6) / `EcsObjectFactory` 互不相认 |
+
+**关键证据链**（这条链是本次最值钱的发现）：
+
+1. `combat.xlsx` 的 `Objects` 表，**26 行全部填了 `VisualPack`**；
+2. `validate_content_xlsx.py` 还校验了 `ModelPath` 在磁盘上真实存在，**4553 项检查 exit 0**；
+3. 但在 `scripts/` 里搜索 `VisualPackId`，**运行期读取点 = 0**（只有 `ObjectArchetype` / `ContentBinder` / `CharacterAssemblySpec` / `CharacterContentSet` 里的**赋值**）。
+
+即：**数据填满了、校验通过了、运行期一个都不读**。
+这比"字段缺失"更危险——字段在的时候，所有人（包括 AI）都以为它是通的。
+
+#### 17.10.2 为什么既有防线全都没拦住
+
+| 防线 | 为什么没报错 |
+|---|---|
+| 编译器 | 组件存在且类型正确，只是没人 `Set` 它 —— 语法完全合法 |
+| 架构守卫 GS001~GS007 | 检查的是"文件放对没有"，不是"数据被消费没有" |
+| 既有 356 个测试 | 测的是各自系统的局部行为，**没有一个测"产物出生后组件齐不齐"** |
+| 数据校验器 | 只验"数据对不对"，不验"数据有没有人用" |
+| 代码评审 | 单看每个文件都合理，缺口只在**跨文件的接缝**上 |
+
+**共同特征：每个局部都对，整体是断的。** 这类缺陷只能靠**契约级**的断言抓住。
+
+#### 17.10.3 整改（本轮已落地）
+
+**① 渲染接线：把"谁来写外观"收敛到唯一入口**
+
+`ContentSpawner`（子弹 / 人物 / 特效的**唯一**造实体入口）新增统一填充：
+
+```csharp
+private void FillAppearanceBySlot(Entity entity, int objectSlot)
+{
+    _world.Commands.Set(entity, new View { Slot = 0, Kind = 0, Dirty = true });
+    ObjectArchetype? archetype = _index.GetObject(objectSlot);
+    int visualSlot = archetype is null ? ContentIndex.NoneSlot : archetype.VisualSlot;
+    int defHash    = archetype is null ? 0 : archetype.IdHash;
+    _world.Commands.Set(entity, new ViewAppearance
+    {
+        VisualKey = defHash, VisualSlotIndex = visualSlot,
+        PaletteSlot = ContentIndex.NoneSlot, Scale = 1f,
+    });
+}
+```
+
+三条调用路径（`TrySpawnProjectile` / `TrySpawnActor` / `TrySpawnEffect`）现在**无条件**经过它。
+新增第四种产物时，只要走这个工厂就自动带齐视觉组件。
+
+**② 修掉一个真实的设计陷阱：`0` 兼做"合法值"与"没配"**
+
+`ObjectArchetype.VisualSlot` 原本默认 `0`，而 `0` 是**合法的外观槽位号**（宿主外观注册表从 0 编号）。
+后果：`combat.xlsx` 里没填 `VisualPack` 的物件，与"填了第 0 号外观"的物件，在运行期**完全无法区分**——
+表现层只能猜，结果是要么画成别人的样子，要么静默隐身。
+
+改为显式哨兵，与既有的 `NoCluster = -1` / `ContentIndex.NoneSlot = -1` 对齐：
+
+```csharp
+public const int UnresolvedVisualSlot = -1;
+```
+
+「有意为白模」与「忘了配」从此是**两个可断言的值**，而不是同一个 0。
+
+**③ 新增用例钉住契约**：`tests/Content/Factory/AppearanceCoverageTests.cs`
+
+| 用例 | 断言什么 |
+|---|---|
+| `EverySpawnedEntity_CarriesViewAndAppearance` | 子弹 / 怪物 / 特效**三种产物都同时带** `View` + `ViewAppearance`，且外观槽位等于内容表里填的值 |
+| `MissingVisualSlot_StillCarriesAppearance_MarkedUnresolved` | 内容表没配视觉槽位时，组件**仍然在**，只是槽位为 `-1`（区分"有意白模"与"忘了接"） |
+
+> 守卫点刻意放在**工厂层**而不是渲染层：渲染层本来就是通用的（组件里有槽位就能画），
+> 漏的永远是"谁往组件里写字"。
+
+**④ 规则升格为硬约束**：`docs/rules/03-abstract-first.md` 新增 §3.4「概念的唯一定义权」与 §6.1「契约完备四问」，
+`AGENTS.md` 规则 5 判据同步扩充，红线清单新增第 11~15 条。四条硬规则：
+
+| # | 规则 | 判据 |
+|---|---|---|
+| A | **单一契约** | 「这个概念有几个地方在造？」必须是 1 |
+| B | **齐备原则** | 「新加一种，它带的东西和老的完全一样吗？」 |
+| C | **消费闭合** | 「这列谁在读？」只有生成器/校验器读过不算 |
+| D | **成员闭合** | 「这几支谁处理？」静默 `default: return false;` 禁止 |
+
+#### 17.10.4 如实说明：本轮**没有**做完的部分
+
+以下问题**真实存在但本轮未修**，已登记，不得当作已完成：
+
+1. **子弹仍有 4 套平行组件集合**（`FireProjectileSkill` / `ContentSpawner` / `SpawnDirectorSystem` / `EcsObjectFactory`）。
+   本轮只统一了"视觉填充"，**运动/伤害/生命周期仍是各写各的**。这是最大的遗留项。
+2. **`WeaponState` 是死组件**：`scripts/` 里从无构造，只在 `tests/Combat/WeaponFireSystemTests.cs:109` 出现。
+   ⇒ 生产环境跑的是 `ProjectileSystem`，测试测的是 `WeaponFireSystem` + `ProjectileAdvanceSystem`，**两条不同的管线**。
+3. **枚举空转**：`WeaponAimKind` 11 个成员、`ProjectileHitPolicy` 8 个成员，**运行期消费者均为 0**。
+4. **静默吞分支**：`EcsObjectFactory.OnExpire` 的 `default: return false;` 把 `Explode` / `Inherit` 两类结果静默丢弃。
+5. **硬编码数值**：`FireProjectileSkill.cs:202` 写死 `DamageType.Kinetic`，违反规则 4。
+6. **`ActorAssemblySystem.cs:390` 覆写 `VisualSlotIndex`**，可能与工厂写入值冲突，需下一轮核对。
+7. **`DefaultRoomContentSpawner` 设 `View` 但不设 `ViewAppearance`** —— 与本轮修的同类缺口，属另一条路径。
+8. **武器/子弹在 3D 里仍不渲染**：本轮只保证"组件齐备"，**没有接表现层的实际绘制**。
+   另按 v12 决定，`ModelPath` 当前全部留空（统一白模），接线完成前看不到模型属预期行为。
+
+---
 
 ## 18. 第一个可玩人物（`test_hero`，2026-11-05 落地）
 

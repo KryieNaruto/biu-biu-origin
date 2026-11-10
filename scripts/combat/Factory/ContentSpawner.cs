@@ -45,6 +45,10 @@ public sealed class ContentSpawner
         // 组件类型数组在构造期建好：每帧 new 一个 ComponentType[] 就是一次 GC 分配，
         // 而 World.Create(IReadOnlyList<ComponentType>) 必须要一个列表 —— 所以"预建 + 复用"是本系统
         // 做到"稳态零分配"的关键（用户要求"工厂必须高性能"）。
+        // ★ 渲染组件必须齐备（规则5/规则7）：三种产物**都**带 View + ViewAppearance。
+        //   历史教训（2026-11-09）：最初只有角色走了外观注册，子弹/物件/特效「有的有 View、有的连 View 都没有」，
+        //   而 combat.xlsx 每一行都填了 VisualPack、构建期还校验磁盘存在 —— 数据填了、校验过了、运行期没人读。
+        //   收口到这里之后，新增一种产物只要走本类就会自动获得视觉，不会再长出第四套遗漏。
         _projectileComponents = new[]
         {
             _world.Register<Transform3>(),
@@ -52,6 +56,8 @@ public sealed class ContentSpawner
             _world.Register<Team>(),
             _world.Register<ProjectileState>(),
             _world.Register<Hurtbox>(),
+            _world.Register<View>(),
+            _world.Register<ViewAppearance>(),
         };
         _actorComponents = new[]
         {
@@ -59,12 +65,16 @@ public sealed class ContentSpawner
             _world.Register<Velocity>(),
             _world.Register<Team>(),
             _world.Register<Hurtbox>(),
+            _world.Register<View>(),
+            _world.Register<ViewAppearance>(),
         };
         _effectComponents = new[]
         {
             _world.Register<Transform3>(),
             _world.Register<Team>(),
             _world.Register<Lifetime>(),
+            _world.Register<View>(),
+            _world.Register<ViewAppearance>(),
         };
     }
 
@@ -146,6 +156,7 @@ public sealed class ContentSpawner
             FlashRemaining = 0f,
             KnockbackResistance = 0f,
         });
+        FillAppearanceBySlot(entity, _index.ObjectSlotOfHash(contract.ObjectDefId));
 
         produced = entity;
         return true;
@@ -185,6 +196,7 @@ public sealed class ContentSpawner
             FlashRemaining = 0f,
             KnockbackResistance = 0f,
         });
+        FillAppearanceBySlot(entity, objectSlot);
 
         produced = entity;
         return true;
@@ -196,7 +208,8 @@ public sealed class ContentSpawner
     public bool TrySpawnEffect(int objectSlot, in NVector3 position, float lifetime, out Entity produced)
     {
         produced = Entity.None;
-        if (_index.GetObject(objectSlot) is null)
+        ObjectArchetype? effectArchetype = _index.GetObject(objectSlot);
+        if (effectArchetype is null)
         {
             return false;
         }
@@ -210,9 +223,44 @@ public sealed class ContentSpawner
         });
         _world.Commands.Set(entity, new Team { Value = TeamId.Neutral });
         _world.Commands.Set(entity, new Lifetime { Remaining = lifetime, Duration = lifetime });
+        FillAppearanceBySlot(entity, objectSlot);
 
         produced = entity;
         return true;
+    }
+
+    /// <summary>
+    /// <b>视觉的唯一写入口</b>：按物件契约把「长什么样」写进 ECS（<see cref="View"/> + <see cref="ViewAppearance"/>）。
+    /// <para>
+    /// <b>为什么必须有这一个方法</b>：曾经子弹 / 物件 / 特效各自决定要不要带视觉，结果是「有的有 View、
+    /// 有的没 View、有的有 View 却没有 ViewAppearance」，而数据表每行都填了 VisualPack —— 属于规则7 的
+    /// 「新增一种产物要改 N 处」反例。收成一个方法后，三种产物的视觉写入路径**只有一份**，不会再漂移。
+    /// </para>
+    /// <para>
+    /// <b>为什么写 <see cref="ObjectArchetype.VisualSlot"/> 而不是模型路径</b>：组件必须 unmanaged（J2），
+    /// 路径是字符串；它由宿主在装配期注册进 <c>ActorViewDirector</c>，槽位号是两者之间的接缝。
+    /// 物件契约没给槽位（&lt; 0）时写 -1 = 未解析，表现层回退白模而不是让实体隐身。
+    /// </para>
+    /// </summary>
+    /// <param name="entity">刚创建（帧末才真正存在）的实体。</param>
+    /// <param name="objectSlot">该产物在 Objects 表里的槽位号（调用方都已持有，避免重复哈希查找）。</param>
+    private void FillAppearanceBySlot(Entity entity, int objectSlot)
+    {
+        // View.Slot = 0 表示「还没租到视图节点」，由宿主 VisualBridge 下一帧分配；
+        // 这里只声明「我需要一个视图」，不决定租哪个。Kind 留给宿主按产物种类选池。
+        _world.Commands.Set(entity, new View { Slot = 0, Kind = 0, Dirty = true });
+
+        ObjectArchetype? archetype = _index.GetObject(objectSlot);
+        int visualSlot = archetype is null ? ContentIndex.NoneSlot : archetype.VisualSlot;
+        int defHash = archetype is null ? 0 : archetype.IdHash;
+
+        _world.Commands.Set(entity, new ViewAppearance
+        {
+            VisualKey = defHash,
+            VisualSlotIndex = visualSlot,
+            PaletteSlot = ContentIndex.NoneSlot,
+            Scale = 1f,
+        });
     }
 
     /// <summary>由前向方向构造四元数（右手系 Y-up；弹体对称所以不管滚转）。</summary>

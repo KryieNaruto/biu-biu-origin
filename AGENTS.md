@@ -54,7 +54,7 @@
 | 2 | 逻辑用 C#，渲染/性能用 C++ GDExtension，特效自研 shader | 先问「这是不是每帧热路径」，是才考虑下沉 C++ | [02-tech-selection.md](docs/rules/02-tech-selection.md) | GS003 GS004 |
 | 3 | 任务完成必须**覆盖更新**架构大纲 | 改的是 `ARCHITECTURE.md` 本身 + 追加一行变更日志 | [07-definition-of-done.md](docs/rules/07-definition-of-done.md) | GS006 |
 | 4 | 所有数值走文件 / Excel / 插件可视化修改 | 代码里出现 `1.5f` 这种玩法数值 = 违规 | [04-data-driven.md](docs/rules/04-data-driven.md) | GS005 |
-| 5 | 先抽象，不许临时搭建 | 开工第一件事是写接口，不是写实现 | [03-abstract-first.md](docs/rules/03-abstract-first.md) | 人工审查清单 |
+| 5 | 先抽象，不许临时搭建 | 开工第一件事是写接口，不是写实现；**且概念的契约必须唯一且齐备**（一个概念只有一份组件集合/一个入口 · 同类产物必带同一套组件 · 每列数据有读取方 · 每个枚举成员有实现），判据见 [03 §3.4](docs/rules/03-abstract-first.md) 与 §6.1 契约完备四问 | [03-abstract-first.md](docs/rules/03-abstract-first.md) | 人工审查清单 + 工厂层用例 |
 | 6 | 人物/怪物数值封装成包，可互相赋值 | 一切都是 `StatPackage` 的不同组合 | [05-numeric-package.md](docs/rules/05-numeric-package.md) | 人工审查 |
 | 7 | 必须可扩展，新增功能不大改 | 「新增一种 X 要改几个文件？」答案 ≤ 2 | [06-extensibility.md](docs/rules/06-extensibility.md) | 人工审查 |
 | 8 | **多会话并行，每会话开临时工作空间，完成后合并主线** | 改动是不是发生在 `session/<会话名>` 分支的独立 worktree 里？在 `main` 上直接写 = 违规 | [08-parallel-sessions.md](docs/rules/08-parallel-sessions.md) | `tools/session.ps1` + 人工审查 |
@@ -73,6 +73,11 @@
 8. ❌ **在 `main` 分支上直接开发**（多个会话并行时）；或在两个会话里同时改同一批文件却不各自开 worktree。
 9. ❌ 把会话 worktree 建在项目根内部（会让 Godot 把两份工作树都当项目导入，`.godot/` 互相打架）。
 10. ❌ `git push --force` 到 `main`，或删除尚未合并的会话分支。
+11. ❌ **同一概念并存 2+ 套组件集合 / 2+ 条执行管线**（「平行契约」，规则5 §3.4-A）。
+12. ❌ **同类产物带不同组件**（「漏配」，§3.4-B）：例如子弹有 `View` 没有 `ViewAppearance`、特效两样都无，只有人物是齐的。
+13. ❌ **数据列无运行期读取方**（「死数据列」，§3.4-C）：只有生成器/校验器读过不算。
+14. ❌ **枚举成员无实现，或用静默 `default: return false;` 把"未实现"伪装成"不该发生"**（§3.4-D）。
+15. ❌ **用 `0`/`""`/`null` 兼做"合法取值"与"未配置"**（§3.4.2）：必须用与所有合法值不撞的哨兵。
 
 ---
 
