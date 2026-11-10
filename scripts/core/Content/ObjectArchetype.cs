@@ -184,6 +184,17 @@ public sealed class ObjectArchetype
     /// <summary>族槽位「无」。用 -1 与各 Registry 的 <c>NoneSlot</c> 保持一致。</summary>
     public const int NoCluster = -1;
 
+    /// <summary>
+    /// 视觉槽位「未解析」：内容表没填 <c>VisualPack</c> 时用 -1，<b>不能用 0</b>。
+    /// <para>
+    /// <b>为什么 0 是个坑</b>：0 是一个合法的外观槽位号（宿主外观注册表从 0 开始编号）。
+    /// 用 0 当"没配"的默认值，会让「忘了配外观」与「配的是第 0 号外观」在运行期完全无法区分 ——
+    /// 表现层只能猜，结果就是实体要么画成别人的样子，要么静默隐身。
+    /// 用 -1 之后，「有意为白模」与「忘了配」在组件里是两个不同的值，可被断言。
+    /// </para>
+    /// </summary>
+    public const int UnresolvedVisualSlot = -1;
+
     /// <summary>构造一个物件原型（字段极多且全部只读，全部走构造器以免出现「半初始化」的 Def）。</summary>
     public ObjectArchetype(
         string id,
@@ -201,7 +212,8 @@ public sealed class ObjectArchetype
         in ContentRef effect = default,
         int tags = 0,
         string displayKey = "",
-        int visualSlot = 0,
+        int visualSlot = UnresolvedVisualSlot,
+        string visualPackId = "",
         WeaponContract? weaponContract = null,
         ProjectileContract? projectileContract = null,
         ObjectBitMatrix? bitMatrix = null,
@@ -229,6 +241,7 @@ public sealed class ObjectArchetype
         Effect = effect;
         Tags = tags;
         VisualSlot = visualSlot;
+        VisualPackId = visualPackId ?? string.Empty;
         WeaponContract = weaponContract;
         ProjectileContract = projectileContract;
         BitMatrix = bitMatrix;
@@ -294,6 +307,20 @@ public sealed class ObjectArchetype
 
     /// <summary>视图槽位号（表现层选模型用，与 <see cref="RenderId"/> 二选一或并用）。</summary>
     public int VisualSlot { get; }
+
+    /// <summary>
+    /// 外观包 id（指向 <c>combat.xlsx/VisualPacks.Id</c>）。<b>这是模型的唯一入口。</b>
+    /// <para>
+    /// <b>为什么是 id 而不是路径</b>：路径属于表现层（宿主），逻辑层不该知道磁盘在哪（J4）；
+    /// id 是数据层与表现层之间的接缝 —— 数据表写 id，宿主装配期把 id 解析成 <see cref="VisualSlot"/>。
+    /// </para>
+    /// <para>
+    /// <b>为什么它与 <see cref="VisualSlot"/> 并存而不是替换</b>：本字段是「策划写的稳定标识」，
+    /// <see cref="VisualSlot"/> 是「宿主注册表里的槽位号」。后者依赖宿主装配顺序，不能进 Excel；
+    /// 前者是唯一真源。解析由宿主完成，组件只拿 int（J2 要求 unmanaged）。
+    /// </para>
+    /// </summary>
+    public string VisualPackId { get; }
 
     /// <summary>武器契约（<see cref="ObjectCapability.Weapon"/> 位有效时才有意义；否则为 <c>null</c>）。</summary>
     public WeaponContract? WeaponContract { get; }

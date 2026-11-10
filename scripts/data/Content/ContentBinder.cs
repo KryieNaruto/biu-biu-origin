@@ -787,11 +787,9 @@ public sealed class ContentBinder
             displayKey: displayKey,
             weaponContract: weapon,
             projectileContract: projectile,
-            // 模型属性（可选列：老表没有这三列时为空串 = 白模，不报错）。
-            // 语义：AssetPath 优先于 VisualPack；两者都空 → 表现层回退白模。
-            visualPackId: OptionalCell(row, VisualPackColumn),
-            assetPath: OptionalCell(row, AssetPathColumn),
-            assetAnim: OptionalCell(row, AssetAnimColumn));
+            // 模型属性：VisualPackId 是唯一入口（见 ARCHITECTURE §17.10 / 规则5）。
+            // AssetPath / AssetAnim 两条旁路已删除——同一概念并存三条写入路径 = 没有唯一入口。
+            visualPackId: OptionalCell(row, VisualPackColumn));
     }
 
     /// <summary>
@@ -804,7 +802,10 @@ public sealed class ContentBinder
     /// </summary>
     private static string OptionalCell(ContentRow row, string column)
     {
-        return HasColumn(row.Table, column) ? row.Get(column).Trim() : string.Empty;
+        // 不调 HasColumn(ContentTable, ...)：ContentRow.Table 是「表名字符串」而不是表对象，
+        // 两者类型不同（HEAD 里此处曾直接传 row.Table，导致 CS1503 编译不过）。
+        // row.Get 对不存在的列返回空串，语义正是「可选列缺列」。
+        return row.Get(column).Trim();
     }
 
     /// <summary>绑定 Weapons 表的一行。外键指向 Objects 时必须已建索引。</summary>
