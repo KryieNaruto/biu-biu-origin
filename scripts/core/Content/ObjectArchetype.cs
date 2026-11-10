@@ -213,7 +213,6 @@ public sealed class ObjectArchetype
         int tags = 0,
         string displayKey = "",
         int visualSlot = UnresolvedVisualSlot,
-        string visualPackId = "",
         WeaponContract? weaponContract = null,
         ProjectileContract? projectileContract = null,
         ObjectBitMatrix? bitMatrix = null,
@@ -247,7 +246,6 @@ public sealed class ObjectArchetype
         ProjectileContract = projectileContract;
         BitMatrix = bitMatrix;
         HitboxAnchor = hitboxAnchor ?? string.Empty;
-        VisualPackId = visualPackId ?? string.Empty;
     }
 
     /// <summary>物件定义 id（Excel 主键，如 <c>bullet_pistol_basic</c>）。</summary>
@@ -336,20 +334,6 @@ public sealed class ObjectArchetype
 
     /// <summary>视图槽位号（表现层选模型用，与 <see cref="RenderId"/> 二选一或并用）。</summary>
     public int VisualSlot { get; }
-
-    /// <summary>
-    /// 外观包 id（指向 <c>combat.xlsx/VisualPacks.Id</c>）。<b>这是模型的唯一入口。</b>
-    /// <para>
-    /// <b>为什么是 id 而不是路径</b>：路径属于表现层（宿主），逻辑层不该知道磁盘在哪（J4）；
-    /// id 是数据层与表现层之间的接缝 —— 数据表写 id，宿主装配期把 id 解析成 <see cref="VisualSlot"/>。
-    /// </para>
-    /// <para>
-    /// <b>为什么它与 <see cref="VisualSlot"/> 并存而不是替换</b>：本字段是「策划写的稳定标识」，
-    /// <see cref="VisualSlot"/> 是「宿主注册表里的槽位号」。后者依赖宿主装配顺序，不能进 Excel；
-    /// 前者是唯一真源。解析由宿主完成，组件只拿 int（J2 要求 unmanaged）。
-    /// </para>
-    /// </summary>
-    public string VisualPackId { get; }
 
     /// <summary>武器契约（<see cref="ObjectCapability.Weapon"/> 位有效时才有意义；否则为 <c>null</c>）。</summary>
     public WeaponContract? WeaponContract { get; }
