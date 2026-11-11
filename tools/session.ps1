@@ -83,7 +83,7 @@ $script:TEXTDEF = [ordered]@{
     'label-main' = @(0x4E3B,0x7EBF,0x5206,0x652F)
     'label-merged' = @(0x662F,0x5426,0x5DF2,0x5408,0x5E76)
     'label-ahead' = @(0x9886,0x5148,0x002F,0x843D,0x540E)
-    'label-ahead-committed' = @(0x9886,0x5148,0x002F,0x843D,0x540E,0x002A)
+    'label-ahead-committed' = @(0x9886,0x5148,0x002F,0x843D,0x540E,0x002A)
     'ahead-footnote' = @(0x002A,0x0020,0x53EA,0x7EDF,0x8BA1,0x5DF2,0x63D0,0x4EA4,0x5386,0x53F2,0xFF1B,0x5DE5,0x4F5C,0x533A,0x53E6,0x6709,0x672A,0x63D0,0x4EA4,0x6539,0x52A8)
     'ahead-fmt' = @(0x9886,0x5148,0x0020,0x007B,0x0030,0x007D,0x0020,0x002F,0x0020,0x843D,0x540E,0x0020,0x007B,0x0031,0x007D)
     'label-clean' = @(0x5DE5,0x4F5C,0x533A)
@@ -185,6 +185,11 @@ $script:TEXTDEF = [ordered]@{
     'note-dirty-main-hint' = @(0x89C4,0x5219,0x0038,0xFF1A,0x006D,0x0061,0x0069,0x006E,0x0020,0x53EA,0x63A5,0x53D7,0x5408,0x5E76,0x3002,0x5EFA,0x8BAE,0x5148,0x628A,0x8FD9,0x4E9B,0x6539,0x52A8,0x5904,0x7406,0x6389,0xFF08,0x63D0,0x4EA4,0x5230,0x67D0,0x6761,0x4F1A,0x8BDD,0x5206,0x652F,0xFF09,0x518D,0x5F00,0x4F1A,0x8BDD,0x3002)
     'wt-header' = @(0x4F1A,0x8BDD,0x540D,0x007C,0x5206,0x652F,0x007C,0x8DEF,0x5F84,0x007C,0x72B6,0x6001,0x007C,0x6700,0x65B0,0x63D0,0x4EA4)
 
+    'err-target-files' = @(0x4E3B,0x5DE5,0x4F5C,0x6811,0x91CC,0x8FD9,0x4E9B,0x6587,0x4EF6,0x6709,0x672A,0x63D0,0x4EA4,0x4FEE,0x6539,0xFF0C,0x5408,0x5E76,0x4F1A,0x8986,0x76D6,0x5B83,0x4EEC,0xFF0C,0x5DF2,0x63D0,0x524D,0x62E6,0x622A,0xFF08,0x672A,0x6267,0x884C,0x0020,0x006D,0x0065,0x0072,0x0067,0x0065,0xFF09,0xFF1A,0x007B,0x0030,0x007D)
+    'err-target-files-hint' = @(0x0067,0x0069,0x0074,0x0020,0x7684,0x5408,0x5E76,0x4F1A,0x62D2,0x7EDD,0x8986,0x76D6,0x672A,0x63D0,0x4EA4,0x7684,0x5DF2,0x8DDF,0x8E2A,0x6587,0x4EF6,0x3002,0x8BF7,0x8BA9,0x6539,0x52A8,0x65B9,0x5148,0x63D0,0x4EA4,0x6216,0x8FD8,0x539F,0xFF1B,0x811A,0x672C,0x4E0D,0x4F1A,0x66FF,0x4F60,0x4E22,0x5F03,0x4EFB,0x4F55,0x4EBA,0x7684,0x6539,0x52A8,0x3002)
+    'finish-merge-reason' = @(0x5408,0x5E76,0x88AB,0x0020,0x0067,0x0069,0x0074,0x0020,0x4E2D,0x6B62,0xFF0C,0x5DF2,0x56DE,0x6EDA,0xFF0C,0x4E3B,0x7EBF,0x73B0,0x573A,0x672A,0x6539,0x53D8,0x3002,0x0067,0x0069,0x0074,0x0020,0x539F,0x6587,0x5982,0x4E0B,0xFF1A)
+    'finish-clean-hint' = @(0x82E5,0x53EA,0x662F,0x4E34,0x65F6,0x7ED5,0x5F00,0x672C,0x5730,0x4FEE,0x6539,0xFF0C,0x53EF,0x7528,0x0020,0x0067,0x0069,0x0074,0x0020,0x0075,0x0070,0x0064,0x0061,0x0074,0x0065,0x002D,0x0069,0x006E,0x0064,0x0065,0x0078,0x0020,0x002D,0x002D,0x0061,0x0073,0x0073,0x0075,0x006D,0x0065,0x002D,0x0075,0x006E,0x0063,0x0068,0x0061,0x006E,0x0067,0x0065,0x0064,0x0020,0x002D,0x002D,0x0020,0x6587,0x4EF6,0x0020,0x8DF3,0x8FC7,0xFF0C,0x4E8B,0x540E,0x52A1,0x5FC5,0x7528,0x0020,0x002D,0x002D,0x006E,0x006F,0x002D,0x0061,0x0073,0x0073,0x0075,0x006D,0x0065,0x002D,0x0075,0x006E,0x0063,0x0068,0x0061,0x006E,0x0067,0x0065,0x0064,0x0020,0x64A4,0x9500,0x3002)
+    'commit-add-all' = @(0x8B66,0x544A,0xFF1A,0x0063,0x006F,0x006D,0x006D,0x0069,0x0074,0x0020,0x4F7F,0x7528,0x0020,0x0067,0x0069,0x0074,0x0020,0x0061,0x0064,0x0064,0x0020,0x002D,0x0041,0xFF0C,0x4F1A,0x628A,0x4F1A,0x8BDD,0x5185,0x5168,0x90E8,0x6539,0x52A8,0x4E00,0x8D77,0x6682,0x5B58,0xFF08,0x89C4,0x5219,0x0038,0x0020,0x004D,0x0034,0xFF09,0x3002,0x5171,0x4EAB,0x6587,0x4EF6,0x8BF7,0x5148,0x9010,0x6587,0x4EF6,0x0020,0x0067,0x0069,0x0074,0x0020,0x0061,0x0064,0x0064,0xFF0C,0x518D,0x7A7A,0x8DD1,0x4E00,0x6B21,0x0020,0x0063,0x006F,0x006D,0x006D,0x0069,0x0074,0x0020,0x68C0,0x67E5,0x3002)
 }
 
 # Pre-rendered strings: storing the code point arrays and joining them on every
@@ -233,6 +238,7 @@ function TF([string]$key, [object[]]$fmtArgs) {
 # 2. Layout: this script lives in <project root>\tools
 # ============================================================================
 $script:ExitCode = 0
+$script:LayoutRoot = ''
 
 function Fail([string]$text, [int]$code) {
     Out-Line ('ERROR  ' + $text)
@@ -249,8 +255,12 @@ if (-not $ProjectRoot -or -not (Test-Path -LiteralPath $ProjectRoot -PathType Co
     $ProjectRoot = (Get-Location).Path
 }
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path.TrimEnd([char]'\')
+$script:LayoutRoot = $ProjectRoot
 
-# worktree container: sibling of the project root, so Godot never scans it
+# worktree container: sibling of the project root, so Godot never scans it.
+# NOTE: the final value is fixed up (see section 3) once git is located; the
+# script is copied into every session worktree, so "<worktree>/tools/session.ps1"
+# must still resolve the MAIN worktree as the project root.
 $script:WorktreeRoot = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot '..\.worktrees')).TrimEnd([char]'\')
 
 function Get-WorktreePath([string]$sessionName) {
@@ -268,6 +278,27 @@ $script:GitExe = ''
 $gc = Get-Command 'git' -CommandType Application -ErrorAction SilentlyContinue
 if ($gc) { $script:GitExe = $gc.Source }
 
+# Fix up the project root: this script is checked out INSIDE every session
+# worktree as well, so "the folder above tools/" is not always the main
+# worktree. A session worktree reports a git-common-dir of <main>/.git, whereas
+# the main worktree reports its own .git, so prefer the main worktree. Without
+# this, running `finish` from a session directory looked for
+#   <container>\.worktrees\<name>\..\.worktrees => <container>\.worktrees\.worktrees
+# and could never find its own worktree.
+if ($script:GitExe -and $script:LayoutRoot) {
+    $r = & $script:GitExe -C $script:LayoutRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $common = ([string](@($r) | Select-Object -First 1)).TrimEnd([char]'\')
+        if ($common -and ([System.IO.Path]::GetFileName($common) -eq '.git')) {
+            $parent = Split-Path -Parent $common
+            if ($parent -and (Test-Path -LiteralPath $parent -PathType Container)) {
+                $ProjectRoot = (Resolve-Path -LiteralPath $parent).Path.TrimEnd([char]'\')
+                $script:WorktreeRoot = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot '..\.worktrees')).TrimEnd([char]'\')
+            }
+        }
+    }
+}
+
 function Invoke-Git([string[]]$gitArgs, [string]$where) {
     $prev = (Get-Location).Path
     if ($where) { Set-Location -LiteralPath $where }
@@ -284,7 +315,11 @@ function Invoke-Git([string[]]$gitArgs, [string]$where) {
         $out = & $script:GitExe @gitArgs 2>&1
         $code = $LASTEXITCODE
         $text = (@($out) | ForEach-Object { [string]$_ }) -join "`n"
-        $text = $text.Trim()
+        # TrimEnd only: trimming the START of the blob eats the leading status
+        # column of the first line of "status --porcelain" (" M x" -> "M x"),
+        # which silently shifted every parsed path. Trailing newlines are
+        # harmless for the callers that compare whole values.
+        $text = $text.TrimEnd("`r", "`n", " ", "`t")
     } catch {
         $text = [string]$_.Exception.Message
         $code = -1
@@ -319,12 +354,22 @@ function Get-CurrentBranch([string]$where) {
 function Get-Porcelain([string]$where) {
     # Returns $null on failure, otherwise always an ArrayList. The leading comma
     # is required: an empty ArrayList would otherwise unroll to $null.
+    # NOTE: parse "git status --porcelain -z" indirectly by splitting the raw
+    # output, NOT the trimmed $r.text: Invoke-Git trims the whole blob, which
+    # eats the leading space of the FIRST line (" M path" -> "M path") and
+    # shifts every later Substring(3) by one character the other way. That is
+    # a silent off-by-one: "docs/..." was read back as "ocs/...", so exact path
+    # matching against git's own file list never hit.
     $r = Invoke-Git @('status', '--porcelain') $where
     if ($r.code -ne 0) { return $null }
     $lines = New-Object System.Collections.ArrayList
     foreach ($l in ($r.text -split "`r?`n")) {
+        # porcelain format is exactly "XY <path>": two status columns, a space,
+        # then the path. Anything else is a blank tail line.
         $t = [string]$l
-        if ($t.Trim().Length -gt 0) { [void]$lines.Add($t) }
+        if ($t.Length -ge 4 -and $t.Substring(2, 1) -eq ' ') {
+            [void]$lines.Add($t)
+        }
     }
     return , $lines
 }
@@ -334,6 +379,49 @@ function Test-Dirty([string]$where) {
     if ($null -eq $p) { return $false }
     # an empty ArrayList unrolls to $null on return, so compare without .Count
     return (@($p).Count -gt 0)
+}
+
+# Paths listed by "git status --porcelain" whose working-tree content differs
+# from HEAD and whose content a merge could therefore refuse to overwrite.
+# Untracked ("??") files are excluded on purpose: git merge does not abort on
+# them (it only refuses when a file to be written would be clobbered by a
+# TRACKED local modification), and flagging them made finish() unusable on a
+# main worktree that merely has build output lying around.
+function Get-ModifiedPaths([string]$where) {
+    $res = New-Object System.Collections.ArrayList
+    $p = Get-Porcelain $where
+    if ($null -eq $p) { return , $res }
+    foreach ($line in $p) {
+        $l = [string]$line
+        if ($l.Length -lt 4) { continue }
+        $xy = $l.Substring(0, 2)
+        if ($xy -eq '??') { continue }
+        $path = $l.Substring(3)
+        $arrow = $path.IndexOf(' -> ')
+        if ($arrow -ge 0) { $path = $path.Substring($arrow + 4) }
+        $path = $path.Trim('"')
+        if ($path.Length -gt 0) { [void]$res.Add($path) }
+    }
+    return , $res
+}
+
+# Rule 8 / M4: which of the given paths should NOT ride along in a bare
+# "git add -A". Shared documents and binary data are touched by several
+# sessions at once, so sweeping them in is how one session silently commits
+# another session's half-finished edit.
+function Get-ProtectedPaths([string[]]$paths) {
+    $res = New-Object System.Collections.ArrayList
+    foreach ($p in $paths) {
+        $leaf = [System.IO.Path]::GetFileName([string]$p)
+        $isShared = ($leaf -eq 'ARCHITECTURE.md' -or $leaf -eq 'AGENTS.md' -or
+                     $leaf -eq 'architecture-rules.json')
+        if (-not $isShared) {
+            $ext = [System.IO.Path]::GetExtension([string]$p).ToLowerInvariant()
+            if ($ext -eq '.xlsx' -or $ext -eq '.xlsm' -or $ext -eq '.xls') { $isShared = $true }
+        }
+        if ($isShared) { [void]$res.Add([string]$p) }
+    }
+    return , $res
 }
 
 function Get-Subject([string]$where) {
@@ -784,6 +872,22 @@ function Invoke-Commit {
         return $script:ExitCode
     }
 
+    # Rule 8 / M4: "git add -A" is what let one session sweep another session's
+    # half-finished edits of a shared document into its own commit. It cannot be
+    # simply dropped (a normal session needs its new files staged too), so keep
+    # the behaviour but name the shared files that are about to ride along and
+    # point at the all-staged case: when everything is already staged, commit
+    # them as they are instead of widening the index.
+    $alreadyStaged = $false
+    $null = & $script:GitExe -C $wt.path diff --cached --quiet 2>&1
+    if ($LASTEXITCODE -eq 1) { $alreadyStaged = $true }
+    $protected = Get-ProtectedPaths (Get-ModifiedPaths $wt.path)
+    if (-not $alreadyStaged -and @($protected).Count -gt 0) {
+        Out-Line ('WARN   ' + (T 'commit-add-all'))
+        foreach ($p in $protected) { Hint ('    ' + $p) }
+        Out-Blank
+    }
+
     $r = Invoke-Git @('add', '-A') $wt.path
     if ($r.code -ne 0) {
         Fail ((T 'err-git-failed') -f $r.code, 'add -A') 5
@@ -884,10 +988,57 @@ function Invoke-Finish {
 
     # ---- step 4: merge --no-ff back into Base -----------------------------
     Out-Line ((T 'finish-step-merge') -f $Name, $Base)
+    # git merge refuses when a file it must write still has TRACKED local
+    # modifications in the target worktree ("Your local changes to the
+    # following files would be overwritten by merge"). Detect exactly that
+    # set up front instead of letting git abort with a bare "merge failed",
+    # and print the offending paths so the session owner can act.
+    $target = Invoke-Git @('log', '--name-only', '--pretty=format:', ($Base + '..' + $branch)) $ProjectRoot
+    $willOverwrite = New-Object System.Collections.ArrayList
+    if ($target.code -eq 0) {
+        # PowerShell flattens ArrayList on return in ways that depend on the
+        # call site ("@(f)" still yields a one-element array wrapping the list
+        # when f ends with "return , $list"). Flatten explicitly instead of
+        # reasoning about it.
+        $dirty = New-Object System.Collections.ArrayList
+        foreach ($d in (Get-ModifiedPaths $main.path)) {
+            foreach ($x in @($d)) { [void]$dirty.Add([string]$x) }
+        }
+        $dirtySet = @{}
+        foreach ($d in $dirty) { $dirtySet[[string]$d] = $true }
+        $seen = @{}
+        foreach ($f in ([string]$target.text -split "`r?`n")) {
+            $t = $f.Trim()
+            if ($t.Length -eq 0) { continue }
+            if ($seen.ContainsKey($t)) { continue }
+            $seen[$t] = $true
+            if ($dirtySet.ContainsKey($t)) { [void]$willOverwrite.Add($t) }
+        }
+    }
+    if (@($willOverwrite).Count -gt 0) {
+        Fail ((T 'err-target-files') -f (@($willOverwrite) -join ', ')) 8
+        foreach ($f in $willOverwrite) { Hint ('    ' + $f) }
+        Hint (T 'err-target-files-hint')
+        Show-Footer
+        return $script:ExitCode
+    }
+
     $r = Invoke-Git @('merge', '--no-ff', '-m', ('merge ' + $branch + ' into ' + $Base), $branch) $main.path
     if ($r.code -ne 0) {
         $mr = Invoke-Git @('merge', '--abort') $main.path
         Fail (T 'finish-merge-fail') 8
+        # The old code swallowed git's own diagnostic here, which is why the
+        # failure looked unexplained; print it (both the merge and the abort).
+        Hint ((T 'finish-merge-reason'))
+        foreach ($l in (([string]$r.text -split "`r?`n"))) {
+            if ($l.Trim().Length -gt 0) { Hint ('    ' + $l.Trim()) }
+        }
+        if ($mr.code -ne 0 -and [string]$mr.text -match '\S') {
+            foreach ($l in (([string]$mr.text -split "`r?`n"))) {
+                if ($l.Trim().Length -gt 0) { Hint ('    abort: ' + $l.Trim()) }
+            }
+        }
+        Hint (T 'finish-clean-hint')
         Hint ((T 'finish-merge-hint') -f $Name, $Base)
         Show-Footer
         return $script:ExitCode
