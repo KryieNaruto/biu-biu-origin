@@ -1,6 +1,6 @@
 # 规则 8：多会话并行 worktree 工作流
 
-> 状态: v1  最后更新: 2026-11-04  生效范围: 所有并行开发的会话（人 + AI agent）
+> 状态: v1.2  最后更新: 2026-11-11（总架构师裁定：worktree 强制化 M1~M5）  生效范围: **所有会话（人 + AI agent，含总架构师）**，不再以「是否并行」为前提
 > 关联文档: [AGENTS.md](../../AGENTS.md)、[07-definition-of-done.md](07-definition-of-done.md)、[03-abstract-first.md](03-abstract-first.md)、[06-extensibility.md](06-extensibility.md)、[../architecture/ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 > 配套工具: [../../tools/session.ps1](../../tools/session.ps1)、[../../config/architecture-rules.json](../../config/architecture-rules.json)
 
@@ -15,6 +15,7 @@
 | 一句话要求 | **一个会话 = 一个 worktree = 一条分支；改动只在 worktree 内发生；收工合并回 `main`** |
 | 用什么工具 | `.\tools\session.ps1 start / list / status / commit / finish / stop` |
 | 最容易被违反的三件事 | 在 `main` 上直接改 ／ 两个会话共用一个目录 ／ worktree 建在项目根里面 |
+| 什么时候必须开（2026-11-11 总架构师裁定） | **只要执行任务就开**，不看改动大小、不看是否并发、不看是谁（含总架构师）；做完**必须合并回 `main`**。见 §2.0 M1~M5 |
 
 > 本规则的自动化检查不依赖架构守卫：它靠 `tools/session.ps1` 的 `list` 与 `status` 两件工具把「谁在哪个 worktree、有没有未提交改动」变成可查的事实。
 
@@ -56,7 +57,7 @@
 worktree 的目录布局：
 
 ```text
-D:\workspace\myspace\godot_game\
+E:\workspace\myspace\godot_game\
 ├─ biu-biu-origin\                 ← 主工作树（main 分支）+ 整个仓库唯一的 .git
 │  ├─ .git\                       ← ★ 只有主工作树里是真实目录，所有 worktree 共享它
 │  ├─ tools\session.ps1
@@ -69,6 +70,21 @@ D:\workspace\myspace\godot_game\
 ---
 
 ## 2. 标准流程（6 步，一步都不能跳）
+
+### 2.0 强制口径（总架构师裁定，**无条件**适用）
+
+> 判据不再看「有没有别的会话在并行」，而是：**只要要执行任务，就必须新开 worktree；禁止在 `main` 上直接修改任何文件；完成后必须合并回 `main`。**
+
+| # | 强制条款 | 一句话判据 | 违规长相 |
+|---|---|---|---|
+| **M1** | **每个任务开一个新 worktree** | 任务产出的**每一个**文件改动都在 `..\.worktrees\<会话名>\` 内 | 在项目根（主工作树，`main`）里编辑、生成、`dotnet build` 后手改产物 |
+| **M2** | **禁止在 `main` 上直接修改** | `git status` 在主工作树里**没有**本任务的未提交改动；`main` 上只有合并提交 | 「先改完再补 worktree」「README 小改不用开」——**一律违规**（取消旧 §12「唯一会话可不开」的豁免） |
+| **M3** | **完成后必须合并回 `main`** | 走完 `commit → finish → 合并后在 main 复跑 build + 守卫 → stop` | 任务做完停在 `session/*` 分支上不合；直接 `merge` 而跳过收工自检 |
+| **M4** | **绝不直接 `git add -A` 提交** | 提交前逐个 `git add <本任务文件>`；`ARCHITECTURE.md` / `AGENTS.md` / `data/excel/*.xlsx` 等共享文件**只提交 diff 属于本任务的部分** | 在脏的主工作树里 `git add -A`，把别的任务的改动、`*.xlsx.bak*`、临时调试目录一起提交 |
+| **M5** | **总架构师会话同样受约束** | 本文档的 `M1~M4` 也包括**总架构师自己**：规则类改动同样先进 worktree | 总架构师在主工作树里改 `AGENTS.md` / `docs/rules/**` 后直接提交 |
+
+> 与旧 §12 的关系：旧条目「我是唯一的会话，可以不开吗 → 可以」**作废**，按 M2 执行。
+> M4 是新增的硬纪律：`session.ps1 commit` 内部是 `git add -A`，在「主工作树长期有别人半成品」的条件下会**把别人的改动卷进本任务提交**——所以共享文件必须先人工暂存。
 
 ```text
 ① 开会话      .\tools\session.ps1 start -Name <会话名>
@@ -93,7 +109,7 @@ D:\workspace\myspace\godot_game\
 ### 2.2 第 ② 步：隔离作业（最容易违反的一步）
 
 ```powershell
-cd D:\workspace\myspace\godot_game\.worktrees\skill-takeover
+cd E:\workspace\myspace\godot_game\.worktrees\skill-takeover
 # 之后所有动作都在这里：读写文件、dotnet build、check_architecture.ps1、更新 ARCHITECTURE.md
 ```
 
@@ -126,6 +142,8 @@ dotnet build
 - 等价于在该 worktree 内 `git add -A` + `git commit -m "..."`。
 - **约定提交信息前缀 = 会话名**（`<会话名>: <一句话>`），合并时一眼能看出这串提交属于哪个会话。
 - 没有改动时脚本会提示「无可提交」，不是错误。
+- **⚠️ 共享文件纪律（M4）**：提交前先 `git status` 核对清单，`ARCHITECTURE.md` / `AGENTS.md` / `data/excel/*.xlsx` / `config/architecture-rules.json` 这几类**多人共写**的文件，逐个 `git add -p`（或先整文件 `git add` 再 `git diff --cached` 复核）确认只含本任务内容；
+  不确定属于本任务的改动**不要提交**，留在工作区并告知其归属会话。
 
 ### 2.5 第 ⑤ 步：合并回主线
 
@@ -195,7 +213,7 @@ dotnet build
 
 ```powershell
 # finish 停下来之后，按脚本打印的指引：
-cd D:\workspace\myspace\godot_game\.worktrees\<会话名>
+cd E:\workspace\myspace\godot_game\.worktrees\<会话名>
 git status                        # 看冲突文件
 # 逐个解决（只在 worktree 内解决，不要在 main 上解决）
 git add <已解决的文件>
@@ -212,7 +230,7 @@ git rebase --abort
 
 ### 5.1 规定
 
-- 所有会话 worktree 统一放在 **项目根的兄弟目录**：`D:\workspace\myspace\godot_game\.worktrees\<会话名>\`；
+- 所有会话 worktree 统一放在 **项目根的兄弟目录**：`E:\workspace\myspace\godot_game\.worktrees\<会话名>\`；
 - **严禁**把 worktree 建在项目根内部（例如 `biu-biu-origin\.worktrees\<name>\`）。
 
 ### 5.2 为什么必须在外面
@@ -284,6 +302,9 @@ git rebase --abort
 | 6 | **冲突时 Accept 一边了事**，不看语义 | 会把另一方正确的抽象冲掉，且事后无人知晓 | 按 §4.2，以抽象正确性为准解决 |
 | 7 | **共享构建产物**（把主工作树的 `obj/`、`bin/`、`native/build/` 软链或复制进 worktree） | 两套编译参数/时间戳互相污染，产物不可信 | 各 worktree 自己 build（见 §6） |
 | 8 | **忘了 `stop`**，堆一堆 `.worktrees\*` 与已合并的 `session/*` 分支 | 目录越堆越多，`git worktree list` 变成垃圾堆，新人无法分辨哪个是活跃会话 | `finish` 后立刻 `stop`；每周 `session.ps1 list` 看一遍 |
+| 9 | **做完任务不合回 `main`**（停在 `session/*` 上） | 主线拿不到成果，下个会话的基线是过期的；越拖冲突越大 | 收工即 `commit` → `finish` → 复跑 → `stop`（M3） |
+| 10 | **共享文件用 `git add -A` 一把提交**（`ARCHITECTURE.md` 里混进别人正在写的章节、`*.xlsx` 混进 `*.bak`） | 把不属于本任务的改动绑进本任务提交，回滚/审查都失真；`*.bak*` 还会被当数据读 | 提交前核对 `git status`，共享文件用 `git add -p` / `git diff --cached` 复核（M4） |
+| 11 | **总架构师在主工作树里直接改规则文档** | 规则特权一旦放开，所有人都会照着「大改动才开 worktree」给自己找台阶 | 规则类改动同样走 worktree（M5） |
 
 ---
 
@@ -384,8 +405,9 @@ git rebase --abort
 
 | 问题 | 回答 |
 |---|---|
-| 我就改一个小文件，也要开 worktree 吗？ | **只要同时还有别的会话在干活，就开。** 规则8 的触发条件是「并发」，不是「改动大小」。 |
-| 我是唯一的会话，可以不开吗？ | 可以，但建议照开：它同时解决了「收工前敢不敢随便改」的顾虑，且与将来多人并行零成本衔接。 |
+| 我就改一个小文件，也要开 worktree 吗？ | **要。** 按 §2.0 的 M1，触发条件是「要执行任务」而不是「改动大小」或「是否并发」。 |
+| 我是唯一的会话，可以不开吗？ | **不可以**（§2.0 M2，原「可以」已作废）。连改一行 README 也先在 worktree 里改、提交、合并。 |
+| 总架构师改 `AGENTS.md` / `docs/rules/**` 也要开 worktree 吗？ | **要**（§2.0 M5）。规则类改动同样走 `start → commit → finish`，并在合并后的 `main` 上复跑守卫。 |
 | `start` 报「请先完成 git init」怎么办？ | 说明项目根还不是 git 仓库。由 Lead 完成 `git init` + 首次提交后，`start` 即可用。 |
 | 在 worktree 里跑 `dotnet build` 会不会太慢 / 太占地方？ | 会各有一份 `obj/` `bin/`，这是隔离的代价；它们都在 `.gitignore` 里、随时可删。 |
 | 我能同时在两个 worktree 里开 Godot 编辑器吗？ | 可以，但它们会各自维护 `.godot/`；建议只有主工作树常开编辑器，会话内用命令行（`dotnet build` / 守卫）自检。 |
@@ -402,4 +424,5 @@ git rebase --abort
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
 | 2026-11-04 | v1 | 规则8：多会话并行 worktree 工作流 | 建立规则8 正文：worktree 选型理由（vs clone / 切分支）、6 步标准流程、主线纪律、冲突处理与「不许随便选一边」红线、ARCHITECTURE.md 保留双方章节的合并特例、目录隔离、共享不可并发对象表、8 条反例、会话名规范；配套 `tools/session.ps1` 六子命令、`07` 追加合并环节与检查项、`architecture-rules.json` 追加 `.worktrees/**` 与 `out/**` | `docs/rules/08-parallel-sessions.md`、`tools/session.ps1`、`docs/rules/07-definition-of-done.md`、`config/architecture-rules.json` |
+| 2026-11-11 | v1.2 | 总架构师裁定：worktree **强制化** | 新增 §2.0「强制口径 M1~M5」：① 只要执行任务就必须新开 worktree（取消「唯一会话可不开」豁免）；② 禁止在 `main` 上直接修改；③ 完成后必须合并回 `main`；④ 共享文件禁止 `git add -A`，必须逐文件暂存；⑤ 总架构师自身同样受约束。配合修订：§2.4 追加共享文件暂存纪律、§8 新增反例 9~11、§12 常见问题两条改写并新增一条、§5 路径示例盘符订正为 `E:` | `docs/rules/08-parallel-sessions.md` |
 | 2026-11-04 | v1.1 | 规则8：多会话并行 worktree 工作流（工具定稿对齐） | 按 `tools/session.ps1` 实测行为订正 §10：补全**退出码约定表**（0/1/2/3/4/5/6/7/8/9/10，便于 agent 判断）、明确前置条件（需已 `git init`，未初始化时退出码 2 + 提示而非崩溃）、工具**无 `-Force`** 的安全口径、`finish` 冲突时两分支均未被改动、`-NoDelete` 与 `stop` 的关系；修正 `status` 行为描述（改为「分支 HEAD / 是否已并入基线 / 领先落后条数 / 变更文件列表」，并说明未提交改动不属于分支）| `docs/rules/08-parallel-sessions.md` |
