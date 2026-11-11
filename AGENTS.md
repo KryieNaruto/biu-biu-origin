@@ -16,7 +16,7 @@
 | 数值放哪 | **Excel 是唯一真源**，构建期生成 `data/generated/`；代码里出现游戏数值 = 违规 |
 | 开工流程 | 先想抽象 → 再想扩展点 → 才写实现（`docs/rules/03`、`06`） |
 | 收工流程 | 编译通过 → 架构守卫无 error → **就地覆盖更新** `docs/architecture/ARCHITECTURE.md`（`docs/rules/07`） |
-| 多会话并行 | **每个会话开自己的临时工作空间（git worktree），干完合并回 main**，绝不在 main 上直接开发（`docs/rules/08`） |
+| 多会话并行 | **每个任务都开自己的临时工作空间（git worktree），禁止在 main 上直接改，干完必须合并回 main**（含总架构师；`docs/rules/08` §2.0） |
 
 ---
 
@@ -32,12 +32,13 @@
 ⑥ 才开始写代码
 ```
 
-> **第 ⓿ 步（只要有第二个会话就可能并行，就先做）：** 开一个会话工作空间，别在项目根直接开工。
+> **第 ⓿ 步（任何任务的第一步，无条件）：** 开一个会话工作空间，**禁止**在项目根（`main`）直接开工。
 > ```powershell
 > .\tools\session.ps1 start -Name <会话名>     # 例：skill-takeover
 > cd ..\.worktrees\<会话名>                     # ★ 之后所有操作都在这个目录里
 > ```
-> 详见 [docs/rules/08-parallel-sessions.md](docs/rules/08-parallel-sessions.md)。单人单会话时可跳过。
+> **强制口径（总架构师裁定 2026-11-11）**：只要执行任务就必须新开 worktree，不看改动大小、不看是否并发、**总架构师自己也不例外**；做完**必须** `commit → finish` 合并回 `main` 再收工。没有「单人单会话可跳过」的豁免。
+> 详见 [docs/rules/08-parallel-sessions.md](docs/rules/08-parallel-sessions.md) §2.0（M1~M5，含「共享文件禁止 `git add -A`、必须逐文件暂存」）。
 
 > 停在第 ② 步就卡住，说明 ARCHITECTURE.md 没维护好 —— 先把它补上，再开工。
 
@@ -57,7 +58,7 @@
 | 5 | 先抽象，不许临时搭建 | 开工第一件事是写接口，不是写实现；**且概念的契约必须唯一且齐备**（一个概念只有一份组件集合/一个入口 · 同类产物必带同一套组件 · 每列数据有读取方 · 每个枚举成员有实现），判据见 [03 §3.4](docs/rules/03-abstract-first.md) 与 §6.1 契约完备四问 | [03-abstract-first.md](docs/rules/03-abstract-first.md) | 人工审查清单 + 工厂层用例 |
 | 6 | 人物/怪物数值封装成包，可互相赋值 | 一切都是 `StatPackage` 的不同组合 | [05-numeric-package.md](docs/rules/05-numeric-package.md) | 人工审查 |
 | 7 | 必须可扩展，新增功能不大改 | 「新增一种 X 要改几个文件？」答案 ≤ 2 | [06-extensibility.md](docs/rules/06-extensibility.md) | 人工审查 |
-| 8 | **多会话并行，每会话开临时工作空间，完成后合并主线** | 改动是不是发生在 `session/<会话名>` 分支的独立 worktree 里？在 `main` 上直接写 = 违规 | [08-parallel-sessions.md](docs/rules/08-parallel-sessions.md) | `tools/session.ps1` + 人工审查 |
+| 8 | **每个任务都开 worktree，禁止在 `main` 上直接改，完成后必须合并回 `main`** | 本次任务的**全部**文件改动是否都发生在 `session/<会话名>` 分支的独立 worktree 里，且已 `finish` 回 `main`？在 `main` 上直接写 = 违规（无并发豁免、总架构师同样适用） | [08-parallel-sessions.md](docs/rules/08-parallel-sessions.md) §2.0 | `tools/session.ps1` + 人工审查 |
 
 ---
 
@@ -70,7 +71,7 @@
 5. ❌ 在 `scripts/ui/` 里调用 `Game.Combat` / `Game.Skill` 的结算逻辑（UI 只能读数据和发事件）。
 6. ❌ 直接手改 `data/generated/` 下的文件（改 Excel 后重新生成）。
 7. ❌ 修改引擎源码（默认不允许；确需时走 [02-tech-selection.md](docs/rules/02-tech-selection.md) 的 fork 流程并记录引擎版本）。
-8. ❌ **在 `main` 分支上直接开发**（多个会话并行时）；或在两个会话里同时改同一批文件却不各自开 worktree。
+8. ❌ **在 `main` 分支上直接开发**（任何情况下，无并发豁免、总架构师同样适用）；或在两个会话里同时改同一批文件却不各自开 worktree；或做完任务不合回 `main`；或用 `git add -A` 把不属于本任务的共享文件改动（`ARCHITECTURE.md` / `AGENTS.md` / `*.xlsx`）卷进提交。
 9. ❌ 把会话 worktree 建在项目根内部（会让 Godot 把两份工作树都当项目导入，`.godot/` 互相打架）。
 10. ❌ `git push --force` 到 `main`，或删除尚未合并的会话分支。
 11. ❌ **同一概念并存 2+ 套组件集合 / 2+ 条执行管线**（「平行契约」，规则5 §3.4-A）。
@@ -246,4 +247,5 @@ dotnet build                          # 1. C# 编译零错误
 | 2026-11-09 | v9 | **打开 Godot 报错清理：GDExtension Debug 产物 + 扫描目录豁免** | 用户打开编辑器刷 5 类 ERROR，逐条定位并根治：① **`GDExtension dynamic library not found`**——`.gdextension` 的 `[libraries]` 声明了 `windows.debug` / `windows.release` 两条路径，但 `addons/biu_biu_native/bin/` 里**只有 Release 版 dll**；编辑器走 debug 模板 → 找不到 `Debug.x86_64.dll` → `open_dynamic_library` 失败。**报错里显示的路径是 `.gdextension` 而不是 `.dll`，具有误导性**。修复：用 `native/build-debug`（`-DCMAKE_BUILD_TYPE=Debug`）编出 1.8 MB 的 Debug dll，两条路径都齐。② **`Couldn't read OBJ file ... .cpp.obj` + `Error importing`**——Godot 不读 `.gitignore`，把 `tools/asset_viewer2/build/CMakeFiles/**/*.cpp.obj` 当成 3D 模型去做 OBJ 导入。修复：给所有「非 Godot 产物 + 扩展名会被误判」的目录放空文件 `.gdignore`（`native/build`、`native/build-debug`、`tools/asset_viewer{,2}/build`、`tools/asset_viewer{,2}/dist`、`dist/`、`libgodot-cpp`）。③ **踩坑记录（重要）**：那些构建目录本身被 `.gitignore` 排除，而 **git 无法用 `!` 规则重新包含「被排除目录内的文件」**——所以 `.gdignore` 永远进不了库，只在本机有效。新增 `tools/fix_godot_scan_dirs.ps1`（`-Check` 退出码 10 表示缺失）作为幂等补齐手段，并在 `tools/env.ps1 -Verify` 增加 `.gdignore` 检查项（optional，不阻塞）。④ 顺带修掉仓库一处**残留脏索引**：`AGENTS.md` 与 `ARCHITECTURE.md` 停在 `UU`（both modified）状态却没有任何冲突标记，是早期 `stash pop` 冲突被文本解决后未 `git add` 遗留的；核对「工作区相对 ours 为纯新增」后解除。**验证**：`--headless --import` 错误行数 **0**（修复前 6 行）；`dotnet build` 0 错 0 警；`dotnet test` **372/372**；架构守卫 `new=0 existing=0 errors=0 warnings=0` | `native/build-debug/**`、`addons/biu_biu_native/bin/biu_biu_native.windows.Debug.x86_64.dll`、`tools/fix_godot_scan_dirs.ps1`、`tools/env.ps1`、`AGENTS.md`、`.gitignore`、各构建目录 `.gdignore` |
 | 2026-11-09 | v10 | **3D 素材查看器 UI 改为 DockSpace 停靠布局** | 用户要求「UI 改成 Docker（DockSpace），imgui 带了」。① **换源码**：本机 `Mine/EasyPainter/vendor/imgui` 与 `ThirdLib/imgui` **都是 master 分支，没有 DockSpace API**，改 vendored 官方 `docking` 分支（1.93.1 WIP，约 3.8 MB，含 `imgui_internal.h`——DockBuilder 在内部头里）到 `tools/asset_viewer2/third_party/imgui/`。② **布局**：三栏 DockSpace（左 28% 文件夹树+资产列表 / 中 3D 视口 / 右 30% 检查器+统计），面板全部 `ImGui::Begin(名字)` 停靠、可拖拽浮动、**持久化到工作目录 `av2_layout.ini`**，菜单「重置布局」调 `RequestDockLayoutReset()` 重建。③ **关键设计决策**：中央**不用** `PassthruCentralNode` 空节点，而是停靠一个 `NoBackground` 的 `3D 视口` 窗口占住中央并上报矩形——`PassthruCentralNode` 要求中央为空，用户一旦把面板拖进中央就会盖住 3D。`DrawUi(..., ViewportRect*)` 把矩形交给 `app.cpp`，`vkCmdSetViewport` / `vkCmdSetScissor` 按它下刀，画完 ImGui 前恢复全屏。④ **踩坑**：`set(IMGUI_DIR ... CACHE PATH ...)` **漏了 `FORCE`** 时 `build/CMakeCache.txt` 会一直指着别的 ImGui，报一堆 `error C2039: "DockBuilderRemoveNode": 不是 "ImGui" 的成员`；已补 `FORCE` + 配置期断言（无 `imgui_internal.h` 直接 `FATAL_ERROR`）。⑤ **验证**（截图逐像素量）：客户区 1598×984，实测左 **451px = 28.2%** / 视口 **798px = 49.9%** / 右 **349px = 21.8%**，与代码设定一致；视口内 y=200 与 y=750 几何像素数为 0、y=500 峰值 628px，确认模型正确落在视口中央且未被面板遮挡；`loader_test` **358/358**；架构守卫 `errors=0`，且 `tools/asset_viewer2` **零命中**（仅另一会话的 `CharacterContentSet.cs` 有 5 条既有 GS005 warning）。`ARCHITECTURE.md` §24.2/24.3/24.4/24.6 就地更新 | `tools/asset_viewer2/third_party/imgui/**`、`tools/asset_viewer2/CMakeLists.txt`、`tools/asset_viewer2/src/ui/{ui_main.h,ui_main.cpp}`、`tools/asset_viewer2/src/app.{h,cpp}`、`dist/asset_viewer2/**`、`docs/architecture/ARCHITECTURE.md`、`AGENTS.md` |
 | 2026-11-10 | v12 | **全部先跑白模：占位路径清零** | 用户决定：「先全部用白模即可，占位不要使用"素材"的路径，后续需要挑选让如项目资源文件夹中。」① `combat.xlsx` 20 个 + `characters.xlsx` 4 个 = **24 个外观包 `ModelPath` 全部留空**，`TintHex`/`AnimClips` 一并清空（死字段），`Scale` 保留；② **包壳全部保留**当桶键，`Objects.VisualPack` 的 26 条引用一条未改——以后只改 `ModelPath` 一格即可回填，不合并成 `vp_none` 是为了不丢分类信息；③ `vp_none` 语义收敛为「永远不要模型」；④ 校验器「有能力位物件必须有模型」由 error **降为提醒**（否则全白模后 26 个物件全红、校验直接失败，但删掉又丢追踪）——**「暂时没有」要能被看见，「永远没有」要能被声明，都不能靠空着表达**；⑤ 改生成器而非手改 xlsx。校验 4510 项通过；build 0/0；`ContentBinder` 20 用例全绿；守卫 errors=0。详见 `ARCHITECTURE.md` §17.10.1 | `tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/gen_characters_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`、`docs/architecture/ARCHITECTURE.md` |
+| 2026-11-11 | v14 | **规则8 强制化：每个任务必须开 worktree、禁止直接改 main、完成后必须合并回 main（总架构师裁定）** | 用户以总架构师身份立下工作区硬约束，落地方式是把约束写进「入口契约」而不只是规则文档：① `docs/rules/08` 新增 **§2.0 强制口径 M1~M5**（M1 每个任务开新 worktree / M2 禁止在 `main` 上直接修改，取消旧 §12「唯一会话可不开」豁免 / M3 完成后必须合并回 `main` / M4 禁止 `git add -A`，共享文件逐文件暂存 / M5 总架构师自身同样受约束），并同步 §0 速读表、§2.4 提交纪律、§8 反例 9~11、§12 常见问题、变更日志 v1.2；§5 路径示例盘符订正为 `E:`。② 本文件：§0 速读行、§1 第 ⓿ 步（由「有第二个会话才做」改为**无条件第一步**，删掉「单人单会话时可跳过」）、§2 铁规 8 判据、§3 红线 8（补三条违规长相）同步。③ **本轮改动自身也按新规矩执行**：在 `session/worktree-rule` 工作树的干净检出上修改——主工作树长期脏、共享文档里混着他人半成品，旧流程 `git add -A` 会把这些一起提交。 | `docs/rules/08-parallel-sessions.md`、`AGENTS.md` |
 | 2026-11-09 | v11 | **模型属性收敛为唯一入口（VisualPack）** | 用户问「角色/怪物/武器/子弹是否有模型属性？能在 3D 中看到资产吗？」，并发现真表里「有的有、有的没有」而追问「当时没抽象吗？」。**诚实结论**：`RenderId` 一直都在，抽象没缺；真缺陷是**同一概念并存三条写入路径**（`VisualPack` / `AssetPath` / 都不填）→ **没有唯一入口**。按用户决定「删掉 AssetPath/AssetAnim，全部走 VisualPack」：① `ObjectArchetype` / `ContentBinder` / `combat.xlsx` / 生成器 / 校验器全部删掉两列，只剩 `VisualPackId`；② **「有意没有模型」变成取值**——三个 `fx_*` 填新包 `vp_none`（`ModelPath` 留空），「有意为空」与「忘了填」从此可区分；③ 校验器新增 Objects.VisualPack **必填** + 外键闭合 + **有 Actor/Weapon/Projectile 能力位的物件不许指向无模型包**，检查数 2217 → **4553，exit 0**；④ 补 26 个物件外观包（20 包，新增 `vp_slime_skull` / `vp_slime_bomb` / `vp_none`）；⑤ 四个用例钉住（含「每行都有且只有一个真实存在的包」），测试 **374 通过**。**如实说明**：视图层未接（用户要求本轮只补字段与绑定），武器/子弹在 3D 里仍不渲染；素材库无怪物/子弹素材，食人魔→炮台、史莱姆→骷髅/炸弹、子弹→矿石/金币/宝石为**占位**，`VisualPacks.Note` 逐条写明。详见 `ARCHITECTURE.md` §17.10 | `scripts/core/Content/ObjectArchetype.cs`、`scripts/data/Content/ContentBinder.cs`、`data/excel/combat.xlsx`、`data/excel/l10n.xlsx`、`tools/data_pipeline/**`、`tests/Content/Data/ContentBinderTests.cs`、`docs/architecture/ARCHITECTURE.md` |
