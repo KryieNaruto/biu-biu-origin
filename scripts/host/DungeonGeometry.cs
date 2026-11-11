@@ -96,6 +96,9 @@ public sealed class DungeonMaterialSet
     /// <summary>棋盘格明暗系数。</summary>
     public float CheckerShade { get; }
 
+    /// <summary>地面自发光强度（方砖视图的兜底材质共用同一个强度）。</summary>
+    public float Emissive => _emissiveEnergy;
+
     /// <summary>墙体材质。</summary>
     public StandardMaterial3D WallMaterial { get; }
 

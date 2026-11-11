@@ -89,6 +89,15 @@ public sealed partial class DungeonDebugScene : Node3D
     private long _statsTimer;
     private int _startSeed;
     private bool _wantShots;
+
+    /// <summary>只拍当前相机一张就退出（<c>--shot-plain</c>）。验收方砖/取景用它，避免被特写阶段机改相机。</summary>
+    private bool _shotPlain;
+
+    /// <summary>方砖路径的取景注视点（玩家世界坐标）；null = 用整层中心。</summary>
+    private Vector3? _tilesFocus;
+
+    /// <summary>整层包围盒（方砖自检用）。</summary>
+    private Aabb _boardBounds;
     private ShotPhase _shotPhase = ShotPhase.Idle;
     private string _closeupRoomLabel = string.Empty;
 
@@ -105,8 +114,13 @@ public sealed partial class DungeonDebugScene : Node3D
     public WorldHostOptions? WorldOptions { get; set; }
 
     /// <summary>是否生成冒烟子弹（验证 ECS 管线在真实场景里也跑得动）。</summary>
+    /// <summary>
+    /// 是否生成冒烟子弹。**默认关闭**：方砖关卡验收看的是地图本身，
+    /// 而上百颗自发光子弹飘在镜头里会盖掉画面（实测半个屏幕被橙红色吃满）。
+    /// 冒烟 / CI 需要它时用命令行 <c>--smoke-bullets</c> 打开。
+    /// </summary>
     [Export]
-    public bool SpawnSmokeBullets { get; set; } = true;
+    public bool SpawnSmokeBullets { get; set; }
 
     /// <summary>是否加载 <c>.glb</c> 中心装饰（headless 时关掉可以省掉网格/贴图解码）。</summary>
     [Export]
@@ -198,6 +212,8 @@ public sealed partial class DungeonDebugScene : Node3D
             return;
         }
         _wantShots = Array.IndexOf(OS.GetCmdlineUserArgs(), ShotArgName) >= 0;
+        _shotPlain = Array.IndexOf(OS.GetCmdlineUserArgs(), ShotPlainArgName) >= 0;
+        SpawnSmokeBullets |= Array.IndexOf(OS.GetCmdlineUserArgs(), SmokeBulletsArgName) >= 0;
         SmokeFire |= Array.IndexOf(OS.GetCmdlineUserArgs(), SmokeFireArgName) >= 0;
         _statsTimer = (long)Time.GetTicksMsec();
     }
@@ -268,7 +284,38 @@ public sealed partial class DungeonDebugScene : Node3D
                 CharacterStatsSuffix());
         }
 
+        // 方砖路径：相机每帧钉在「中房占屏 200%」的取景上，并跟随玩家。
+        ApplyBoardFollow();
+
         TryCaptureScreenshots();
+    }
+
+    /// <summary>
+    /// 方砖路径的相机跟随：把 <c>MainCamera</c> 摆成「正交 + 固定可见高度 + 居中于玩家」。
+    /// <para>
+    /// <b>为什么每帧都摆</b>：窗口尺寸变化会改变屏幕纵横比，而占屏比例的算式依赖纵横比；
+    /// 每帧重算保证「拖窗口 → 中房仍然占 200%」，不需要额外监听 resize。
+    /// 会话自己的跟随相机（透视角）会被本方法置为非 current，避免两套取景互相打架。
+    /// </para>
+    /// </summary>
+    private void ApplyBoardFollow()
+    {
+        if (_builder is null || _camera is null || _dungeonOptions is null || !_dungeonOptions.UseTileBoard)
+        {
+            return;
+        }
+        if (_character is not null)
+        {
+            _tilesFocus = _character.PlayerWorldPosition();
+        }
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        float aspect = viewport.Y > 0f ? viewport.X / viewport.Y : DefaultAspect;
+        BoardGeometry board = _builder.Board;
+        int side = _dungeonOptions.MediumRoomSideCells;
+        float size = BoardFraming.CameraSize(board, side, _dungeonOptions.RoomScreenFillRatio, aspect,
+            _dungeonOptions.TileAspectIsotropic, _dungeonOptions.CameraVisibleMetersOverride);
+        Vector3 focus = _tilesFocus ?? _boardBounds.GetCenter();
+        BoardFraming.Apply(_camera, focus, board, size);
     }
 
     /// <summary>统计行的角色后缀（没有人物时为空串）。</summary>
@@ -345,6 +392,14 @@ public sealed partial class DungeonDebugScene : Node3D
                 break;
 
             case ShotPhase.SaveOverview:
+                // --shot-plain：只拍当前相机这一张，然后直接退出，不跑后面的特写阶段机。
+                // 特写阶段机会把相机挪到别处、让角色相机接管 —— 那样拍出来的就不是玩法视角。
+                if (_shotPlain)
+                {
+                    SaveShot(ShotOverviewFileDefault, "当前相机（简单模式）");
+                    _shotPhase = ShotPhase.Done;
+                    break;
+                }
                 SaveShot(ShotOverviewFileDefault, "全层总览");
                 _heroShotFrame = _frameCounter + ShotSettleFrames;
                 _shotPhase = MoveCameraForCloseup() ? ShotPhase.SaveCloseup : ShotPhase.Done;
@@ -475,11 +530,18 @@ public sealed partial class DungeonDebugScene : Node3D
         return true;
     }
 
-    /// <summary>把相机放到「能看全整层」的位置（正交：按包围盒缩放；透视：按 FOV 算距离）。</summary>
+    /// <summary>
+    /// 把相机摆成「一屏只看固定高度」（正交）：中房占屏 = <see cref="DungeonOptions.RoomScreenFillRatio"/>。
+    /// <para>
+    /// <b>为什么不再「把整层塞进屏幕」</b>（2026-11-11 改）：整层 96×96 米塞进 1600×900 时
+    /// 一格只有 8 象素、中房占屏 20%，玩家既看不清方砖、也没法把人物按方砖归一。
+    /// 取景算式全部在 <see cref="BoardFraming"/>，本方法只负责取注视点与屏幕纵横比。
+    /// </para>
+    /// </summary>
     /// <param name="bounds">整层包围盒（米）。</param>
     /// <param name="camera">相机。</param>
     /// <param name="options">可调参数。</param>
-    public static void FrameCamera(Aabb bounds, Camera3D camera, DungeonOptions options)
+    public void FrameCamera(Aabb bounds, Camera3D camera, DungeonOptions options)
     {
         if (camera is null)
         {
@@ -489,39 +551,15 @@ public sealed partial class DungeonDebugScene : Node3D
         {
             throw new ArgumentNullException(nameof(options));
         }
-        Vector3 center = bounds.GetCenter();
-        float pitch = Mathf.DegToRad(options.CameraPitchDegrees);
-        float yaw = Mathf.DegToRad(options.CameraYawDegrees);
-        Vector3 forward = new Vector3(
-            Mathf.Cos(pitch) * Mathf.Sin(yaw),
-            -Mathf.Sin(pitch),
-            Mathf.Cos(pitch) * Mathf.Cos(yaw)).Normalized();
-
-        // 俯视平面上的半径：取包围盒对角线的一半 × 留白系数（任意偏航角都盖得住）。
-        float radius = new Vector2(bounds.Size.X, bounds.Size.Z).Length() * 0.5f * options.CameraPaddingFactor;
-
-        float distance;
-        if (options.UseOrthographicCamera)
-        {
-            // 正交：可见高度 = Size。半径是「中心到最远角」，直径 = 2 × 半径，正好盖住整层。
-            camera.Projection = Camera3D.ProjectionType.Orthogonal;
-            camera.Size = Math.Max(radius * OrthographicDiameterFactor, OrthographicSizeMinMeters);
-            distance = bounds.Size.Y + radius;
-        }
-        else
-        {
-            camera.Projection = Camera3D.ProjectionType.Perspective;
-            camera.Fov = options.CameraFovDegrees;
-            double halfFov = Mathf.DegToRad(options.CameraFovDegrees) * 0.5;
-            distance = radius / (float)Math.Tan(halfFov) / Math.Max(PerspectiveTiltFloor, Mathf.Sin(pitch));
-            distance += bounds.Size.Y * PerspectiveHeightCompensation;
-        }
-
-        camera.Position = center - forward * distance;
-        camera.LookAt(center, Vector3.Up);
-        camera.Far = Math.Max(distance * FarPlaneRatio, FarPlaneMinMeters);
-        camera.Near = NearPlaneMeters;
-        camera.Current = true;
+        BoardGeometry board = options.ToBoardGeometry();
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        float aspect = viewport.Y > 0f ? viewport.X / viewport.Y : DefaultAspect;
+        int side = options.MediumRoomSideCells;
+        float size = BoardFraming.CameraSize(board, side, options.RoomScreenFillRatio, aspect,
+            options.TileAspectIsotropic, options.CameraVisibleMetersOverride);
+        Vector3 focus = _tilesFocus ?? bounds.GetCenter();
+        BoardFraming.Apply(camera, focus, board, size);
+        GD.Print("[取景] 注视点=" + focus + " → " + BoardFraming.Describe(board, side, camera.Size, aspect));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -572,6 +610,7 @@ public sealed partial class DungeonDebugScene : Node3D
         _builder = new DungeonSceneBuilder(_dungeonOptions, _styles);
         bool useLandmarks = UseLandmarkModels && !IsHeadless();
         Aabb bounds = _builder.Build(_dungeonRoot, result, useLandmarks);
+        _boardBounds = bounds;
 
         // 门的初始画法：起点房/安全房一侧的门板不落（玩家第一步要能走出去），其余按门自身默认态。
         _builder.ApplyDoorStates(result, door => !IsPlayerFacingRoom(door.Room));
@@ -587,7 +626,51 @@ public sealed partial class DungeonDebugScene : Node3D
             + " 包围盒=" + bounds.Size.ToString();
         GD.Print("[DungeonDebug] " + StartupSummary);
         GD.Print("[DungeonDebug] 素材：" + _builder.DescribeAssets());
+        PrintBoardSelfCheck();
     }
+
+    /// <summary>
+    /// 方砖契约自检：把「中房占屏 200%」「方砖尺寸」「一张图多少砖」打成可核对的数字。
+    /// <para>
+    /// <b>为什么要在启动日志里打</b>：这几条都是「看起来没问题但其实错了」的典型
+    /// （相机没看对地方、方砖被拉成长条、砖数与房间格数对不上），而它们都不会报错。
+    /// </para>
+    /// </summary>
+    private void PrintBoardSelfCheck()
+    {
+        if (_builder is null || _camera is null || _dungeonOptions is null)
+        {
+            return;
+        }
+        BoardGeometry board = _builder.Board;
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        float aspect = viewport.Y > 0f ? viewport.X / viewport.Y : DefaultAspect;
+        int side = _dungeonOptions.MediumRoomSideCells;
+        Camera3D? live = GetViewport().GetCamera3D();
+        float size = live is not null ? live.Size : 0f;
+        float h = BoardFraming.HorizontalFill(board, side, size, aspect);
+        float v = BoardFraming.VerticalFill(board, side, size);
+        GD.Print("[方砖自检] " + BoardFraming.Describe(board, side, size, aspect)
+            + " | 砖=" + board.TileSize.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "m"
+            + " 墙高=" + board.WallHeight.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "m"
+            + " 塑形=" + board.ScreenShaper.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+        GD.Print("[方砖自检] 相机=" + (live is null ? "NULL" : live.Name.ToString())
+            + " 投影=" + (live is null ? "-" : live.Projection.ToString())
+            + " 位置=" + (live is null ? "-" : live.GlobalPosition.ToString())
+            + " 视口=" + viewport.X.ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+            + "x" + viewport.Y.ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+            + " 整层=" + _boardBounds.Size.ToString());
+        float want = _dungeonOptions.RoomScreenFillRatio;
+        if (Math.Abs(h - want) > BoardFraming.FillTolerance)
+        {
+            GD.PushWarning("[方砖自检] 中房横向占屏 " + (h * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+                + "% 与期望 " + (want * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "% 不符。"
+                + " 纵向=" + (v * 100f).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%");
+        }
+    }
+
+    /// <summary>视口宽高比取不到时的兜底（常见 16:9）。</summary>
+    private const float DefaultAspect = 16f / 9f; // arch-ok: 兜底常量（只在不便取视口时生效），非玩法数值
 
     /// <summary>
     /// **没有规划器时的占位场景**：一块测试地面 + 网格状标记 + 调试文字，**不伪造任何房间数据**。
@@ -654,7 +737,8 @@ public sealed partial class DungeonDebugScene : Node3D
         env.AmbientLightSource = Godot.Environment.AmbientSource.Color;
         env.AmbientLightColor = options.AmbientColor;
         env.AmbientLightEnergy = options.AmbientEnergy;
-        env.TonemapMode = Godot.Environment.ToneMapper.Filmic;
+        // 白盒关卡要「颜色可辨」，不要电影感：Filmic 会抬中间调，把相邻房型压成同一个亮色。
+        env.TonemapMode = Godot.Environment.ToneMapper.Linear;
         worldEnv.Environment = env;
 
         DirectionalLight3D sun = GetNodeOrNull<DirectionalLight3D>("Sun") ?? CreateNode<DirectionalLight3D>("Sun");
@@ -1016,6 +1100,12 @@ public sealed partial class DungeonDebugScene : Node3D
 
     /// <summary>启用截图的命令行开关（<c>-- --shots</c> 的形式传给用户参数）。</summary>
     private const string ShotArgName = "--shots";
+
+    /// <summary>命令行参数：只拍当前相机一张（配合 --shots）。</summary>
+    private const string ShotPlainArgName = "--shot-plain";
+
+    /// <summary>命令行参数：生成冒烟子弹（默认关闭，见 <see cref="SpawnSmokeBullets"/>）。</summary>
+    private const string SmokeBulletsArgName = "--smoke-bullets";
 
     /// <summary>截图阶段机：每帧只推进一格，保证「改相机」与「存图」跨帧生效。</summary>
     /// <summary>角色特写的取图帧（本次总览存图后的 N 帧）。</summary>

@@ -39,6 +39,13 @@ public sealed class DungeonSceneBuilder
     private readonly List<DungeonRoomView> _rooms = new();
     private readonly List<MeshInstance3D> _decorInstances = new();
 
+    // ── 方砖路径（2D 规则驱动的 3D 关卡；与上面的房间盒子几何互斥）──
+    private readonly DungeonOptions _options;
+    private readonly BoardGeometry _board;
+    private DungeonTileView? _tiles;
+    private DungeonCellSet? _cells;
+    private TileViewStats _tileStats;
+
     /// <summary>构造。</summary>
     /// <param name="options">宿主选项（取格边长 / 自发光 / 空隙色）。</param>
     /// <param name="styles">配色表（null → 内置默认）。</param>
@@ -56,6 +63,8 @@ public sealed class DungeonSceneBuilder
         }
         _styles = styles ?? DungeonRoomStyleSet.CreateDefault();
         _styles.Rebuild();
+        _options = options;
+        _board = options.ToBoardGeometry();
         _geometry = DungeonRoomGeometry.FromCellSize(options.CellSizeMeters);
         _materials = new DungeonMaterialSet(_styles, options.RoomEmissiveEnergy, checkerShade, options.VoidColor);
         _backend = backend;
@@ -74,6 +83,20 @@ public sealed class DungeonSceneBuilder
 
     /// <summary>几何参数（相机取景需要）。</summary>
     public DungeonRoomGeometry Geometry => _geometry;
+
+    /// <summary>方砖几何契约（方砖路径生效时非空，人物归一化的基准）。</summary>
+    public BoardGeometry Board => _board;
+
+    /// <summary>本次建出来的方砖表（未走方砖路径时为 null）。</summary>
+    public DungeonCellSet? Cells => _cells;
+
+    /// <summary>方砖建场景统计（未走方砖路径时为零值）。</summary>
+    public TileViewStats TileStats => _tileStats;
+
+    /// <summary>整层实际包围盒（方砖路径按砖数×砖边长算，否则按房间包围盒）。</summary>
+    /// <param name="layout">布局。</param>
+    public Aabb LayerBounds(in DungeonLayout layout)
+        => _cells is not null && _tiles is not null ? _tiles.ComputeBounds(_cells) : ComputeLayerBounds(in layout);
 
     /// <summary>按房间槽位取视图（越界返回 null）。</summary>
     /// <param name="slot">房间槽位。</param>
@@ -99,6 +122,15 @@ public sealed class DungeonSceneBuilder
         }
         Clear();
         DungeonLayout layout = result.Layout;
+
+        // ── 方砖路径：2D 规则一张图 → 一格一块立方体（用户 2026-11-11 要求的表现形态）──
+        // 2D 图由同一份布局 + 同一种子重新栅格化得到（DungeonMapBuilder / DungeonPropPlanner），
+        // 于是 3D 看到的障碍/物件/走廊与 2D 地图生成器里看到的是**同一张图**。
+        if (_options.UseTileBoard && TryBuildTileBoard(root, in layout, result.Seed, useLandmarks))
+        {
+            // 方砖路径的包围盒要按砖算（墙高 = 砖边长），不能用房间面积盒（那只有地面板厚）。
+            return _tiles is not null && _cells is not null ? _tiles.ComputeBounds(_cells) : ComputeLayerBounds(in layout);
+        }
 
         // ── 背景地面板：让「没有房间的格子」是深色地板而不是虚空，俯视整层时构图完整 ──
         BuildGroundPlate(root, layout);
@@ -183,6 +215,55 @@ public sealed class DungeonSceneBuilder
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // 方砖路径
+    // ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 用 2D 地图规则重建一张字符图，再翻译成方砖。
+    /// <para>
+    /// <b>为什么要重新栅格化</b>：3D 建场景器手上的数据是 <see cref="DungeonLayout"/>（房间/链路/门），
+    /// 而障碍、物件、走廊只在 <see cref="DungeonMap"/> 里。<see cref="DungeonMapBuilder"/> 与
+    /// <see cref="DungeonPropPlanner"/> 正是「布局 → 那张图」的规则实现，用同一种子重跑一次，
+    /// 得到的图与 2D 地图生成器里的**逐格一致**。不复制一份几何、不在两边各写一套摆放规则。
+    /// </para>
+    /// </summary>
+    /// <param name="root">父节点。</param>
+    /// <param name="layout">布局。</param>
+    /// <param name="seed">种子（与 2D 图同种子 → 同地图）。</param>
+    /// <param name="useModels">是否加载 glb。</param>
+    /// <returns>是否成功建出方砖（失败时返回 false，调用方退回房间盒子几何）。</returns>
+    private bool TryBuildTileBoard(Node3D root, in DungeonLayout layout, int seed, bool useModels)
+    {
+        try
+        {
+            DungeonMap map = DungeonMapBuilder.Build(layout, seed, _options.ToMapConfig());
+            map = DungeonPropPlanner.Populate(in map, seed, _options.ToPropConfig());
+            DungeonCellSet cells = DungeonCellSet.FromMap(map);
+            if (cells.Width <= 0 || cells.Height <= 0)
+            {
+                GD.PushWarning("[方砖] 2D 图为空，退回房间盒子几何。");
+                return false;
+            }
+            DungeonTilePieces pieces = new(_decorCatalog, _landmarks);
+            DungeonTileView view = new(_board, _styles, _materials, pieces);
+            Aabb bounds = view.Build(root, cells, seed, useModels);
+            _cells = cells;
+            _tiles = view;
+            // ★ 必须在 Build 之后再取统计：Build 内部才算完（结构体是按值传的，早取就是零值）。
+            _tileStats = view.Stats;
+            GD.Print("[方砖] " + cells + " | 包围盒=" + bounds.Size
+                + " 砖边长=" + _board.TileSize.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "m"
+                + " | " + _tileStats);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning("[方砖] 建场景失败，退回房间盒子几何：" + ex.Message);
+            return false;
+        }
+    }
+
     /// <summary>清掉建过的全部节点（重建地牢时调用；幂等）。</summary>
     public void Clear()
     {
@@ -196,6 +277,10 @@ public sealed class DungeonSceneBuilder
         }
         _rooms.Clear();
         _decorInstances.Clear();
+        _tiles?.Clear();
+        _tiles = null;
+        _cells = null;
+        _tileStats = default;
     }
 
     /// <summary>素材加载统计（诊断）：中心建筑成功/失败、装饰条目可用/降级、装饰标记数。</summary>

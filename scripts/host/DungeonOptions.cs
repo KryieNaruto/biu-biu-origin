@@ -167,6 +167,148 @@ public partial class DungeonOptions : Resource
     [Export]
     public bool UseOrthographicCamera { get; set; } = UseOrthographicCameraDefault;
 
+    // ─────────────────────────────────────────────────────────────
+    // 6.5 方砖与取景（3D 关卡的表现契约；人物归一化的基准）
+    // ─────────────────────────────────────────────────────────────
+
+    /// <summary>3D 场景用「方砖」表现（2D 规则一张图 → 一格一块立方体），还是用旧的逐房间盒子几何。</summary>
+    /// <remarks>
+    /// <b>为什么留着旧的</b>：<see cref="DungeonRoomView"/> 那套是按 <see cref="RoomPlan"/> 建墙的，
+    /// 它跟 2D 图（<see cref="Game.Spawn.Rooms.DungeonMap"/>）是**两条独立的真源**——
+    /// 2D 图里有障碍/物件/走廊，房间盒子几何里没有。方砖路径才是「2D 规则驱动 3D」的那条。
+    /// 旧路径保留是为了对照排查（例如「方砖是不是跟房间对齐了」）。
+    /// </remarks>
+    [Export]
+    public bool UseTileBoard { get; set; } = true;
+
+    /// <summary>
+    /// **方砖边长（米）**——整张 3D 关卡、以及将来的人物/子弹尺寸都按它归一。
+    /// <para>见 <see cref="BoardGeometry"/> 的类注释：6 米的取舍（素材缩放落在 1.5~5 倍，中房 24 米正好像 2 屏宽）。</para>
+    /// </summary>
+    [Export(PropertyHint.Range, "1,32,0.5")]
+    public float TileSizeMeters { get; set; } = TileSizeMetersDefault;
+
+    /// <summary>一砖含几格（原型阶段恒为 1；正交相机下 1 砖 = 1 格，屏幕上就是正方形）。</summary>
+    [Export(PropertyHint.Range, "1,4,1")]
+    public int CellSizeCells { get; set; } = CellSizeCellsDefault;
+
+    /// <summary>墙高（米）；&lt;= 0 表示「等于方砖边长」。</summary>
+    [Export(PropertyHint.Range, "-1,32,0.5")]
+    public float WallHeightMeters { get; set; } = WallHeightMetersDefault;
+
+    /// <summary>地面板厚（米）；&lt;= 0 表示按方砖比例。</summary>
+    [Export(PropertyHint.Range, "-1,8,0.1")]
+    public float FloorThicknessMeters { get; set; } = FloorThicknessMetersDefault;
+
+    /// <summary>
+    /// 方砖是否在屏幕上等比（1 米横向 = 1 米纵向的象素数）。
+    /// <para>
+    /// <b>默认 false</b>：因为用户指定的「中房占屏 200%」是**逐轴**算的，
+    /// 要让横向与纵向同时 200%，就必须让房间宽 <c>W</c> 与房间纵深压缩后的 <c>W·sinθ</c> 占据等量的屏幕相对高度——
+    /// 也就是 1 米横向与 1 米纵向**不再等长**（方砖在屏幕上是横向长条，比值 <c>1/sin60° = 1.155</c>）。
+    /// 这是几何硬约束：等比与严格 200% 不能同时成立（见 <see cref="BoardFraming"/> 类注释）。
+    /// </para>
+    /// <para>
+    /// 想要「方砖在屏幕上是正方形」（人物按方砖归一时比例 1:1 最简单），把这个开关打开：
+    /// 此时横向仍是 200%，纵向会变成 <c>200%·sinθ = 173%</c>。
+    /// </para>
+    /// </summary>
+    [Export]
+    public bool TileAspectIsotropic { get; set; } = false;
+
+    /// <summary>
+    /// **取景基准：让一个中等房间占屏幕这么大**（1.0 = 屏宽的 100%，2.0 = 屏宽的 200%）。
+    /// <para>
+    /// 相机不再「把整层塞进屏幕」——整层 96×96 米塞进 1600×900 时一格只有 8 象素，
+    /// 玩家根本看不清方砖，人物也没法按方砖归一。改成「一屏只看固定高度」后，
+    /// 中房占屏比例由这个数与方砖尺寸共同决定，启动自检里会逐次核对。
+    /// </para>
+    /// </summary>
+    [Export(PropertyHint.Range, "0.2,8,0.05")]
+    public float RoomScreenFillRatio { get; set; } = RoomScreenFillRatioDefault;
+
+    /// <summary>相机纵向可见米数（&gt; 0 时直接用它覆盖自动取景；0 = 按 <see cref="RoomScreenFillRatio"/> 反算）。</summary>
+    [Export(PropertyHint.Range, "0,256,0.5")]
+    public float CameraVisibleMetersOverride { get; set; } = CameraVisibleMetersOverrideDefault;
+
+    /// <summary>取景用的「中等房间」边长（格）：按 <see cref="RoomSide"/> 算，不从房间表反查，免得被特殊房带偏。</summary>
+    public int MediumRoomSideCells => RoomSide;
+
+    // ─────────────────────────────────────────────────────────────
+    // 6.6 2D 栅格化参数（3D 方砖路径直接复用 2D 规则的全部开关）
+    // ─────────────────────────────────────────────────────────────
+
+    /// <summary>2D 图留白（格）。</summary>
+    [Export(PropertyHint.Range, "0,4,1")]
+    public int MapMarginCells { get; set; } = 0;
+
+    /// <summary>是否在房间内撒障碍。</summary>
+    [Export]
+    public bool MapObstaclesEnabled { get; set; } = true;
+
+    /// <summary>障碍密度（0..1，按房间可用格数折算）。</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")]
+    public float MapObstacleDensity { get; set; } = MapObstacleDensityDefault;
+
+    /// <summary>起点房障碍系数。</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")]
+    public float MapStartRoomObstacleScale { get; set; } = 0f;
+
+    /// <summary>Boss 房障碍系数。</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")]
+    public float MapBossRoomObstacleScale { get; set; } = 0.5f; // arch-ok: 表现参数默认值，由 .tres 覆盖
+
+    /// <summary>障碍离墙/离门的最小格距。</summary>
+    [Export(PropertyHint.Range, "0,4,1")]
+    public int MapObstacleWallClearance { get; set; } = 1; // arch-ok: 走道宽度默认值，由 .tres 覆盖
+
+    /// <summary>保险丝绕路上限（0 = 只报告不修）。</summary>
+    [Export(PropertyHint.Range, "0,16,1")]
+    public int MapFuseMaxExtraSteps { get; set; } = 0;
+
+    /// <summary>报告路线数上限（纯诊断输出）。</summary>
+    [Export(PropertyHint.Range, "0,16,1")]
+    public int MapReportedRouteCount { get; set; } = 4; // arch-ok: 报告条数（纯诊断输出）
+
+    /// <summary>是否摆建筑（多格占地）。</summary>
+    [Export]
+    public bool PropBuildingsEnabled { get; set; } = true;
+
+    /// <summary>每间房建筑数。</summary>
+    [Export(PropertyHint.Range, "0,4,1")]
+    public int PropBuildingsPerRoom { get; set; } = 1; // arch-ok: 关卡手感默认值，由 .tres 覆盖
+
+    /// <summary>建筑最大边长（格）。</summary>
+    [Export(PropertyHint.Range, "2,8,1")]
+    public int PropBuildingMaxSide { get; set; } = 3; // arch-ok: 关卡手感默认值，由 .tres 覆盖
+
+    /// <summary>是否摆奖励。</summary>
+    [Export]
+    public bool PropRewardsEnabled { get; set; } = true;
+
+    /// <summary>战斗房奖励数。</summary>
+    [Export(PropertyHint.Range, "0,8,1")]
+    public int PropRewardsPerCombatRoom { get; set; } = 1; // arch-ok: 关卡手感默认值，由 .tres 覆盖
+
+    /// <summary>是否摆可破坏物。</summary>
+    [Export]
+    public bool PropBreakablesEnabled { get; set; } = true;
+
+    /// <summary>每间房可破坏物数量。</summary>
+    [Export(PropertyHint.Range, "0,8,1")]
+    public int PropBreakablesPerRoom { get; set; } = 2; // arch-ok: 关卡手感默认值，由 .tres 覆盖
+
+    /// <summary>是否摆不可破坏物。</summary>
+    [Export]
+    public bool PropSolidsEnabled { get; set; } = true;
+
+    /// <summary>每间房不可破坏物数量。</summary>
+    [Export(PropertyHint.Range, "0,8,1")]
+    public int PropSolidsPerRoom { get; set; } = 1; // arch-ok: 关卡手感默认值，由 .tres 覆盖
+
+    /// <summary>2D 障碍密度默认值（沿用 <see cref="Game.Spawn.Rooms.DungeonMapConfig"/> 的口径）。</summary>
+    public const float MapObstacleDensityDefault = 0.08f; // arch-ok: 表现/关卡手感默认值，由 .tres 覆盖
+
     /// <summary>环境光颜色。</summary>
     [Export]
     public Color AmbientColor { get; set; } = new(0.42f, 0.46f, 0.55f); // arch-ok: 资源默认值，可被 .tres 覆盖，不是硬编码玩法数值
@@ -320,19 +462,19 @@ public partial class DungeonOptions : Resource
     // ─────────────────────────────────────────────────────────────
 
     /// <summary>网格宽默认值（格）。</summary>
-    public const int GridWidthDefault = 11;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int GridWidthDefault = 16;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>网格高默认值（格）。</summary>
-    public const int GridHeightDefault = 11;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int GridHeightDefault = 16;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>普通房边长默认值（格）。</summary>
-    public const int RoomSideDefault = 2;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int RoomSideDefault = 4;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>起始房边长默认值（格）。</summary>
-    public const int StartRoomSideDefault = 2;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int StartRoomSideDefault = 4;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>Boss 房边长默认值（格）。</summary>
-    public const int BossRoomSideDefault = 2;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const int BossRoomSideDefault = 6;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>目标普通房数默认值。</summary>
     public const int TargetRoomCountDefault = 7;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
@@ -365,7 +507,7 @@ public partial class DungeonOptions : Resource
     public const int LoopDistanceDefault = 0;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>每格米数默认值。</summary>
-    public const float CellSizeMetersDefault = 12f;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
+    public const float CellSizeMetersDefault = 6f;  // arch-ok: Excel/资源落地前的默认值，由 .tres 覆盖
 
     /// <summary>种子默认值（0 = 随机）。</summary>
     public const int SeedDefault = 0;
@@ -398,16 +540,39 @@ public partial class DungeonOptions : Resource
     public const bool UseOrthographicCameraDefault = true;
 
     /// <summary>环境光默认强度。</summary>
-    public const float AmbientEnergyDefault = 0.55f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
+    public const float AmbientEnergyDefault = 0.10f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
 
     /// <summary>太阳默认强度。</summary>
-    public const float SunEnergyDefault = 1.15f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
+    public const float SunEnergyDefault = 1.35f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
 
     /// <summary>太阳俯仰默认值（度）。</summary>
     public const float SunPitchDegreesDefault = 62f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
 
     /// <summary>房间地面自发光默认强度。</summary>
-    public const float RoomEmissiveEnergyDefault = 0.32f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
+    public const float RoomEmissiveEnergyDefault = 0.05f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
+
+    // ── 方砖与取景默认值（3D 关卡表现契约；人物按这个数归一）──
+
+    /// <summary>方砖边长默认值（米）。**人物按它归一**。</summary>
+    public const float TileSizeMetersDefault = 6f;  // arch-ok: 表现参数默认值，由 .tres 覆盖
+
+    /// <summary>一砖几格默认值。</summary>
+    public const int CellSizeCellsDefault = BoardGeometry.CellSizeCellsDefault;
+
+    /// <summary>墙高默认值（&lt;= 0 表示等于方砖）。</summary>
+    public const float WallHeightMetersDefault = BoardGeometry.WallHeightFromTile;
+
+    /// <summary>地面板厚默认值（&lt;= 0 表示按比例）。</summary>
+    public const float FloorThicknessMetersDefault = BoardGeometry.FloorThicknessFromTile;
+
+    /// <summary>取景基准默认值：中房占屏 200%。</summary>
+    public const float RoomScreenFillRatioDefault = 2f;  // arch-ok: 表现参数默认值（用户指定的占屏比例），由 .tres 覆盖
+
+    /// <summary>可见米数覆盖默认值（0 = 按占比反算）。</summary>
+    public const float CameraVisibleMetersOverrideDefault = 0f;
+
+    /// <summary>中房边长的下限（格）：方砖棋盘至少 2×2 才看得出「房间」而不是「一个格子」。</summary>
+    public const int MinRoomSideCells = 2;  // arch-ok: 结构下限（不是可调玩法数值）
 
     // ── 内容层默认值（Excel/资源落地前；全部由 .tres 覆盖，不在别处重复写字面量） ──
 
@@ -512,6 +677,53 @@ public partial class DungeonOptions : Resource
             CellSizeMeters = CellSizeMeters,
         };
     }
+
+    /// <summary>
+    /// 翻译成方砖几何契约（<see cref="BoardGeometry"/>）。
+    /// <para>
+    /// <b>为什么这里不读 <see cref="CellSizeMeters"/></b>：它是**规划期**的口径（2D 图/内容槽以「格」为单位时
+    /// 折算成米），而方砖是**表现期**的口径。两者今天数值相同（都 6 米），但语义不同：
+    /// 将来若让 1 砖 = 2 格，<see cref="CellSizeMeters"/> 不变而方砖边长翻倍。
+    /// </para>
+    /// </summary>
+    public BoardGeometry ToBoardGeometry()
+        => BoardGeometry.Create(TileSizeMeters, CameraPitchDegrees, CellSizeCells, WallHeightMeters, FloorThicknessMeters);
+
+    /// <summary>
+    /// 翻译成 2D 地图栅格化配置（3D 方砖路径用它重跑同一套 2D 规则）。
+    /// <para>
+    /// <b>为什么 3D 要重跑 2D 栅格化</b>：地图的「障碍/物件/走廊」只存在于 <see cref="Game.Spawn.Rooms.DungeonMap"/> 里，
+    /// 3D 手上只有布局。用同一个种子重跑一张图，比在 3D 里另写一套摆放规则要可靠得多——
+    /// 后者就是「同一概念两条真源」（规则5 §3.4-A 明令禁止）。
+    /// </para>
+    /// </summary>
+    public DungeonMapConfig ToMapConfig()
+        => new()
+        {
+            Margin = MapMarginCells,
+            ObstaclesEnabled = MapObstaclesEnabled,
+            ObstacleDensity = MapObstacleDensity,
+            StartRoomObstacleScale = MapStartRoomObstacleScale,
+            BossRoomObstacleScale = MapBossRoomObstacleScale,
+            ObstacleWallClearance = MapObstacleWallClearance,
+            FuseMaxExtraSteps = MapFuseMaxExtraSteps,
+            ReportedRouteCount = MapReportedRouteCount,
+        };
+
+    /// <summary>翻译成 2D 物件摆放配置（建筑/奖励/可破坏/不可破坏）。</summary>
+    public DungeonPropConfig ToPropConfig()
+        => new()
+        {
+            BuildingsEnabled = PropBuildingsEnabled,
+            BuildingsPerRoom = PropBuildingsPerRoom,
+            BuildingMaxSide = PropBuildingMaxSide,
+            RewardsEnabled = PropRewardsEnabled,
+            RewardsPerCombatRoom = PropRewardsPerCombatRoom,
+            BreakablesEnabled = PropBreakablesEnabled,
+            BreakablesPerRoom = PropBreakablesPerRoom,
+            SolidsEnabled = PropSolidsEnabled,
+            SolidsPerRoom = PropSolidsPerRoom,
+        };
 
     /// <summary>
     /// 翻译成内容规划器的纯 C# 配置。
@@ -643,6 +855,26 @@ public partial class DungeonOptions : Resource
         if (CameraPaddingFactor < 1f)
         {
             throw new InvalidOperationException(Message("CameraPaddingFactor", "必须 >= 1", CameraPaddingFactor.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        if (!(TileSizeMeters > 0f))
+        {
+            throw new InvalidOperationException(Message("TileSizeMeters", "必须大于 0（方砖边长是人物归一化的基准）", TileSizeMeters.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        if (CellSizeCells <= 0)
+        {
+            throw new InvalidOperationException(Message("CellSizeCells", "必须 >= 1", CellSizeCells.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        if (!(RoomScreenFillRatio > 0f))
+        {
+            throw new InvalidOperationException(Message("RoomScreenFillRatio", "必须大于 0", RoomScreenFillRatio.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        if (CameraVisibleMetersOverride < 0f)
+        {
+            throw new InvalidOperationException(Message("CameraVisibleMetersOverride", "不得为负（0 = 按占屏比例反算）", CameraVisibleMetersOverride.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        if (RoomSide < MinRoomSideCells)
+        {
+            throw new InvalidOperationException(Message("RoomSide", "中房边长至少 " + MinRoomSideCells.ToString(System.Globalization.CultureInfo.InvariantCulture) + " 格（方砖棋盘）", RoomSide.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
 
         // 配置层自带的约束校验（规划器的前置条件），失败信息会指出具体字段。

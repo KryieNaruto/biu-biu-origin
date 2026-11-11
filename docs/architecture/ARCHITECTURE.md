@@ -1,6 +1,7 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v18  最后更新: 2026-11-11（P1~P4 文档/数据一致性修复：§15.5「代码 0 行」的真实前提 + §15.6 数量订正；§4.1 `data/generated/` 不存在、禁令属将来规则的现状口径；§14.5 `progression.xlsx` 不存在、地牢真源今天就是 `DungeonOptions`；`characters.xlsx` 补齐 3 个镜像独有角色使双向 parity 归零）
+> 状态: v19  最后更新: 2026-11-11（**§25 3D 方砖关卡：2D 规则 → 统一 6m 方砖 + 中房占屏 200% 取景**；方砖 = 一格 = 一个 6m 立方体，中房 4×4=24m，地图 16×16=96m；相机改为「一屏看固定高度」而非「塞满整层」）
+> 上一版: v18（P1~P4 文档/数据一致性修复：§15.5「代码 0 行」的真实前提 + §15.6 数量订正；§4.1 `data/generated/` 不存在、禁令属将来规则的现状口径；§14.5 `progression.xlsx` 不存在、地牢真源今天就是 `DungeonOptions`；`characters.xlsx` 补齐 3 个镜像独有角色使双向 parity 归零）
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1219,6 +1220,7 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 
 | 日期 | 版本 | 任务 | 变更摘要 | 影响文件 |
 |---|---|---|---|---|
+| 2026-11-11 | v19 | **3D 方砖关卡：2D 规则 → 统一方砖 + 中房占屏 200%** | 用户要求「基于 2D 规则表现为 3D 关卡、统一方砖大小、中房占屏 200%」。① **方砖契约** `BoardGeometry`：一格 = 一个立方体 = **6.0 m**（墙高同值），「格→米」只有一个换算点；`DungeonCellSet` 把 2D 的 `DungeonCellKind` 翻译成 3D 的 `DungeonTileKind`（唯一翻译表）。② **2D→3D 单向**：`DungeonSceneBuilder` 用同一种子重跑 `DungeonMapBuilder` + `DungeonPropPlanner`，得到与 2D 地图生成器**逐格一致**的图再出方砖；不在 3D 里另写一套摆放规则（规则5 §3.4-A）。③ **尺寸重定**：砖 6 m、中房 4×4=24 m、Boss 6×6=36 m、网格 16×16=96 m（原 12 m/2 格/11×11）。④ **取景** `BoardFraming`：相机从「把整层塞进屏幕」（一格 8 px、中房占屏 20%）改为「一屏看固定高度」，实测 1600×900 下**中房横向占屏 200%**、可见 12.0 m 宽 × 6.75 m 高 × 7.79 m 纵深，一格方砖 800×693 px；纵向 308% 是 16:9 下的几何必然（两轴同为 200% 需屏幕宽高比 1/sinθ=1.155）。⑤ **素材纪律**：整格障碍物只用地形类模型（建筑会穿插），模型统一盖房型材质（这批 glb 缺贴图，不盖是纯白）；缺失/headless 时退回同尺寸实体方块。⑥ **表现参数**：环境光 0.55→0.10、太阳 1.15→1.35、地面自发光 0.32→0.05、Filmic→Linear（原值把画面压成蓝灰且墙地不分，实测亮度 79.6% 挤在 140~180 一档；调整后 52% 落在 180~220、15% 落在 60 以下）。⑦ **冒烟子弹默认关闭**（120 颗自发光子弹盖掉半屏，地图无法验收）。⑧ 启动自检打印方砖数/相机/占屏比，横向偏离 ±1 个百分点即 `PushWarning`。**如实说明**：`dotnet test` 因沙箱 testhost 拒绝访问无法运行；规则8 的 worktree 因 `.worktrees/` 在沙箱写入范围外无法创建，改动落在 main 工作区。详见 §25 | `scripts/host/BoardGeometry.cs`、`scripts/host/BoardFraming.cs`、`scripts/host/DungeonCellSet.cs`、`scripts/host/DungeonTilePieces.cs`、`scripts/host/DungeonTileView.cs`、`scripts/host/DungeonSceneBuilder.cs`、`scripts/host/DungeonDebugScene.cs`、`scripts/host/DungeonOptions.cs`、`scripts/host/DungeonGeometry.cs`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-10 | v17 | **相机跟随手感：临界阻尼弹簧 + 鼠标方向可调偏移（§15.8）** | 用户要求「① 相机丝滑跟随人物，要有滑动感 ② 基于鼠标（射击方向）的可调参幅度偏移」。**修两个「配置了但没接」的老问题**：① `FollowLerp` 存的是**逐帧 lerp 系数**（0.14），却被当成**每秒速率**喂给 `1-exp(-rate*dt)` → 收敛仅 ~13%/s，相机几乎不动；② `LookAheadRatio`/`LookAheadMaxMeters` **只活在 Resource 上**，从未进 `CameraPackSettings`，Excel 改这两格零效果。**做法**：把数学拆成零引擎依赖的 `scripts/core/Camera/CameraFeel.cs`（`grep -c "using Godot"` = 0，故 `tests/` 那条「不引 GodotSharp 也能编 `scripts/core/**`」的结构性守卫继续成立），`TopDownCameraRig` 退化为薄壳。跟随改用**二阶临界阻尼弹簧**（zeta=1，解析解 `x' = target + (A+B*dt)*e^(-w*dt)`），位移严格单调、**过冲恒为 0**、任意 dt 稳定；瞄准偏移独立弹簧 + 死区（边界连续、`[dz,1]` 重映射到 `[0,1]`）+ 封顶。**数据层**：`CameraPacks` 5 列 → 7 列，`FollowLerp` **改名** `FollowRatePerSecond`（语义从「系数」变「速率」，改名而非加列，让旧调用点编译期就断），新增 `LookAheadRatio`/`LookAheadMaxMeters`；`follow_std 10.0/0.18/1.6`、`follow_heavy 7.0/0.14/1.4`、`follow_fast 14.0/0.24/2.0`。**踩坑（记下来别再犯）**：速度必须取自解析式，**禁止**用 `(x_next-x)/dt` 反推——后者在起步段把「位置被阻尼缩回的部分」当速度再喂回去（正反馈），实测 60 帧后发散到 **2,355,357**。**验证（两层）**：① 纯函数测试 26 用例全绿 + **4 个变异全部被抓**；其中「1 秒终点残差」原理上区分不了弹簧与固定 lerp（lerp 残差 1.5e-5 反而更小），**只有中段 0.15s 才暴露 1.27m 差异**，故帧率守卫职责交给三点检查。② 新增引擎内探针 `--camera-probe` 8 项全绿：人物移动 5m 后 `focus` 距新位置 **0.0029m**、瞄准 ±X 时偏移 **+1.5903/-1.5903**（摆动 3.1807m、不超 1.600m 上限）；同样做变异（改成跟出生点 → 偏差恰好 5.0000m；改成常数偏置 → 符号不变号 + 超上限）。**最关键的教训**：第一版探针让人物**静止**就断言「focus 贴着人物」，**变异测试骗过了它**——人物不动时「跟」与「不跟」观测值完全相同，必须**制造真实位移**才能让命题可判定。**已知债务（刻意不做）**：`CameraPacks.Height` 被灌进 `PitchDeg`、`FovDegrees` 从未被读——修它会改掉所有镜头俯仰角、污染本轮调参的因果判断，单独排期。**测试** 382 通过 / 3 失败，3 失败经 stash 纯净基线对照证实与相机无关（另一会话 `characters.xlsx` 在途改动）；架构守卫 **0 error / 0 warning** | `scripts/core/Camera/CameraFeel.cs`、`scripts/host/view/TopDownCameraRig.cs`、`scripts/host/GameViewOptions.cs`、`scripts/host/CharacterSession.cs`、`scripts/host/DungeonDebugScene.cs`、`scripts/host/debug/CameraFollowSelfCheck.cs`、`scripts/data/CharacterAssemblySpec.cs`、`scripts/data/CharacterContentSet.cs`、`data/excel/characters.xlsx`、`tools/data_pipeline/gen_characters_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`tests/Camera/CameraRigTests.cs`、`tools/probes/camera_follow_probe.gd`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-10 | v16 | **训练房（§14.10）：一间灰房 + 一个人 + 一个假人** | 用户要求「做一个3D测试场景，只有一个灰色房间，四面有墙，地板是斑马网格，一个人物，一个测试假人」。新增 `scenes/debug/TrainingRoom.tscn` + `scripts/host/debug/TrainingRoomScene.cs`（约 380 行）。① **场地**：`RoomCells×RoomCells`（默认 8×8、1m 格）逐格 `BoxMesh` 拼棋盘格地板（`(x+z)&1` 深浅灰交替），四面墙独立尺寸封住四角；房间大小/格数/墙高/配色**全部 `[Export]`** 可在 Inspector 改。② **人物**：整块交给 `CharacterSession` + `test_hero` 全套（复用组合根，不另写一个人），本场景 0 行玩法逻辑。③ **假人**：用户明确选「先只要站着的模型、打不动」→ 做成**纯表现节点**（胶囊身体 + 球头），**不进 ECS**、子弹直接穿过；这是**写在文档里的有意欠账**，要可打时换成 `ActorSpawnRequest` 即可。④ **素材**：全部几何体 + 纯色材质，**不引用 `素材/` 任何 `.glb`**，与 §17.10.1「全部先跑白模」一致。⑤ **两个坑**：`CharacterSession` 构造时自己装系统并调 `pipeline.Build()`（宿主再 `Add` 会重复移动/抛异常）；自检不能在 `_Ready` 数 `Player`（要到第一次 `Tick` 才出生，会误报「没出生」），改延迟 5 帧。**验证**：`dotnet build` 0 错 0 警；架构守卫 `new=0 existing=0 errors=0 warnings=0`；headless 实跑自检 `floors=64/64 walls=4/4 dummy=True parts=2 hero=True`。 | `scripts/host/debug/TrainingRoomScene.cs`、`scenes/debug/TrainingRoom.tscn`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-10 | v14 | **全部先跑白模：占位路径清零（§17.10.1）** | 用户看了 §17.10 交回的占位配型后决定：「先全部用白模即可，占位不要使用"素材"的路径，后续需要挑选让如项目资源文件夹中。」**上一轮的问题**：占位配型虽诚实标注，本质仍是用素材库原料区假装成品——`素材/` 是美术原料区，不是项目运行时资源，路径随时会挪动（历史上 `res://素材/Characters/TestHero.glb` 正因如此不存在却静默回退白模，长期无人发现）。**本轮收敛**：① `combat.xlsx` 20 个 + `characters.xlsx` 4 个 = **24 个外观包的 `ModelPath` 全部留空**，`TintHex`/`AnimClips` 一并清空（死字段），`Scale` 保留待模型回来生效；② **包壳（Id）全部保留**当桶键用，`Objects.VisualPack` 的 26 条引用一条未改——以后挑好资产**只改 `ModelPath` 一格**，不合并成 `vp_none` 是为了不丢「手枪≠子弹≠哥布林」的分类信息；③ `vp_none` 语义收敛为「★ **永远**不要模型」；④ **校验器第 ③ 条由 error 降为 `[提醒]`**：全白模后 26 个物件会全红、校验直接失败，但删掉又会丢掉「谁还在等资产」的追踪——降级后白模能跑，同时每个待配模型的物件留一条提醒，回填即消失。**原则**：「暂时没有」要能被看见（提醒清单），「永远没有」要能被声明（`vp_none`），两者都不能靠空着表达。⑤ 改动落在**生成器**（`gen_combat_xlsx.py`/`gen_characters_xlsx.py`）而非手改 xlsx，表由生成器重新产出。**验证**：校验 **4510 项通过** exit 0（含 23 条「等配模型」提醒）；`dotnet build` 0 错 0 警；`ContentBinder` 20 个用例全绿；全套 374 通过 / 2 失败（两条均为另一会话 `CharacterContentSet.cs` 在途改动，已用备份表对照复现，与本轮无关）；架构守卫 `errors=0`，5 条 GS005 全在 `CharacterContentSet.cs`（另一会话），本轮文件零命中 | `tools/data_pipeline/gen_combat_xlsx.py`、`tools/data_pipeline/gen_characters_xlsx.py`、`tools/data_pipeline/validate_content_xlsx.py`、`data/excel/combat.xlsx`、`data/excel/characters.xlsx`、`docs/architecture/ARCHITECTURE.md` |
@@ -3270,3 +3272,128 @@ tools/asset_viewer2/
 
 
 **ImGui 源码来源**：本机 `Mine/EasyPainter/vendor/imgui` 与 `ThirdLib/imgui` 都是 master 分支，**没有 DockSpace API**。现在把官方 `docking` 分支 vendored 进 `third_party/imgui/`（约 3.8 MB，含 `imgui_internal.h`——DockBuilder API 在内部头里）。
+
+## 25. 3D 方砖关卡：2D 规则 → 统一方砖（2026-11-11 落地）
+
+> 用户原话：「已有 2D 生成规则。基于 2D 规则，将 2D 表现为实际的 3D 关卡场景。
+> 注意，这里需要你去统一场景方砖大小，后续我会将人物根据你的方砖大小归一，你需要设计好地图大小。
+> 我希望一个中等房间占屏幕大小 200%。」
+
+### 25.1 现状（落地了什么）
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 几何契约 | `scripts/host/BoardGeometry.cs` | **方砖 = 一格 = 一个轴对齐立方体**。「格 → 米」的唯一换算点 |
+| 取景契约 | `scripts/host/BoardFraming.cs` | 「中房占屏 200%」→ 相机 `Size` 的唯一换算点 |
+| 翻译 | `scripts/host/DungeonCellSet.cs` | `DungeonCellKind`（2D 规则口径）→ `DungeonTileKind`（3D 表现口径）+ 物件落格 |
+| 模型表 | `scripts/host/DungeonTilePieces.cs` | 砖类型/物件类型 → 目录里的模型名 + 归一化规则 |
+| 建场景 | `scripts/host/DungeonTileView.cs` | 逐格出方块、合并网格、摆模型、门框、房间地标 |
+| 接线 | `DungeonSceneBuilder.TryBuildTileBoard` | 用**同一种子**重跑 `DungeonMapBuilder` + `DungeonPropPlanner`，再交给方砖视图 |
+
+**数据流（单向，无回边）**：
+
+```
+DungeonLayout ──(同种子)──> DungeonMapBuilder.Build ──> DungeonPropPlanner.Populate ──> DungeonMap
+                                                                                          │
+                                                              DungeonCellSet.FromMap ◄─────┘
+                                                                        │
+                                                    DungeonTileView.Build（BoardGeometry 定米制）
+                                                                        │
+                                                                     Node3D 场景
+```
+
+**为什么 3D 要重跑一次 2D 栅格化**：障碍、物件、走廊只存在于 `DungeonMap` 里，3D 建场景器手上只有布局。
+用同一个种子重跑同一套规则，得到的是**逐格一致**的图；若在 3D 里另写一套摆放规则，就是「同一概念两条真源」（规则5 §3.4-A）。
+
+### 25.2 方砖尺寸契约（人物归一的基准）
+
+| 量 | 值 | 来源 |
+|---|---|---|
+| 方砖边长 | **6.0 米** | `DungeonOptions.TileSizeMeters` / `TileSizeMetersDefault` |
+| 一砖几格 | 1（方砖 = 地图格） | `CellSizeCells` |
+| 墙高 | 6.0 米 = 1 个立方体高 | 默认取「等于方砖」 |
+| 地面板厚 | 0.72 米（方砖 × 0.12） | `BoardGeometry.FloorThicknessRatio` |
+| 中房 | **4 × 4 格 = 24 × 24 米** | `RoomSide` / `RoomSideDefault` |
+| 起始房 | 4 × 4 格 | `StartRoomSideDefault` |
+| Boss 房 | 6 × 6 格 = 36 × 36 米 | `BossRoomSideDefault` |
+| 地图网格 | **16 × 16 格 = 96 × 96 米** | `GridWidth/HeightDefault` |
+
+**6 米怎么来的**（不是拍脑袋）：
+
+1. 素材归一化倍数落在 **1.5~5 倍**（目录里整格障碍物 `Rock` 高 1.57 m、`Rock-KvXSMwoftt` 高 0.61 m，
+   放大到 6 m 分别是 3.8 倍和 9.8 倍；建筑类地标按 0.8~0.95 格归一在 1.5~5 倍）。
+   再小（如 2.3 m = 5 英尺 × 1.5）会让整格障碍物放大 20~38 倍，剖面撕裂、法线错乱。
+2. 一个中房 24 米，在 1600×900 / 俯角 60° 下正好是 **2 屏宽**，与「占屏 200%」自洽。
+3. 角色数值全是米制（`characters.xlsx` 的 `MoveSpeed`、`combat.xlsx` 的 `ProjectileRadius`），
+   方砖用米制 ⇒ 「人物按方砖归一」= 「人物按米归一」，不会出现两套单位。
+
+**素材选择纪律**：整格障碍物一律用**地形类**模型（`Rock-BvlfuHFAuI` / `Rock`），不用建筑——
+建筑素材自带屋顶/门窗比例，放大 3 倍塞满一格会互相穿插；建筑只作为**房间中央地标**出现。
+模型一律盖房型材质（`DungeonTilePieces.ApplyMaterial`）：这批 glb 多数没有内嵌贴图，
+不盖就是一片纯白（实测 60% 画面是 192~224 的亮色）。
+
+### 25.3 取景契约（「中房占屏 200%」的严格解释）
+
+投影公式（正交相机，俯角 θ，屏幕宽高比 ar）：
+
+| 量 | 公式 | 1600×900 / θ=60° 的值 |
+|---|---|---|
+| 横向可见 | `Size · ar` | 12.00 m |
+| 纵向可见 | `Size` | 6.75 m |
+| 地面纵深可见 | `Size / sinθ` | 7.79 m |
+| 中房横向占屏 | `24 / (Size·ar)` | **200%** |
+| 中房纵向占屏 | `24·sinθ / Size` | 308% |
+| 一格方砖在屏幕上 | 800 px 宽 × 693 px 高 | 屏幕几乎被 2 列 × 1.3 排砖铺满 |
+
+**「200%」按横向判**（用户说「占屏幕大小」最常指宽度）。纵向必然更大是**几何约束不是实现取舍**：
+要让两轴都正好 200%，屏幕宽高比必须是 `1/sinθ = 1.155`，而 16:9 是 1.778。
+`CameraVisibleMetersOverride` 可以手工把 `Size` 钉死（此时纵向=200%、横向=130%），两轴只能二选一。
+
+**为什么不再「把整层塞进屏幕」**：96×96 米塞进 1600×900 时一格只有 8 像素、中房占屏 20%，
+玩家既看不清方砖、也没法把人物按方砖归一。现在一屏只看约 **2 列 × 1.3 排**砖。
+
+**相机每帧重算**（`DungeonDebugScene.ApplyBoardFollow`）：窗口尺寸变化会改 ar，而 ar 参与取景算式；
+每帧重算保证「拖窗口 → 中房仍占 200%」，不需要额外监听 resize。
+
+### 25.4 自检（不靠肉眼）
+
+启动日志会打三行可核对的数字（`DungeonDebugScene.PrintBoardSelfCheck`）：
+
+```
+[方砖] 方砖表 13x15 地面=81 墙=60 门=14 障碍=20 走廊=13 秘密=7 | 包围盒=(78, 6, 90) 砖边长=6.0m
+       | 地面砖=108 墙/障碍(模型)=80 墙/障碍(方块)=0 门=14 物件=25 地标=8
+[方砖自检] 中房 4格=24.0m | 可见 宽12.0m 高6.8m 纵深7.8m | 占屏 横200% 纵308% | 砖=6.0m 墙高=6.0m 塑形=0.866
+[方砖自检] 相机=MainCamera 投影=Orthogonal 位置=(39, 14.691343, 38.25) 视口=1600x900 整层=(78, 6, 90)
+```
+
+横向占屏偏离期望超过 ±1 个百分点 → `PushWarning`。
+
+### 25.5 约束
+
+1. **方砖边长只有一个出处**（`TileSizeMeters`）。任何地方再写 `* 6f` 或 `* cellSize` 都算违规。
+2. **2D → 3D 只有一个翻译入口**：`DungeonCellSet.FromMap`。新增格类型只改
+   `DungeonCellKinds`（2D）与 `DungeonTileView`（3D表现），中间翻译表唯一。
+3. **一次性只保留一条主线**：`DungeonOptions.UseTileBoard` 默认 true（方砖路径）；
+   旧的 `DungeonRoomView` 房间盒子几何保留可切回，但它**不读 2D 图的障碍/物件**，
+   两条路径不是「同样正确的两种画法」，而是「新主线 + 旧对照」。
+4. 方砖建模**必须在 headless 下也能出来的兜底**：模型缺失 → 同尺寸实体方块（`BlockingBlocks` 计数可查）。
+5. **冒烟子弹默认关闭**（`SpawnSmokeBullets` 默认 false）：120 颗自发光子弹会盖掉半个屏幕，
+   这让「地图长什么样」无法验收。需要时加 `--smoke-bullets`。
+
+### 25.6 调过的表现参数（都是可在 Inspector 覆盖的默认值）
+
+| 参数 | 旧 | 新 | 原因 |
+|---|---|---|---|
+| `AmbientEnergyDefault` | 0.55 | 0.10 | 0.55 把一切压成蓝灰 (145,175,187)，墙和地面分不开 |
+| `SunEnergyDefault` | 1.15 | 1.35 | 阴影侧需要主光拉开明暗 |
+| `RoomEmissiveEnergyDefault` | 0.32 | 0.05 | 叠加后地面过曝成 (255,209,169) |
+| `TonemapMode` | Filmic | Linear | Filmic 抬中间调，把相邻房型压成同一个亮色 |
+
+调整后亮度分布：0-60 占 15%、60-100 占 4%、180-220 占 52%（墙/地面两层分明），
+图里 82.6% 是前景（不再是大片背景色）。
+
+### 25.7 下一步
+
+- 人物按方砖归一：把 `characters.xlsx` 里的碰撞半径/身高改到「一砖 6 米」的尺度上（本任务只定了砖，没改人物）。
+- 方砖贴图：现在模型只提供形状、颜色来自数据；`TileAspectIsotropic` 决定方砖是否在屏幕上是正方形。
+- 门板开合：当前门只画门框（两立柱），开合表现仍由 `DungeonRoomView.SetDoorBlocks` 那条旧路径负责。
