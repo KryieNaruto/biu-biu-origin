@@ -214,6 +214,14 @@ public sealed class Query
             {
                 Archetype archetype = _matched[a];
                 int column = archetype.ColumnOf(id);
+                // ★ 缺列必须跳过：查询按「必需类型」匹配原型，而遍历时才注册的这一列不一定在每个原型里
+                //   （例：`World.Query&lt;View&gt;()` 的 View 只有带视图的实体才有）。
+                //   ColumnOf 返回 -1，直接拿去索引 chunk.Pools 会越界 —— 症状是人物「隐形且不报错」，
+                //   因为视图桥第一步就抛异常、后面的 RentMissing / 外观套用全没跑到。
+                if (column < 0)
+                {
+                    continue;
+                }
                 int chunkCapacity = archetype.ChunkCapacity;
                 int chunkCount = archetype.ChunkCount;
                 for (int c = 0; c < chunkCount; c++)
