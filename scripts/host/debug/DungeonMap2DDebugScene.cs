@@ -56,19 +56,9 @@ public partial class DungeonMap2DDebugScene : Godot.Control
     private void ApplyTheme()
     {
         _appliedWindowHeight = GetViewport().GetVisibleRect().Size.Y;
-        // 主题挂到场景根上向下继承：滑条/滚动条/按钮的内部子控件是引擎生成的，逐个覆盖够不着，只有 Theme 能按类型统一覆盖。
-        Theme theme = new Theme();
-        Font font = ThemeDB.FallbackFont;
-        theme.DefaultFont = font;
-        theme.DefaultFontSize = DebugUiStyle.FontLegend;
-        theme.SetColor("font_color", "Label", DebugUiStyle.TextValue);
-        theme.SetColor("font_color", "Button", DebugUiStyle.TextValue);
-        theme.SetFontSize("font_size", "Label", DebugUiStyle.FontLegend);
-        theme.SetFontSize("font_size", "HScrollBar", DebugUiStyle.FontLegend);
-        theme.SetFontSize("font_size", "VScrollBar", DebugUiStyle.FontLegend);
-        theme.SetConstant("separation", "VBoxContainer", DebugUiStyle.SectionSeparation);
-        theme.SetConstant("h_separation", "HBoxContainer", DebugUiStyle.RowSeparation);
-        Theme = theme;
+        // 主题由 DebugUiStyle 统一提供（字号/间距/配色唯一定义处），挂到场景根上向下继承，
+        // 滑条/滚动条/按钮的内部子控件是引擎生成的、逐个覆盖够不着，只有 Theme 能按类型统一覆盖。
+        DebugUiStyle.ApplyTo(this, _appliedWindowHeight);
     }
 
     private void BindPanel()

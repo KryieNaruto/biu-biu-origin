@@ -695,6 +695,210 @@ public sealed class ContentBinderTests
     [System.Diagnostics.CodeAnalysis.DoesNotReturn]
     private static void Consume<T>(T value) => GC.KeepAlive(value);
 
+    // ─────────────────────────────────────────────────────────────
+    // 12. 外观列（VisualPack）：**唯一入口**、可选读、只影响外观
+    //
+    //     历史教训（2026-11-09 收敛）：同一概念曾经有三条并存的写入路径 ——
+    //     `VisualPack`（走外观包）/ `AssetPath`（直连模型路径）/ 两者都不写。
+    //     结果真表里必然长出「有的有、有的没有」，用户一眼就看出来：
+    //     “为什么有的有、有的没有？当时没抽象吗？”
+    //     抽象其实是有的，坏的是**没有唯一入口**。现只保留 `VisualPack` 一列：
+    //       · 有模型 → 指向真外观包；
+    //       · 有意没有模型（特效/纯逻辑物件）→ 指向 `vp_none`（包里 ModelPath 留空）；
+    //       · 两列旁路已删除，所以「忘了填」不再有任何表达方式 —— 只能填，或者显式写 vp_none。
+    //
+    //     契约两条，缺一不可：
+    //     ① 老表没有这一列时必须照样能装配（否则“加一个美术字段”就让所有旧表失效，
+    //        违反规则7「新增功能不大改」）——这是可选列模式的核心；
+    //     ② 有了这一列时，逻辑身份（IdHash / Capabilities）一个字节都不许变，
+    //        否则“换一个模型”会连带改变子弹归属、配方命中与能力筛选。
+    // ─────────────────────────────────────────────────────────────
+
+    private static readonly string[] VisualColumns = { "VisualPack" };
+
+    /// <summary>
+    /// 把 <c>Objects</c> 的外观列整列删掉后照样能绑定：每个物件都装出来，
+    /// 且 <see cref="ObjectArchetype.VisualPackId"/> 为空串（不是 null），外观回退白模。
+    /// </summary>
+    [TestMethod]
+    public void Binder_TableWithoutVisualColumns_StillBindsWithEmptyVisualFields()
+    {
+        XlsxReader reader = XlsxReader.Open(CombatPath);
+        ContentTable tags = ReadTable(reader, "Tags");
+        ContentTable objects = ReadTable(reader, "Objects");
+        ContentTable weapons = ReadTable(reader, "Weapons");
+        ContentTable projectiles = ReadTable(reader, "Projectiles");
+        ContentTable packs = ReadTable(reader, "StatPacks");
+
+        // 先确认真表里确实有这一列 —— 否则这个用例会变成"删了不存在的列还通过"的假绿。
+        for (int i = 0; i < VisualColumns.Length; i++)
+        {
+            Assert.IsTrue(HasColumn(objects, VisualColumns[i]),
+                "combat.xlsx/Objects 应当有可选列 '" + VisualColumns[i] + "'；真表没有它，本用例验证不到向下兼容。");
+        }
+
+        // 可选列被删掉后，视觉外键校验也必须跟着放过（旧表不认识 VisualPack，不能强求引用存在）。
+        ContentSet stripped = ContentBinder.BuildFrom(tags, DropColumns(objects, VisualColumns),
+            weapons, projectiles, packs, packages: null);
+
+        Assert.AreEqual(objects.Rows.Count, stripped.Index.ObjectCount,
+            "删掉外观列后物件数应不变——可选列不得影响绑定行数。");
+
+        for (int i = 0; i < objects.Rows.Count; i++)
+        {
+            string id = objects.Rows[i].Get("Id").Trim();
+            int slot = stripped.Index.ObjectSlotOf(id);
+            Assert.IsTrue(slot >= 0, "物件 '" + id + "' 在缺列的旧表里找不到了。");
+            ObjectArchetype def = stripped.Index.GetObject(slot);
+            Assert.AreEqual(string.Empty, def.VisualPackId, "缺列时 '" + id + "' 的 VisualPackId 应为空串而非 null。");
+        }
+    }
+
+    /// <summary>
+    /// 真表里**每个物件都恰好填了一个外观包**，且该包在 <c>VisualPacks</c> 里真实存在。
+    /// <para>
+    /// <b>为什么必须钉住</b>：这条正是本轮要根治的缺陷。列存在不等于列被填 ——
+    /// 旧写法下 `VisualPack` / `AssetPath` 二选一（甚至都不写）也能通过，于是表里
+    /// 「有的有、有的没有」。现在只允许一种表达：填包，或者显式填 `vp_none`。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Binder_EveryObject_HasExactlyOneExistingVisualPack()
+    {
+        XlsxReader reader = XlsxReader.Open(CombatPath);
+        ContentTable objects = ReadTable(reader, "Objects");
+        ContentTable visualPacks = ReadTable(reader, "VisualPacks");
+
+        HashSet<string> knownPacks = new(StringComparer.Ordinal);
+        for (int i = 0; i < visualPacks.Rows.Count; i++)
+        {
+            knownPacks.Add(visualPacks.Rows[i].Get("Id").Trim());
+        }
+        Assert.IsTrue(knownPacks.Count > 0, "combat.xlsx/VisualPacks 是空的，没有包可引用。");
+
+        ContentSet set = ContentBinder.BuildFrom(
+            ReadTable(reader, "Tags"), objects,
+            ReadTable(reader, "Weapons"), ReadTable(reader, "Projectiles"),
+            ReadTable(reader, "StatPacks"), packages: null);
+
+        for (int i = 0; i < objects.Rows.Count; i++)
+        {
+            string id = objects.Rows[i].Get("Id").Trim();
+            ObjectArchetype def = set.Index.GetObject(set.Index.ObjectSlotOf(id));
+
+            Assert.AreNotEqual(string.Empty, def.VisualPackId,
+                "'" + id + "' 没有外观包。外观只走 VisualPack 这一条路："
+                + "有模型的填真包，有意没有模型的填 vp_none —— 不许留空。");
+            Assert.IsTrue(knownPacks.Contains(def.VisualPackId),
+                "'" + id + "' 引用的外观包 '" + def.VisualPackId + "' 在 VisualPacks 表里不存在。");
+        }
+    }
+
+    /// <summary>
+    /// 外观列存在时，值被逐字读进 <see cref="ObjectArchetype"/>；改一格再绑，值跟着变（改表即生效）。
+    /// </summary>
+    [TestMethod]
+    public void Binder_ReadsVisualColumnsIntoArchetype()
+    {
+        XlsxReader reader = XlsxReader.Open(CombatPath);
+        ContentTable objects = ReadTable(reader, "Objects");
+
+        // 任取一行有值的即可 —— 真表现在每行都有值（上一个用例钉住），这里只是取个样本。
+        string rowId = null!;
+        string pack = null!;
+        for (int i = 0; i < objects.Rows.Count; i++)
+        {
+            ContentRow row = objects.Rows[i];
+            string candidate = row.Get("VisualPack").Trim();
+            if (candidate.Length > 0)
+            {
+                rowId = row.Get("Id").Trim();
+                pack = candidate;
+                break;
+            }
+        }
+        Assert.IsNotNull(rowId, "combat.xlsx/Objects 里应至少有一行填了 VisualPack，否则取不到值。");
+
+        ContentSet set = ContentBinder.BuildFrom(
+            ReadTable(reader, "Tags"),
+            objects,
+            ReadTable(reader, "Weapons"),
+            ReadTable(reader, "Projectiles"),
+            ReadTable(reader, "StatPacks"),
+            packages: null);
+
+        Assert.AreEqual(pack, set.Index.GetObject(set.Index.ObjectSlotOf(rowId)).VisualPackId,
+            "VisualPack 列应原样读进 VisualPackId。");
+
+        // 改一格 → 重新绑定 → 值跟着变（"策划改表即生效"的闭环）。
+        const string newPack = "vp_不许存在的包";
+        ContentSet mutated = ContentBinder.BuildFrom(
+            ReadTable(reader, "Tags"),
+            Mutate(objects, rowId, "VisualPack", newPack),
+            ReadTable(reader, "Weapons"),
+            ReadTable(reader, "Projectiles"),
+            ReadTable(reader, "StatPacks"),
+            packages: null);
+        ObjectArchetype after = mutated.Index.GetObject(mutated.Index.ObjectSlotOf(rowId));
+        Assert.AreEqual(newPack, after.VisualPackId, "改了 VisualPack 一格后重新绑定，值应随之改变。");
+    }
+
+    /// <summary>
+    /// 外观<b>不参与逻辑身份</b>：同一行的外观列换成任意值，<c>IdHash</c> / <c>Capabilities</c>
+    /// / 四个 <see cref="ContentRef"/> 一个都不变。
+    /// <para>
+    /// <b>为什么必须钉住</b>：<c>ContentRef.DefId</c> 存的就是目标物件的 <c>IdHash</c>。若外观字段
+    /// 混进哈希，给子弹换一个模型就会让所有指向它的引用失效 —— 且失败方式是静默的（引用找不到目标）。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Binder_VisualColumns_DoNotAffectLogicIdentity()
+    {
+        XlsxReader reader = XlsxReader.Open(CombatPath);
+        ContentTable tags = ReadTable(reader, "Tags");
+        ContentTable objects = ReadTable(reader, "Objects");
+        ContentTable weapons = ReadTable(reader, "Weapons");
+        ContentTable projectiles = ReadTable(reader, "Projectiles");
+        ContentTable packs = ReadTable(reader, "StatPacks");
+
+        ContentSet plain = ContentBinder.BuildFrom(tags, objects, weapons, projectiles, packs, packages: null);
+
+        // 整列删掉 vs 全行改写，两个方向都验一遍：外观怎么变都不该动逻辑。
+        ContentSet noVisual = ContentBinder.BuildFrom(tags, DropColumns(objects, VisualColumns),
+            weapons, projectiles, packs, packages: null);
+
+        ContentTable rewritten = objects;
+        for (int i = 0; i < objects.Rows.Count; i++)
+        {
+            string id = objects.Rows[i].Get("Id").Trim();
+            rewritten = Mutate(rewritten, id, "VisualPack", "vp_" + i.ToString(CultureInfo.InvariantCulture));
+        }
+        ContentSet allRewritten = ContentBinder.BuildFrom(tags, rewritten, weapons, projectiles, packs, packages: null);
+
+        Assert.AreEqual(objects.Rows.Count, plain.Index.ObjectCount, "基线物件数不对，后面的比较没有意义。");
+        for (int i = 0; i < objects.Rows.Count; i++)
+        {
+            string id = objects.Rows[i].Get("Id").Trim();
+            ObjectArchetype expected = plain.Index.GetObject(plain.Index.ObjectSlotOf(id));
+
+            ObjectArchetype a = noVisual.Index.GetObject(noVisual.Index.ObjectSlotOf(id));
+            ObjectArchetype b = allRewritten.Index.GetObject(allRewritten.Index.ObjectSlotOf(id));
+
+            Assert.AreEqual(expected.IdHash, a.IdHash, "'" + id + "' 删掉外观列后 IdHash 变了。");
+            Assert.AreEqual(expected.IdHash, b.IdHash, "'" + id + "' 改写外观列后 IdHash 变了。");
+            Assert.AreEqual(expected.Capabilities, a.Capabilities, "'" + id + "' 删掉外观列后能力位变了。");
+            Assert.AreEqual(expected.Capabilities, b.Capabilities, "'" + id + "' 改写外观列后能力位变了。");
+            Assert.AreEqual(expected.Weapon, b.Weapon, "'" + id + "' 改写外观列后 Weapon 引用变了。");
+            Assert.AreEqual(expected.Projectile, b.Projectile, "'" + id + "' 改写外观列后 Projectile 引用变了。");
+            Assert.AreEqual(expected.Actor, b.Actor, "'" + id + "' 改写外观列后 Actor 引用变了。");
+            Assert.AreEqual(expected.Effect, b.Effect, "'" + id + "' 改写外观列后 Effect 引用变了。");
+
+            // 反向自证：改写确实生效了，否则"没变"可能只是没改到。
+            Assert.AreNotEqual(expected.VisualPackId, b.VisualPackId,
+                "'" + id + "' 的 VisualPackId 改写没有生效，用例假绿。");
+        }
+    }
+
     private static ContentSet BuildRealSet()
     {
         XlsxReader reader = XlsxReader.Open(CombatPath);
@@ -797,6 +1001,45 @@ public sealed class ContentBinderTests
             rows.Add(new ContentRow(sheetName, r + 1, cells));
         }
         return new ContentTable(sheetName, columns, rows);
+    }
+
+    /// <summary>
+    /// 复制一张表并删掉若干列（可选的"模型属性"列的向下兼容用例靠它构造）。
+    /// </summary>
+    private static ContentTable DropColumns(ContentTable table, params string[] drop)
+    {
+        var keep = new List<string>();
+        for (int c = 0; c < table.Columns.Count; c++)
+        {
+            string name = table.Columns[c];
+            bool dropped = false;
+            for (int d = 0; d < drop.Length; d++)
+            {
+                if (string.Equals(name, drop[d], StringComparison.Ordinal))
+                {
+                    dropped = true;
+                    break;
+                }
+            }
+            if (!dropped)
+            {
+                keep.Add(name);
+            }
+        }
+        Assert.IsTrue(keep.Count < table.Columns.Count, "辅助方法 DropColumns 一列都没删掉，用例无意义。");
+
+        var rows = new List<ContentRow>(table.Rows.Count);
+        for (int i = 0; i < table.Rows.Count; i++)
+        {
+            ContentRow row = table.Rows[i];
+            var cells = new Dictionary<string, string>(StringComparer.Ordinal);
+            for (int c = 0; c < keep.Count; c++)
+            {
+                cells[keep[c]] = row.Get(keep[c]);
+            }
+            rows.Add(new ContentRow(table.Name, row.RowNumber, cells));
+        }
+        return new ContentTable(table.Name, keep, rows);
     }
 
     /// <summary>

@@ -1,5 +1,10 @@
 using System;
 using Godot;
+using Game.Actor;
+using Game.Combat;
+using Game.Core;
+using Game.Core.Actors;
+using Game.Core.Skills;
 using Game.Core.Ecs;
 using Game.Data;
 using Game.Host;
@@ -7,7 +12,7 @@ using Game.Host;
 namespace Game.Host.Debug;
 
 /// <summary>
-/// **训练房**：一间灰色房间（四面有墙、地板是棋盘格）+ 一个可操作人物 + 一个站着不动的测试假人。
+/// **训练房**：一间灰色房间（四面有墙、地板是棋盘格）+ 一个可操作人物 + 一个站着不动的假人；人物带 HUD。
 /// <para>
 /// <b>为什么单独一个场景</b>：地牢调试场景要跑整套「布局 → 栅格化 → 物件 → 视图」，一次 12×28 图、
 /// 四类物件全上，想安静地看一个人的前后左右、验证移动手感和子弹方向时，满屏都是干扰。
@@ -15,14 +20,18 @@ namespace Game.Host.Debug;
 /// </para>
 /// <para>
 /// <b>边界</b>：本类只做「摆场地 + 摆两个东西」，<b>不碰</b> ECS 内核、不碰地牢生成。
-/// 人物整块交给 <see cref="CharacterSession"/>（它自己管意图/技能/相机/HUD），
+/// 人物整块交给 <see cref="CharacterSession"/>（它自己管意图/技能/视图/HUD），
 /// 这里 0 行玩法逻辑——所以调移动速度、伤害、血量仍然是改表，不是改这里。
 /// </para>
 /// <para>
-/// <b>为什么假人不是 ECS 实体</b>：当前需求是「站着不动的模型」。真做成实体就要给它
-/// <c>Health/SkillState/ActorIntent</c> 一整套组件和系统，那是「可被打的靶子」才需要的形状。
-/// 所以假人是纯表现节点（<see cref="Node3D"/> + 两个 <see cref="MeshInstance3D"/>），
-/// 子弹会直接穿过去。等要测伤害时，再把它换成 <c>ActorSpawnRequest</c> 生成的真实体。
+/// <b>假人是真角色</b>（2026-11-11 起）：它和玩家走同一条出生路径 —— 先在内容集里登记一行
+/// 「测试假人」变体（<see cref="RegisterDummyVariant"/>），再往<b>玩家所在的那个世界</b>的装配队列
+/// 里塞一个生成请求（<see cref="CharacterSession.EnqueueSpawn"/>），阵营覆盖成 <see cref="TeamId.Enemy"/>。
+/// 宿主从不直接 <c>World.Create</c>（J5），也不拼第二条管线。
+/// </para>
+/// <para>
+/// <b>白模</b>：两个角色都用占位白模渲染（外观包 <c>ModelPath</c> 为空 → 几何体），
+/// <b>不引用任何 <c>.glb</c></b>。子弹同样走 ECS 视图池的白模。
 /// </para>
 /// </summary>
 public partial class TrainingRoomScene : Node3D
@@ -43,26 +52,20 @@ public partial class TrainingRoomScene : Node3D
     /// <summary>材质粗糙度（房间统一哑光，避免高光把灰阶打出斑点）。</summary>
     private const float SurfaceRoughness = 0.9f; // arch-ok: 表现参数（材质粗糙度），非玩法数值
 
-    /// <summary>假人肤色（暖灰，与房间冷灰拉开）。</summary>
-    private static readonly Color DummyBodyColor = new(0.78f, 0.72f, 0.64f); // arch-ok: 表现参数（假人配色），非玩法数值
-
-    /// <summary>假人头部颜色（比身体略暗）。</summary>
-    private static readonly Color DummyHeadColor = new(0.66f, 0.60f, 0.52f); // arch-ok: 表现参数（假人配色），非玩法数值
-
-    /// <summary>假人身体高度相对格边长的比例。</summary>
-    private const float DummyBodyHeightFactor = 1.6f; // arch-ok: 表现参数（假人体型），非玩法数值
-
-    /// <summary>假人身体半径相对格边长的比例。</summary>
-    private const float DummyBodyRadiusFactor = 0.32f; // arch-ok: 表现参数（假人体型），非玩法数值
-
-    /// <summary>假人头部半径相对身体半径的比例。</summary>
-    private const float DummyHeadRadiusFactor = 0.8f; // arch-ok: 表现参数（假人体型），非玩法数值
-
-    /// <summary>假人部件数（身体 + 头），自检用来确认两个部件都建出来了。</summary>
-    private const int DummyPartCount = 2; // arch-ok: 结构计数（身体+头），自检断言用，非玩法数值
-
     /// <summary>房间四面墙的数量（自检用）。</summary>
     private const int WallCount = 4; // arch-ok: 结构计数（四面墙），自检断言用，非玩法数值
+
+    /// <summary>
+    /// 假人变体 id。它是 <c>CharacterContentSet</c> 里的一行——真正的数值（血/甲/速度）在表里，
+    /// 这里只是「选哪一行」，与 <see cref="HeroVariantId"/> 同性质。
+    /// </summary>
+    public const string DummyVariantId = "test_dummy";
+
+    /// <summary>假人的外观包 id（灰色白模，与玩家的蓝色胶囊一眼区分）。</summary>
+    public const string DummyVisualPackId = "dummy_gray";
+
+    /// <summary>挂在本会话视图池里的角色数（玩家 + 假人）：自检判定「两个都分到视图」用。</summary>
+    private const int ActorCount = 2; // arch-ok: 结构计数（玩家+假人），自检断言用，非玩法数值
 
     /// <summary>房间边长（格）。</summary>
     [Export]
@@ -100,7 +103,7 @@ public partial class TrainingRoomScene : Node3D
     [Export]
     public float DummyOffsetCells { get; set; } = 2f; // arch-ok: 场景布局参数（站位偏移），由 Inspector 覆盖
 
-    /// <summary>是否生成 HUD。</summary>
+    /// <summary>是否生成 HUD（复用 <c>CharacterSession</c> 的 <c>HeroHudPanel</c> + <c>CharacterHudDrawer</c>）。</summary>
     [Export]
     public bool EnableHud { get; set; } = true;
 
@@ -115,13 +118,13 @@ public partial class TrainingRoomScene : Node3D
     private World? _world;
     private CharacterSession? _character;
     private Camera3D? _camera;
-    private Node3D? _dummy;
+    private Entity _dummy = Entity.None;
 
     /// <summary>自检倒计时（&gt; 0 表示还在等出生落地；0 = 还没排期；&lt; 0 = 已出过报告）。</summary>
     private int _selfCheckFrames = -1;
 
-    /// <summary>假人节点（诊断用；为 null 表示没建出来）。</summary>
-    public Node3D? Dummy => _dummy;
+    /// <summary>假人实体（诊断用；<see cref="Entity.None"/> 表示还没出生）。</summary>
+    public Entity Dummy => _dummy;
 
     /// <summary>人物会话（诊断用）。</summary>
     public CharacterSession? Character => _character;
@@ -138,6 +141,8 @@ public partial class TrainingRoomScene : Node3D
 
         BuildGround();
 
+        _walkActive = WalkThroughWanted();
+
         // 人物：整块交给 CharacterSession（组合根），本场景只负责"造一个会话、每帧推一下"。
         // 出生点放在房间靠后一侧，给前面的假人留出射线空间。
         //
@@ -149,7 +154,10 @@ public partial class TrainingRoomScene : Node3D
         _world = new World();
         SystemPipeline pipeline = new SystemPipeline(_world);
         CharacterContentSet content = new CharacterContentSet().BuildBuiltinV1();
+        RegisterDummyVariant(content);
 
+        // 相机不开装置接管：本场景的 MainCamera 在 .tscn 里按房间尺寸摆好（见 FrameCameraToRoom），
+        // CharacterSession 只读它做「鼠标 → 世界点」的换算。HUD 照建（复用同一个 HeroHudPanel）。
         _character = new CharacterSession(
             this,
             _world,
@@ -160,21 +168,203 @@ public partial class TrainingRoomScene : Node3D
             _camera,
             worldOptions,
             new GameViewOptions(),
-            EnableHud);
+            EnableHud,
+            enableCamera: false);
 
-        BuildDummy();
+        // 假人：往**同一个世界**的装配队列里塞一行，下一次 Tick 由同一个装配系统生下它。
+        _dummy = SpawnDummy(content);
+
         FrameCameraToRoom();
 
-        if (ReportSelfCheck)
+        if (ReportSelfCheck || _walkActive)
         {
-            // 等出生真的落地再自检：CharacterSession 在第一次 Tick 才把出生请求交给装配系统，
-            // 在 _Ready 里立刻数，Player 必然还是空的（会把"正常"误报成"没出生"）。
-            _selfCheckFrames = SelfCheckDelayFrames;
+            // 出生是异步的（第一次 Tick 才把请求交给装配系统，下一帧才落地）。
+            // 自检 / 走查都不能在 _Ready 里立刻读 Player，否则会把「正常」误报成「没出生」。
+            int wait = ReportSelfCheck ? SelfCheckDelayFrames : 0;
+            _character.PlayerBorn += entity => OnPlayerBorn(entity, wait);
         }
     }
 
+    private bool _walkActive;
+
     /// <summary>自检前的等待帧数（给出生 + 一帧管线留时间）。</summary>
     private const int SelfCheckDelayFrames = 5; // arch-ok: 自检时序参数，非玩法数值
+
+    /// <summary>走查的时间轴：走 → 停 → 开火 → 走（秒；最后一段保持到场景结束）。</summary>
+    private static readonly TrainingRoomDrive.Keyframe[] WalkTimeline =
+    {
+        new(0.0f, 0f, 0f, false),
+        new(0.2f, 0f, 1f, false),   // 向前走（屏幕上方）
+        new(0.9f, 0f, 0f, false),   // 停
+        new(1.0f, 0f, 0f, true),    // 按住左键开火
+        new(1.6f, 0f, 0f, false),   // 松手
+        new(2.0f, 1f, 0f, true),    // 向右横移 + 边打
+    };
+
+    /// <summary>走查开始后至少走多少米才算「真的走动了」（判定「没动」的阈值，不是速度）。</summary>
+    private const float WalkMinimumMeters = 0.3f; // arch-ok: 自检阈值（位移判定），非玩法数值
+
+    /// <summary>命中判定：假人离哪个世界点这么近就算「子弹打到了它附近」（自检阈值）。</summary>
+    private const float DummyHitRadiusMeters = 1.0f; // arch-ok: 自检阈值（命中距离），非玩法数值
+
+    private TrainingRoomDrive? _drive;
+    private System.Numerics.Vector3 _walkStartPos;
+    private int _walkEndFrames = -1;
+    private int _shotsSeen;
+    private int _shotsHitDummy;
+
+    /// <summary>
+    /// 这次启动要不要跑走查。两条触发途径：
+    /// <para>
+    /// ① 命令行带 <c>--walk</c>；② <c>user://training_room_walk</c> 存在（跑完即删，不会重复触发）。
+    /// </para>
+    /// <para>
+    /// <b>为什么还要命令行</b>：<c>user://</c> 属于引擎进程的目录，受限环境里本会话写不进去，
+    /// 请求文件那条路会静默失效（走查永远不触发、也不报错）。命令行属于进程自己，任何环境都能传。
+    /// </para>
+    /// </summary>
+    private static bool WalkThroughWanted()
+    {
+        string path = WalkRequestPath;
+        if (FileAccess.FileExists(path))
+        {
+            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(path));
+            return true;
+        }
+
+        foreach (string arg in System.Environment.GetCommandLineArgs())
+        {
+            if (string.Equals(arg, "--walk", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    /// <summary>走查请求文件（放 <c>user://</c>：不污染仓库，且同一台机器重复跑不会误触发）。</summary>
+    public static string WalkRequestPath => "user://training_room_walk";
+
+    /// <summary>请求下一次启动时跑一次无头走查（写请求文件，见 <see cref="WalkRequestPath"/>）。</summary>
+    public static void RequestWalkThrough()
+    {
+        using FileAccess file = FileAccess.Open(WalkRequestPath, FileAccess.ModeFlags.Write);
+        file?.StoreString("1");
+    }
+
+    /// <summary>
+    /// 玩家出生那一刻：玩家自己永远没有输入源（键鼠由 <see cref="PlayerInputIntentSource"/> 驱动，
+    /// 而无头环境里没有手），所以这里把「屏幕基方向 → 世界方向」的补位交给会话，并（可选）挂上时间轴。
+    /// </summary>
+    private void OnPlayerBorn(Entity player, int selfCheckDelayFrames)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        _character.EnableMoveDriving(player);
+
+        if (_walkActive)
+        {
+            _drive = new TrainingRoomDrive(_character.InputIntentSource, WalkTimeline);
+            _walkStartPos = _character.PlayerPosition();
+        }
+
+        if (selfCheckDelayFrames > 0)
+        {
+            _selfCheckFrames = selfCheckDelayFrames;
+        }
+    }
+
+    /// <summary>
+    /// 在内容集里登记「测试假人」这一行：角色定义 + 变体 + 灰度白模外观。
+    /// <para>
+    /// 假人<b>复用</b> <c>test_hero</c> 已有的数值包 / 技能包 / 武器行（<c>test_hero_base</c> /
+    /// <c>test_hero_kit</c> / <c>pistol_basic</c>）—— 它不是一套新角色，只是同一套东西换了一个阵营。
+    /// 真正「假人该有多少血」要调的时候，换 <c>basePackageId</c> 指向一个专门的数值包即可（改数据，不改这里）。
+    /// </para>
+    /// <para>
+    /// <b>为什么不给武器行</b>：假人只站着被打，拿枪反而会在准星方向空射（它没有输入源）。
+    /// 空武器行 = <c>WeaponStats</c> 全零，装配路径本来就允许（"没有武器的角色也合法"）。
+    /// </para>
+    /// </summary>
+    /// <exception cref="InvalidOperationException">内置内容集没有 <c>test_hero</c>（说明装配表被改坏了）。</exception>
+    private static void RegisterDummyVariant(CharacterContentSet content)
+    {
+        CharacterAssemblyOf<SkillLoadout> hero = content.Assemblies.Get(CharacterContentSet.HeroDefaultVariantId);
+        ActorDefinition? heroVariantDefinition = content.Definitions.Get(content.Definitions.SlotOf(hero.Variant.DefinitionId));
+        if (heroVariantDefinition is null)
+        {
+            throw new InvalidOperationException("内容集里找不到测试人物的角色定义，假人无法复用它的受击盒尺寸。");
+        }
+
+        content.Assemblies.RegisterVisualPack(
+            new CharacterVisualPack(DummyVisualPackId, string.Empty, 1f, 100, 0, DummyColorHex));
+        // 假人跟玩家共用同一套受击盒尺寸（同一行变体度量，不在这里另写数）。
+        content.Definitions.Register(new ActorDefinition(
+            DummyVariantId,
+            string.Concat("actor.", DummyVariantId),
+            ActorKind.Monster,
+            TeamId.Enemy,
+            ControlScheme.Ai,
+            new StatPackageIds(hero.Variant.BasePackageId, growth: hero.Variant.GrowthPackageId),
+            hero.Variant.LoadoutId,
+            heroVariantDefinition.HitRadius,
+            heroVariantDefinition.HitHeight,
+            heroVariantDefinition.VisualSlot));
+
+        // 先登记装配（假人单独一族，模块只留移动/瞄准：不掉血就不会有别的行为），再挂变体，最后重解一次。
+        // 「加一个装配 = 一行数据」——不是新写一个类（规则7）。
+        content.Assemblies.RegisterAssembly(new CharacterAssemblySpec(
+            DummyVariantId, "训练房假人", new CharacterModuleSet(new[] { "move_standard", "aim_cursor" }), null));
+        content.Assemblies.RegisterVariant(DummyVariantId, new CharacterVariantSpec(
+            id: DummyVariantId,
+            displayName: "训练假人",
+            variantTag: "测试对象",
+            definitionId: DummyVariantId,
+            basePackageId: hero.Variant.BasePackageId,
+            growthPackageId: hero.Variant.GrowthPackageId,
+            equipmentPackageId: string.Empty,
+            loadoutId: hero.Variant.LoadoutId,
+            weaponRowId: string.Empty,
+            visualPackId: DummyVisualPackId,
+            cameraPackId: hero.Variant.CameraPackId,
+            inputPackId: hero.Variant.InputPackId,
+            modules: CharacterModuleSet.Empty));
+        content.Assemblies.Resolve(content);
+    }
+
+    /// <summary>
+    /// 把假人放进玩家的世界：找到它在内容集里的定义槽位 → 入队 → 返回占位实体号。
+    /// <para>
+    /// 返回的 <see cref="Entity"/> 是<b>出生前</b>的占位：调用方拿到的是「等它出生的那个号」，
+    /// 真正的实体由装配系统创建。所以这里的号只用于日志；出生后的号由自检按
+    /// 「世界里除玩家以外的那一个角色实体」反查（不缓存实体号 = 不会缓存一个失效句柄）。
+    /// </para>
+    /// </summary>
+    private Entity SpawnDummy(CharacterContentSet content)
+    {
+        if (_character is null)
+        {
+            return Entity.None;
+        }
+
+        int definitionSlot = content.Definitions.SlotOf(DummyVariantId);
+        if (definitionSlot < 0)
+        {
+            GD.PushError("[训练房] 内容集里没有假人定义 '" + DummyVariantId + "'，假人不会出生。");
+            return Entity.None;
+        }
+
+        float offset = DummyOffsetCells * CellMeters;
+        var spawn = new ActorSpawnRequest(
+            definitionSlot,
+            new System.Numerics.Vector3(0f, 0f, -offset),
+            teamOverride: TeamId.Enemy);
+        _character.EnqueueSpawn(spawn);
+        return Entity.None;
+    }
 
     /// <summary>
     /// 按房间尺寸摆相机：站到房间南侧上方，俯视整间屋子。
@@ -205,9 +395,18 @@ public partial class TrainingRoomScene : Node3D
     /// <inheritdoc />
     public override void _Process(double delta)
     {
+        // 走查输入：必须先于 Tick 写进意图源（Tick 内部才采样意图）。
+        _drive?.Tick((float)delta);
+
         if (_character is not null)
         {
             _character.Tick((float)delta);
+        }
+
+        // 走查采样：每帧记一下子弹（新出现 = 射了一发；落地时离假人够近 = 打中了附近）。
+        if (_drive is not null)
+        {
+            SampleWalk((float)delta);
         }
 
         if (_selfCheckFrames > 0)
@@ -216,6 +415,149 @@ public partial class TrainingRoomScene : Node3D
             if (_selfCheckFrames == 0)
             {
                 EmitSelfCheck();
+            }
+        }
+
+        // 走查时每 60 帧打一行心跳：无头环境里没有截图可看，卡在"时间轴没走完"和
+        // "死循环"长一个样 —— 有帧号与时间轴进度才分得清。
+        if (_drive is not null && _walkEndFrames == -1 && (_frameCount % 60) == 0)
+        {
+            GD.Print("[训练房 走查] f=", _frameCount, " t=", _drive.ElapsedSeconds, " finished=", _drive.Finished, " pos=", _character?.PlayerPosition());
+        }
+        _frameCount++;
+
+        if (_walkEndFrames > 0)
+        {
+            _walkEndFrames--;
+            if (_walkEndFrames == 0)
+            {
+                EmitWalkReport();
+            }
+        }
+    }
+
+    /// <summary>走查的字符串结果（报告与 <c>user://</c>，截图脚本读它判断过不过）。</summary>
+    public static string WalkResultPath => "user://training_room_walk_result.txt";
+
+    private int _lastShotSeen;
+
+    /// <summary>本场景跑过的帧数（诊断心跳用）。</summary>
+    private int _frameCount;
+
+    /// <summary>
+    /// 走查采样（每帧）：
+    /// <list type="number">
+    /// <item><b>出新弹</b>：本帧子弹数比上帧多 = 刚才真的射了一发（按住左键会被射击冷却限制成「每 0.15 s 一发」，不在这里数）；</item>
+    /// <item><b>打中附近</b>：每颗子弹这一帧第一次离假人这么近，记一次命中判定；</item>
+    /// <item><b>结算</b>：时间轴走完后还得等子弹飞完（它们要 1 秒左右才到远处的假人），等够再出报告。</item>
+    /// </list>
+    /// </summary>
+    private void SampleWalk(float deltaSeconds)
+    {
+        if (_character is null || _world is null)
+        {
+            return;
+        }
+
+        Entity player = _character.Player;
+        int shots = 0;
+        int hits = 0;
+        Entity dummy = _dummy;
+        System.Numerics.Vector3 dummyPos = dummy.Equals(Entity.None)
+            ? default
+            : _world.Get<Transform3>(dummy).Position;
+        float radiusSquared = DummyHitRadiusMeters * DummyHitRadiusMeters;
+
+        Query projectiles = _world.Query<Projectile, Transform3>();
+        projectiles.ForEach<Projectile, Transform3>((Span<Projectile> ps, Span<Transform3> ts) =>
+        {
+            for (int i = 0; i < ps.Length; i++)
+            {
+                if (ps[i].Team != TeamId.Player)
+                {
+                    continue;
+                }
+                shots++;
+                if (!dummy.Equals(Entity.None)
+                    && (ts[i].Position - dummyPos).LengthSquared() <= radiusSquared)
+                {
+                    hits++;
+                }
+            }
+        });
+
+        if (shots > _lastShotSeen)
+        {
+            _shotsSeen += shots - _lastShotSeen;
+        }
+        _lastShotSeen = shots;
+        _shotsHitDummy = Math.Max(_shotsHitDummy, hits);
+
+        if (_drive is null || !_drive.Finished || _walkEndFrames != 0)
+        {
+            return;
+        }
+
+        // 时间轴走完：再等一会儿让最后几发子弹飞到假人，然后出报告。
+        _walkEndFrames = (int)MathF.Round(WalkSettleSeconds / MathF.Max(deltaSeconds, 0.001f));
+        GD.Print("[训练房 走查] 时间轴走完，", WalkSettleSeconds, " s 后结算。");
+    }
+
+    /// <summary>时间轴走完后等子弹落地的秒数。</summary>
+    private const float WalkSettleSeconds = 1.5f; // arch-ok: 自检时序参数（等弹时间），非玩法数值
+
+    /// <summary>走查报告：位移 / 射出数 / 打中 / 假人是否还在原地（白模不动）。</summary>
+    private void EmitWalkReport()
+    {
+        _walkEndFrames = -1;
+        if (_character is null || _world is null)
+        {
+            return;
+        }
+
+        System.Numerics.Vector3 end = _character.PlayerPosition();
+        System.Numerics.Vector3 d = end - _walkStartPos;
+        float moved = MathF.Sqrt((d.X * d.X) + (d.Z * d.Z));
+        bool walked = moved >= WalkMinimumMeters;
+        bool fired = _shotsSeen > 0;
+        bool hit = _shotsHitDummy > 0;
+
+        System.Numerics.Vector3 dummyPos = _dummy.Equals(Entity.None)
+            ? default
+            : _world.Get<Transform3>(_dummy).Position;
+        float dummyOff = MathF.Sqrt((dummyPos.X * dummyPos.X) + (dummyPos.Z * dummyPos.Z));
+        float expectedOffset = DummyOffsetCells * CellMeters;
+        bool dummyStill = _dummy.Equals(Entity.None) == false && MathF.Abs(dummyOff - expectedOffset) < WalkMinimumMeters;
+
+        string summary = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "walked={0} moved={1:F2}m from=({2:F2},{3:F2}) to=({4:F2},{5:F2}) shots={6} hitsNearDummy={7} dummyInPlace={8}",
+            walked, moved,
+            _walkStartPos.X, _walkStartPos.Z, end.X, end.Z,
+            _shotsSeen, _shotsHitDummy, dummyStill);
+        bool ok = walked && fired && hit && dummyStill;
+        GD.Print("[训练房 走查] " + (ok ? "通过 " : "失败 ") + summary);
+
+        using FileAccess file = FileAccess.Open(WalkResultPath, FileAccess.ModeFlags.Write);
+        if (file is not null)
+        {
+            file.StoreString((ok ? "PASS " : "FAIL ") + summary + "\n");
+        }
+        if (!ok)
+        {
+            GD.PushWarning("[训练房 走查] 走查未通过：" + summary);
+        }
+
+        // 走查是「一次性」的：跑完就退出（无头循环下由截图/CI 脚本用 --quit-after 兜底）。
+        if (System.Environment.GetCommandLineArgs() is { } args)
+        {
+            foreach (string arg in args)
+            {
+                if (string.Equals(arg, "--quit-on-walk", StringComparison.Ordinal))
+                {
+                    GetTree().Quit(ok ? 0 : 1);
+                    return;
+                }
             }
         }
     }
@@ -318,78 +660,19 @@ public partial class TrainingRoomScene : Node3D
         };
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 测试假人
-    // ─────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// 建假人：一个立着的胶囊（身体）+ 一个球（头），纯表现节点，不参与 ECS。
-    /// <para>
-    /// 用几何体而不是 <c>素材/</c> 里的 <c>.glb</c>：按 2026-11-10 的决定「先全部用白模」，
-    /// 训练房不该依赖任何外部素材路径——素材库大改也不会把训练房弄挂。
-    /// </para>
-    /// </summary>
-    private void BuildDummy()
-    {
-        float cell = CellMeters;
-        float offset = DummyOffsetCells * cell;
-        // CapsuleMesh.Height 是「含两端半球」的总高（不是圆柱段长度）。
-        float bodyHeight = cell * DummyBodyHeightFactor;
-        float bodyRadius = cell * DummyBodyRadiusFactor;
-
-        Node3D dummy = new() { Name = "TestDummy" };
-        AddChild(dummy);
-        _dummy = dummy;
-
-        // 假人做成偏暖的浅灰，跟房间的冷灰拉开，一眼能分出"这不是墙"。
-        StandardMaterial3D bodyMat = MakeSolidMaterial(DummyBodyColor);
-        StandardMaterial3D headMat = MakeSolidMaterial(DummyHeadColor);
-
-        CapsuleMesh body = new()
-        {
-            Radius = bodyRadius,
-            Height = bodyHeight,
-        };
-        MeshInstance3D bodyNode = new()
-        {
-            Name = "Body",
-            Mesh = body,
-            MaterialOverride = bodyMat,
-            Position = new Vector3(0f, bodyHeight * 0.5f, 0f),
-        };
-        dummy.AddChild(bodyNode);
-
-        float headRadius = bodyRadius * DummyHeadRadiusFactor;
-        SphereMesh head = new()
-        {
-            Radius = headRadius,
-            Height = headRadius + headRadius, // 球的总高 = 直径（SphereMesh.Height 与 CapsuleMesh 同口径）
-        };
-        MeshInstance3D headNode = new()
-        {
-            Name = "Head",
-            Mesh = head,
-            MaterialOverride = headMat,
-            Position = new Vector3(
-                0f,
-                bodyHeight + headRadius, // 头正好坐在身体顶上，不留缝也不重叠
-                0f),
-        };
-        dummy.AddChild(headNode);
-
-        // 站位：房间靠前一侧，正对出生的玩家。
-        dummy.Position = new Vector3(0f, 0f, -offset);
-    }
+    /// <summary>假人配色（中灰，跟房间冷灰、玩家蓝都拉开，一眼能分出「这不是墙、也不是我」）。</summary>
+    private const string DummyColorHex = "#B8B8B8"; // arch-ok: 表现参数（假人白模配色），非玩法数值
 
     // ─────────────────────────────────────────────────────────────
     // 自检
     // ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 无头自检：把「房间建出来没有、假人在不在、人物出生没有」写进日志与 <c>user://</c>。
+    /// 无头自检：把「房间建出来没有、假人出生没有、两个角色分到视图没有、HUD 在不在」写进日志与 <c>user://</c>。
     /// <para>
     /// agent 与 CI 里没有眼睛看画面，「没报错」不等于「东西真的在」——
-    /// 这里数的是<b>场景树里真实存在的节点</b>，不是「我写了 Build 所以它一定在」。
+    /// 这里数的是<b>世界与场景树里真实存在的实体/节点</b>，不是「我写了 Spawn 所以它一定在」。
+    /// 角色「有实体但没视图节点」正是历史上「人物隐形、屏幕上只剩 HUD」的形态，所以视图号也要数。
     /// </para>
     /// </summary>
     private void EmitSelfCheck()
@@ -419,25 +702,41 @@ public partial class TrainingRoomScene : Node3D
 
         int expectedFloors = RoomCells * RoomCells;
         int expectedWalls = WallCount;
-        bool dummyOk = _dummy is not null && _dummy.GetChildCount() == DummyPartCount;
+
+        // 角色：玩家（会话持有）+ 假人（第一个不是玩家的角色实体，见 SpawnDummy 的说明）。
+        int heroView = _character?.ViewSlotOf(_character.Player) ?? 0;
+        int dummyView = 0;
+        if (_character is not null && _world is not null)
+        {
+            Entity dummy = FirstEnemyActor();
+            _dummy = dummy;
+            dummyView = _character.ViewSlotOf(dummy);
+        }
         bool heroOk = _character is not null && _character.Player != Entity.None;
-        bool ok = floors == expectedFloors && walls == expectedWalls && dummyOk;
+        bool dummyOk = dummyView > 0;
+        bool viewsOk = CountActorGuests() == ActorCount;
+        bool hudOk = _character is not null && _character.HudSubmitCount > 0;
+
+        bool ok = floors == expectedFloors && walls == expectedWalls && dummyOk && heroOk && viewsOk && hudOk;
 
         string summary = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
-            "room={0}x{1} cells cell={2:F1}m floors={3}/{4} walls={5}/{6} dummy={7} parts={8} hero={9} variant={10}",
+            "room={0}x{1} cells cell={2:F1}m floors={3}/{4} walls={5}/{6} hero={7} view={8} dummy={9} dummyView={10} actors={11}/{12} hud={13}/{14}",
             RoomCells, RoomCells, CellMeters,
             floors, expectedFloors,
             walls, expectedWalls,
-            _dummy is not null,
-            _dummy?.GetChildCount() ?? 0,
             heroOk,
-            HeroVariantId);
+            heroView,
+            dummyOk,
+            dummyView,
+            CountActorGuests(), ActorCount,
+            hudOk,
+            _character?.HudSubmitCount ?? 0);
         GD.Print("[训练房 自检] " + summary);
 
         if (!ok)
         {
-            GD.PushWarning("[训练房 自检] 场地不完整：" + summary);
+            GD.PushWarning("[训练房 自检] 场景不完整：" + summary);
         }
         if (!heroOk)
         {
@@ -449,5 +748,53 @@ public partial class TrainingRoomScene : Node3D
         {
             file.StoreString(summary + "\n");
         }
+    }
+
+    /// <summary>
+    /// 世界里第一个「阵营 = 敌方」的角色实体（训练房里就是那只假人；没有返回 <see cref="Entity.None"/>）。
+    /// <para>
+    /// 为什么按阵营数而不是缓存出生后的实体号：实体号由装配系统在出生时才确定，
+    /// 场景里缓存一个「以为会是它」的号，等于赌系统实现不变——换个装配顺序就变成查一个不存在的实体。
+    /// </para>
+    /// </summary>
+    private Entity FirstEnemyActor()
+    {
+        if (_world is null)
+        {
+            return Entity.None;
+        }
+        Entity found = Entity.None;
+        Query enemies = _world.Query<Team, ActorIdentity>();
+        enemies.ForEach<Team, ActorIdentity>((Span<Team> teams, Span<ActorIdentity> identities) =>
+        {
+            for (int i = 0; i < teams.Length; i++)
+            {
+                if (teams[i].Value == TeamId.Enemy)
+                {
+                    found = identities[i].Owner;
+                    return;
+                }
+            }
+        });
+        return found;
+    }
+
+    /// <summary>数本场景视图池（<c>Views</c> 根节点）下当前可见的角色视图节点数（幽灵节点 / 没分到视图都会让这个数不对）。</summary>
+    private int CountActorGuests()
+    {
+        Node3D? views = GetNodeOrNull<Node3D>("Views");
+        if (views is null)
+        {
+            return 0;
+        }
+        int count = 0;
+        foreach (Node child in views.GetChildren())
+        {
+            if (child is Node3D node && node.Visible && node.GetChildCount() > 0)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 }
