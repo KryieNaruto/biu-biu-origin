@@ -189,14 +189,33 @@ public readonly struct InputIntent : IEquatable<InputIntent>
     public readonly int AimDirectionY;
     public readonly int AimDirectionZ;
 
+    /// <summary>
+    /// 移动输入（屏幕基 2D：X = 右，Y = 前），Q16 定点；零向量 = 不想动。
+    /// <para>
+    /// 为什么只有两个分量：「前后左右」是<u>输入语义</u>，不是世界方向；屏幕 → 世界的换算要用相机，
+    /// 而相机在宿主层（Core 不碰引擎）。所以这里只表达「往右上」，由消费方（MoveAimSystem 的世界方向来源）
+    /// 用相机基把它转成世界向量。
+    /// </para>
+    /// </summary>
+    public readonly int MoveX;
+    public readonly int MoveY;
+
     /// <summary>构造意图。</summary>
     public InputIntent(uint pressedMask, uint heldMask, int aimX, int aimY, int aimZ)
+        : this(pressedMask, heldMask, aimX, aimY, aimZ, 0, 0)
+    {
+    }
+
+    /// <summary>构造意图（含移动输入）。</summary>
+    public InputIntent(uint pressedMask, uint heldMask, int aimX, int aimY, int aimZ, int moveX, int moveY)
     {
         PressedMask = pressedMask;
         HeldMask = heldMask;
         AimDirectionX = aimX;
         AimDirectionY = aimY;
         AimDirectionZ = aimZ;
+        MoveX = moveX;
+        MoveY = moveY;
     }
 
     /// <summary>该槽本帧是否被按下（边沿触发）。</summary>
@@ -213,13 +232,14 @@ public readonly struct InputIntent : IEquatable<InputIntent>
         PressedMask == other.PressedMask && HeldMask == other.HeldMask
         && AimDirectionX == other.AimDirectionX
         && AimDirectionY == other.AimDirectionY
-        && AimDirectionZ == other.AimDirectionZ;
+        && AimDirectionZ == other.AimDirectionZ
+        && MoveX == other.MoveX && MoveY == other.MoveY;
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is InputIntent other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => HashCode.Combine(PressedMask, HeldMask, AimDirectionX, AimDirectionY, AimDirectionZ);
+    public override int GetHashCode() => HashCode.Combine(PressedMask, HeldMask, AimDirectionX, AimDirectionY, AimDirectionZ, MoveX, MoveY);
 }
 
 /// <summary>

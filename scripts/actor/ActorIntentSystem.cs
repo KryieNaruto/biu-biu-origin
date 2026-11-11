@@ -107,6 +107,8 @@ public sealed class ActorIntentSystem : SystemBase, ISpanAction<ActorIdentity, A
             intent[i].AimX = polled.AimDirectionX;
             intent[i].AimY = polled.AimDirectionY;
             intent[i].AimZ = polled.AimDirectionZ;
+            intent[i].MoveX = polled.MoveX;
+            intent[i].MoveY = polled.MoveY;
             intent[i].Sequence++;
             _ = transform; // 位置对采集无影响；保留 Span 是为了让查询形状覆盖"有位置的实体"
             PolledCount++;
@@ -156,6 +158,8 @@ public static class IntentRules
         target.AimX = intent.AimDirectionX;
         target.AimY = intent.AimDirectionY;
         target.AimZ = intent.AimDirectionZ;
+        target.MoveX = intent.MoveX;
+        target.MoveY = intent.MoveY;
         target.Sequence++;
     }
 

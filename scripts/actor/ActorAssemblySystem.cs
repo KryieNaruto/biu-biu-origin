@@ -339,10 +339,17 @@ public sealed class ActorAssemblySystem : SystemBase
             // 空组件（全零）语义明确：意图为 0 = 不想动；瞄准无目标 = 不转身；表现槽位待定。
             World.Register<MoveIntent>(),
             World.Register<AimTarget>(),
+            // ★ View 必须和 ViewAppearance 一起注册：视图池按 View 租节点（VisualBridge.RentMissing），
+            //   外观按 View+ViewAppearance 找实体套样式（ActorViewDirector.ApplyAll）。
+            //   只给 ViewAppearance 不给 View，会话里"外观组件齐全"但视图永远租不出来 ——
+            //   症状就是人物隐形，屏幕上只剩 HUD 准星。Slot=0 是"待分配"哨兵，租出时由桥层写回。
+            World.Register<View>(),
             World.Register<ViewAppearance>(),
             World.Register<ActorTag>(),
         };
         Entity entity = World.Create(components);
+
+        World.Set(entity, new View { Slot = 0, Kind = 0, Dirty = true });
 
         World.Set(entity, new Transform3
         {

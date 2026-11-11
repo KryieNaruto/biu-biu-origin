@@ -122,6 +122,12 @@ public struct ActorIntent
     /// <summary>瞄准方向 Z。</summary>
     public float AimZ;
 
+    /// <summary>移动输入 X（屏幕基：右为正，Q16 定点；0 = 不左右）。</summary>
+    public int MoveX;
+
+    /// <summary>移动输入 Y（屏幕基：前为正，Q16 定点；0 = 不前后）。</summary>
+    public int MoveY;
+
     /// <summary>意图序列号：每采集一帧 +1（空意图帧也能被下游识别）。</summary>
     public int Sequence;
 }
