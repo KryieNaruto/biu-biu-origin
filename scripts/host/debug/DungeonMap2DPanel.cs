@@ -3,6 +3,7 @@ using System.Globalization;
 using Godot;
 using Game.Core;
 using Game.Core.Randomness;
+using Game.Host.Ui;
 using Game.Spawn.Rooms;
 
 namespace Game.Host.Debug;
@@ -56,13 +57,13 @@ public partial class DungeonMap2DPanel : PanelContainer
     private const float PercentScale = 100f; // arch-ok: 百分比换算，不是玩法数值
 
     /// <summary>滑条行里「名字」列的宽度；够放下最长的那条中文标签。</summary>
-    private const float LabelColumnWidth = 150f; // arch-ok: 面板布局尺寸（UI）
+    private const float LabelColumnWidth = DebugUiStyle.LabelColumnWidth;
 
     /// <summary>滑条行里「当前值」列的宽度；固定宽度避免数字位数变化时整列跳动。</summary>
-    private const float ValueColumnWidth = 34f; // arch-ok: 面板布局尺寸（UI）
+    private const float ValueColumnWidth = DebugUiStyle.ValueColumnWidth;
 
     /// <summary>滑条行的控件间距。</summary>
-    private const int RowSeparation = 8; // arch-ok: 面板布局尺寸（UI）
+    private const int RowSeparation = DebugUiStyle.RowSeparation;
 
     /// <summary>
     /// 隐藏房奖励是普通房的几倍。
@@ -146,10 +147,9 @@ public partial class DungeonMap2DPanel : PanelContainer
     public void Bind(DungeonMap2DView view, DungeonRoomStyleSet? styles)
     {
         _view = view;
-        if (styles is not null)
-        {
-            _view.SetStyles(styles);
-        }
+        _view.SetStyles(styles);
+        // 图例画在视图里，配色换完要让它按新配色重算列宽并重画（否则色块停在内置默认色）。
+        _view.QueueRedraw();
         RebuildNow();
     }
 
@@ -163,6 +163,7 @@ public partial class DungeonMap2DPanel : PanelContainer
     /// <inheritdoc />
     public override void _Process(double delta)
     {
+        FitMapToView();
         if (_pendingRebuild < 0)
         {
             return;
@@ -177,18 +178,23 @@ public partial class DungeonMap2DPanel : PanelContainer
 
     private void BuildLayout()
     {
-        CustomMinimumSize = new Vector2(340f, 0f); // arch-ok: 面板最小宽度（UI 布局尺寸）
+        CustomMinimumSize = new Vector2(DebugUiStyle.PanelMinWidth, 0f);
         ScrollContainer scroll = new ScrollContainer();
         scroll.SetAnchorsAndOffsetsPreset(Godot.Control.LayoutPreset.FullRect);
         AddChild(scroll);
 
         _rows = new VBoxContainer();
         _rows.SizeFlagsHorizontal = Godot.Control.SizeFlags.ExpandFill;
-        _rows.AddThemeConstantOverride("separation", 4);
+        _rows.AddThemeConstantOverride("separation", DebugUiStyle.SectionSeparation);
         scroll.AddChild(_rows);
+        // 滚动条也是在运行时才出现的，只能通过 Theme 加粗（见 DebugUiStyle.ScrollBarWidth）。
+        scroll.AddThemeConstantOverride("scroll_deadzone", 4); // arch-ok: 滚动死区（输入手感，UI）
 
         Label title = new Label { Text = PanelTitle };
-        title.AddThemeFontSizeOverride("font_size", 12);
+        // 字号/颜色一律走 Theme（DebugUiStyle 挂在场景根上向下继承），
+        // 这里只补「标题比正文大」这一条差异——它属于语义层级，不是随手改的魔法数。
+        title.AddThemeFontSizeOverride("font_size", DebugUiStyle.FontTitle);
+        title.AddThemeColorOverride("font_color", DebugUiStyle.TextTitle);
         _rows.AddChild(title);
 
         // 滑条取值范围是 **UI 控件边界**，不是玩法数值（规则4 管的是战斗/手感数值）。
@@ -209,7 +215,8 @@ public partial class DungeonMap2DPanel : PanelContainer
         _cellPixels = AddSlider("格子像素大小", SliderRanges.CellPixels, out _);
 
         Label propTitle = new Label { Text = "── 物件（建筑 / 奖励 / 可破坏 / 不可破坏）──" };
-        propTitle.AddThemeFontSizeOverride("font_size", 11);
+        propTitle.AddThemeFontSizeOverride("font_size", DebugUiStyle.FontSmallTitle);
+        propTitle.AddThemeColorOverride("font_color", DebugUiStyle.TextSection);
         _rows.AddChild(propTitle);
         _buildingsPerRoom = AddSlider("每房建筑数", SliderRanges.BuildingsPerRoom, out _);
         _buildingMaxSide = AddSlider("建筑最大边长（格）", SliderRanges.BuildingMaxSide, out _);
@@ -231,7 +238,7 @@ public partial class DungeonMap2DPanel : PanelContainer
         buttons.AddChild(export);
 
         _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        _status.AddThemeFontSizeOverride("font_size", 11);
+        _status.AddThemeColorOverride("font_color", DebugUiStyle.TextStatus);
         _rows.AddChild(_status);
     }
 
@@ -253,8 +260,7 @@ public partial class DungeonMap2DPanel : PanelContainer
         row.AddThemeConstantOverride("separation", RowSeparation);
         _rows.AddChild(row);
 
-        Label name = new Label { Text = label, CustomMinimumSize = new Vector2(LabelColumnWidth, 0f) }; // arch-ok: 标签列宽（UI 布局尺寸）
-        name.AddThemeFontSizeOverride("font_size", 11);
+        Label name = new Label { Text = label, CustomMinimumSize = new Vector2(LabelColumnWidth, 0f) };
         row.AddChild(name);
 
         HSlider slider = new HSlider
@@ -271,10 +277,10 @@ public partial class DungeonMap2DPanel : PanelContainer
         Label value = new Label
         {
             Text = FormatValue(range.Initial),
-            CustomMinimumSize = new Vector2(ValueColumnWidth, 0f), // arch-ok: 数值列宽（UI 布局尺寸）
+            CustomMinimumSize = new Vector2(ValueColumnWidth, 0f),
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        value.AddThemeFontSizeOverride("font_size", 11);
+        value.AddThemeColorOverride("font_color", DebugUiStyle.TextValue);
         row.AddChild(value);
 
         slider.ValueChanged += OnAnyValueChanged;
@@ -300,8 +306,10 @@ public partial class DungeonMap2DPanel : PanelContainer
         _ = value;
         if (_cellPixels is not null && _view is not null)
         {
-            // 滑条动过 = 用户想手动定尺寸，交出控制权（之后窗口缩放不再自动改格子像素）。
+            // 滑条动过 = 用户想手动定尺寸，交出控制权。
             // 只有值**真的**变了才算，避免任何别的滑条一动就误判。
+            // 注意 FitMapToView 回填滑条时走的是 SetValueNoSignal，不会触发这里，
+            // 所以「自动铺满」与「手动指定」两种模式不会互相打脸。
             if (Math.Abs(_cellPixels.Value - _view.CellPixels) > 0.01)
             {
                 _view.AutoFit = false;
@@ -312,7 +320,15 @@ public partial class DungeonMap2DPanel : PanelContainer
         _pendingRebuild = 0;
     }
 
-    /// <summary>把地图缩放到铺满左侧可视区，并让滑条显示实际生效的格子像素。</summary>
+    /// <summary>
+    /// 把地图（含右侧图例列）缩放到铺满可视区，并让滑条显示实际生效的格子像素。
+    /// <para>
+    /// 必须每帧调一次：视图只在 <see cref="DungeonMap2DView.AutoFit"/> 开着时才会自己缩放，
+    /// 而调过一次「格子像素」滑条之后 AutoFit 就关掉了（交还手动控制），
+    /// 之后拖窗口图就再也不跟着变——用户反馈的「窗口拉大图不变」正是这个口径。
+    /// 这里每帧重算一次（两次除法 + 一次比较），代价可以忽略。
+    /// </para>
+    /// </summary>
     private void FitMapToView()
     {
         if (_view is null)
@@ -324,7 +340,19 @@ public partial class DungeonMap2DPanel : PanelContainer
         {
             return;
         }
-        if (_view.FitToViewport(host.Size) && _cellPixels is not null)
+        Vector2 available = host.Size;
+        if (available.X <= 0f || available.Y <= 0f)
+        {
+            return;
+        }
+        // 先问一次是否「正好装得下」：装得下就不动，装不下（窗口变小 / 手动像素超出可视区）
+        // 才收回控制权重新铺满。这样窗口变大时手动像素保持不动，窗口变小也不会把图切掉。
+        if (_view.AutoFit || !_view.FitsWithin(available))
+        {
+            _view.AutoFit = true;
+            _view.FitToViewport(available);
+        }
+        if (_cellPixels is not null)
         {
             _cellPixels.SetValueNoSignal(Math.Clamp( // arch-ok: 显示层回填，与滑条范围一致
                 _view.CellPixels, _cellPixels.MinValue, _cellPixels.MaxValue));

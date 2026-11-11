@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v17  最后更新: 2026-11-10（§15.8 相机跟随手感：临界阻尼弹簧 + 鼠标方向可调偏移；§14.10 训练房 3D 测试场景；§17.11 「抽象没贯彻到底」全面体检 + 契约硬规则；§17.10.1 全部先跑白模：`ModelPath` 一律留空、占位路径清零；§17.10 模型属性收敛为唯一入口 `VisualPack`；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v17  最后更新: 2026-11-11（§15.8 相机跟随手感：临界阻尼弹簧 + 鼠标方向可调偏移；§14.10 训练房 3D 测试场景；§17.11 「抽象没贯彻到底」全面体检 + 契约硬规则；§17.10.1 全部先跑白模：`ModelPath` 一律留空、占位路径清零；§17.10 模型属性收敛为唯一入口 `VisualPack`；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -1000,6 +1000,24 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 2. **滑条一动就关掉 `AutoFit`**：手动调过像素 = 用户接管，之后窗口缩放不再覆盖他的选择。
 3. **`SetValueNoSignal` 回填滑条**：自动算出的值要反映到 UI 上，但不能再触发一次「用户改了滑条」。
 
+**④ 右侧图例列（2026-11-11）**：图例原先压在地图下方、三行横排、字号 11，
+用户反馈「标注字太小」并要求「不要放到底部，放到地图右侧，那里空了一大片」。
+
+| 项 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| 位置 | 地图下方（`y = 地图高 + 18`） | **地图右侧空白列**（`x = 地图宽 + LegendTopGap`） | 右侧本就空着整列；放下方会抬高整张图，还把图例挤成一条横带 |
+| 排布 | 三行横排 | **竖排**：标题 → 分隔线 → 「房型 / 格子」组 → 「物件」组 → 分隔线 → 4 条统计 | 竖排一行一项，不受窗口宽度影响，窄窗口也不会换行错位 |
+| 字号 | `11`（写死在 `DrawString`，列宽按「一字≈字号」估） | **`DebugUiStyle.FontLegend = 20`**；列宽用 `Font.GetStringSize` **实测**最长一行 | 写死列宽在字号放大后会把「不可破坏 / 秘密通道」裁掉半截，而**裁掉不报错** |
+| 缩放算式 | 只给滚动条与下方图例让高度 | **横向让出图例列**：`(可视宽 − 滚动条 − LegendMinColumnWidth − LegendTopGap) / 地图宽` | 不让宽度，图例列会伸出可视区被 `ScrollContainer` 裁掉，并逼出横向滚动条 |
+| 底板 | 无（文字直接浮在窗口底色上） | **不透明深底** `LegendPanelColor` | 半透明底板实测整列平均亮度只有 51/255，与窗口灰底糊成一片 |
+
+自检断言（无图形环境也能验）：`DungeonMap2DDebugScene` 打印
+`legend[rightOfMap=True inside=True x=403-663 of 1192] legendFont=20`——
+**「图例在右侧」这种改动最坏的长相是「画到视口外去了」：画面空白、日志全绿**，所以要断言位置，而不只是断言「画过了」。
+
+实测：1600×900（地图 12×28 格）→ 图 = 379×884 px、图例列 x∈[403,663]、文字行高 20–22 px；
+1920×1080 → 图 = 456×1064 px、图例列 x∈[480,740]。`dungeon_map_autofit_probe.gd` 四种窗口 **4/4 通过**。
+
 实测探针 `tools/probes/dungeon_map_autofit_probe.gd`（12×28 格地图）：
 
 | 窗口 | 可视区 | 格子 | 图尺寸 |
@@ -1220,6 +1238,7 @@ FitToViewport(host.Size);   // clamp(min(可用宽/格数, 可用高/格数), �
 | 2026-11-05 | v7 | **第一个可玩人物 `test_hero` 落地** | **在 ECS + 角色抽象之上做出第一个真正可操作的人物**：新增 §16 记录全链路（Excel 数据行 → `CharacterContentSet` 镜像 → `ContentSkillSet` 实例化真技能 → `CharacterSession` 一条管线 → `VisualBridge`/`TransformBridge` → HUD 快照）。① **组合根**：新增 `scripts/host/composition/`（`ISkillFactory` / `NullSkillFactory` / `NullSkill` / `ContentSkillFactory` / `ContentSkillSet`），刻意不 `using Godot`，测试工程直接编译 —— 「数据行 kind → 技能实现类」的唯一定义点。② **人物会话**：新增 `scripts/host/CharacterSession.cs`，把「出生 + 意图 + 装配 + 技能 + 移动 + 瞄准 + 视图 + HUD」收成一个可 `Tick` 的单元；`DungeonDebugScene` 改为持有会话并支持 `--hero` / `--hero-variant=` / `--hero-fire` / 角色特写截图。③ **四个变体纯数据**：`test_hero`(标准) / `test_hero_tank`(重甲) / `test_hero_agile`(敏捷) / `test_hero_lucky`(幸运)，换变体只改 xlsx 一行，C# 0 行改动。④ **修复四个静默失效的接线**（详见 §16.4）：玩家实体发现死循环（人物不出生）、技能包注册表槽位号错位（按左键永不开枪）、`DataSkill` 占位不生成子弹、意图覆盖方向写错。⑤ **HUD**：`HudSnapshot`/`CharacterHudDrawer` 显示 HP/法力/耐力/护甲减伤/移速/暴击/瞄准角/五技能槽；护甲减伤口径修正为 `armor/(armor+k)`（曾显示 94%）。⑥ **测试 101 → 219 全绿**（新增 `HeroIntegrationTests` 端到端用例：按下左键 → 世界里真出现 `Projectile` 且弹速/射程/伤害/半径全部可追溯到武器行；新增 `RuntimeSkillRegistry_KeepsContentSlotNumbers` 钉住槽位号一致性，并做了变异验证确认它能抓到原 bug），架构守卫 0 error / 0 warning。⑦ ECS 内核：`TypeSet.MaxComponentCount` 16 → 64（人物 12 类组件超出原上限导致运行时崩溃）。 | \scripts/host/CharacterSession.cs\、\scripts/host/composition/**\、\scripts/host/DungeonDebugScene.cs\、\scripts/host/control/PlayerInputIntentSource.cs\、\scripts/ui/**\、\	ests/**\、\docs/architecture/ARCHITECTURE.md\ | `scripts/host/CharacterSession.cs`、`scripts/host/composition/**`、`scripts/host/DungeonDebugScene.cs`、`scripts/host/control/PlayerInputIntentSource.cs`、`scripts/host/view/**`、`scripts/host/bridge/**`、`scripts/ui/**`、`scripts/actor/**`、`scripts/combat/**`、`scripts/skill/**`、`scripts/data/**`、`scripts/core/ecs/TypeSet.cs`、`tests/**`、`docs/architecture/ARCHITECTURE.md`、`data/excel/characters.xlsx` |
 | 2026-11-06 | v11 | **本地化：中文名真源 `l10n.xlsx`（图鉴全中文）** | **用户打开图鉴「全是英文」**——根因不是图鉴，而是**项目里从来没有中文名**：`DisplayKey` 明文规定不写中文（它是本地化 key），全仓库搜 `*loc*`/`*i18n*`/`*.csv` 零命中。**新增 §23**：① **`data/excel/l10n.xlsx` 作为名字的唯一真源**（167 条：物件 37 / 标签 62 / 枚举 55 / 单位 7 / 人物武器 5），四行表头 + `#data` 与其它主题表一致；**图鉴与将来的游戏 UI 读同一份**，杜绝「图鉴叫飞弹、游戏里叫炮弹」。② **图鉴中文名做主标题、英文 id 做副标题**（等宽小字，对表用），搜索索引收录中英文与标签三条路径。③ **校验器新增 5 类检查**（`validate_l10n` + `collect_l10n_refs`）：Key 重复 / Zh 为空 / **覆盖性（被引用的 key 必须有名字）** / 中文名仍是英文 / **同命名空间内重名**——检查项 4136 → **4569**。分命名空间是关键：`Pierce` 与 `tag.pierce` 都叫「穿透」是对的，第一版跨桶比较产生 12 条假阳性，淹没了真问题（`tag.melee` 与 `tag.short_range` 都叫「近战」）。④ **顺带修掉 DisplayKey 不一致的真 bug**：`player_hero` 在 `combat.xlsx` 是 `actor.player`、在 `characters.xlsx` 是 `actor.player_hero`；规范定为 `actor.<Id>`，已改齐。⑤ 图鉴加稀有度/元素色条、冲刺未配置时明确显示「未配置（不能冲刺）」而不是留白。**测试 372/372、构建 0/0、校验 4569 全绿、图鉴 0 条缺名警告**。**开工注意**：加任何新内容（人物/怪物/武器/子弹/标签）必须同步在 `l10n.xlsx` 加一行中文名，忘了校验器会报「缺少中文名：xxx（被 Yyy 引用）」 | `data/excel/l10n.xlsx`、`data/excel/combat.xlsx`、`tools/data_pipeline/gen_l10n_xlsx.py`、`tools/data_pipeline/add_missing_l10n.py`、`tools/data_pipeline/gen_codex.py`、`tools/data_pipeline/validate_content_xlsx.py`、`docs/codex/index.html`、`docs/architecture/ARCHITECTURE.md` |
 | 2026-11-06 | v10 | **核心内容集：5 人物 / 5 怪物 / 5 武器 / 5 子弹 + 图鉴原型** | **补齐用户最初的「5+5+5+5」需求**（此前怪物只有 3 种、人物 4 行是同一模板的数值变体）。**没有新增任何类**——五个人的差异只有三处：① 能力位（Objects.Tags）② 数值包（StatPacks）③ 技能包→武器/子弹（SkillLoads.WeaponId），系统代码 0 行改动。人物补齐第 5 个 **	est_hero_elemental 元素法师**（70 血 / 180 蓝 / 追踪穿透分裂弹），与既有 4 个在「血/蓝/速/甲/暴击/冲刺手感」六维上两两反向，无严格上位关系。怪物补齐到 5 种（新增 slime_401 分裂、slime_403 爆散，走与人物**同一套**数值包+技能包路径，差别只在填了几个槽）。新增 5 把人物武器 + 5 条弹道（直飞/重击/穿透 2/弹跳 3/追踪穿透分裂），子弹物件首次真实使用标识层 Faction 轴（	ag.own_player）。**新增图鉴原型** 	ools/data_pipeline/gen_codex.py → docs/codex/index.html（直读两个 xlsx，按标签轴分栏配色，兼作数值快速预览与游戏内图鉴的信息层级原型）。新增幂等填充脚本 ill_core_roster.py。**6 处坑写进 §22.9**（_upsert 必须自写主键、同 PackId 不能跨 Base/Growth 层、规则值列空≠0、VisualSlot 必填整数等）。测试 358 → **372 全绿**，校验器 3540 → **4126 项通过**。| data/excel/combat.xlsx、data/excel/characters.xlsx、scripts/data/CharacterContentSet.cs、	ools/data_pipeline/fill_core_roster.py、	ools/data_pipeline/gen_codex.py、	ools/data_pipeline/validate_content_xlsx.py、	ests/Characters/HeroAssemblyTests.cs、docs/codex/index.html、docs/architecture/ARCHITECTURE.md |
+| 2026-11-11 | v18 | **2D 地图图例搬到右侧 + 字号 11→20（§7.5.2 ④）** | 用户反馈「标注字太小」「不要放到底部，放到地图右侧，那里空了一大片」。图例由「地图下方三行横排、字号 11、按『一字≈字号』估宽」改为「**地图右侧竖排一列**（分组标题 + 一项一行 + 统计行）、字号 `DebugUiStyle.FontLegend` = 20、列宽按字体实测」；`FitToViewport` **横向让出图例列**，否则图例被裁且逼出横向滚动条；底板改不透明深底（半透明版实测整列亮度仅 51/255）；场景自检新增 `legend[rightOfMap=… inside=…]` 断言。**验证**：1600×900 / 1920×1080 自检 `rightOfMap=True inside=True`、`legendFont=20`；像素量测 20 段文字行全落在右侧列内、行高 20–22px；`dungeon_map_autofit_probe.gd` 4/4 通过；`dotnet build` 0 错 0 警；架构守卫 errors=0 | `scripts/host/debug/DungeonMap2DView.cs`、`scripts/host/debug/DungeonMap2DPanel.cs`、`scripts/host/debug/DungeonMap2DDebugScene.cs`、`scripts/host/ui/DebugUiStyle.cs`、`docs/modules/地编/README.md` |
 ## 12. 待办与下一步（按优先级）
 
 | 优先级 | 待办 | 产出位置 | 完工时必须回写本文件的章节 |

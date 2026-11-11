@@ -1,4 +1,5 @@
 using Godot;
+using Game.Host.Ui;
 using Game.Spawn.Rooms;
 
 namespace Game.Host.Debug;
@@ -21,13 +22,53 @@ public partial class DungeonMap2DDebugScene : Godot.Control
 
     private DungeonMap2DView _view = null!;
     private DungeonMap2DPanel _panel = null!;
+    private float _appliedWindowHeight = -1f;
 
     /// <inheritdoc />
     public override void _Ready()
     {
         _view = GetNode<DungeonMap2DView>("Layout/MapScroll/MapView");
         _panel = GetNode<DungeonMap2DPanel>("Layout/Panel");
+        ApplyTheme();
         CallDeferred(nameof(BindPanel));
+    }
+
+    /// <inheritdoc />
+    public override void _Process(double delta)
+    {
+        // 窗口高度变了就重建主题（大到一定程度才升字号，见 DebugUiStyle.LargeWindowHeight）。
+        // 挂在这里而不是挂在场景里，是因为「窗口多大」只有运行时知道；写死在 .tscn 里就等于写死字号。
+        Vector2 window = GetViewport().GetVisibleRect().Size;
+        if (!Mathf.IsEqualApprox(window.Y, _appliedWindowHeight))
+        {
+            ApplyTheme();
+        }
+    }
+
+    /// <summary>
+    /// 把 <see cref="DebugUiStyle"/> 的统一主题挂到场景根上，向下继承给面板里所有控件。
+    /// <para>
+    /// **为什么必须挂在根上而不是逐个控件设**：滑条自带的文字、滚动条、按钮的悬停态，
+    /// 这些控件不是我们 <c>AddChild</c> 出来的（引擎内部生成），
+    /// 逐个 <c>AddThemeFontSizeOverride</c> 根本够不到 —— 只有 Theme 能按类型统一覆盖。
+    /// </para>
+    /// </summary>
+    private void ApplyTheme()
+    {
+        _appliedWindowHeight = GetViewport().GetVisibleRect().Size.Y;
+        // 主题挂到场景根上向下继承：滑条/滚动条/按钮的内部子控件是引擎生成的，逐个覆盖够不着，只有 Theme 能按类型统一覆盖。
+        Theme theme = new Theme();
+        Font font = ThemeDB.FallbackFont;
+        theme.DefaultFont = font;
+        theme.DefaultFontSize = DebugUiStyle.FontLegend;
+        theme.SetColor("font_color", "Label", DebugUiStyle.TextValue);
+        theme.SetColor("font_color", "Button", DebugUiStyle.TextValue);
+        theme.SetFontSize("font_size", "Label", DebugUiStyle.FontLegend);
+        theme.SetFontSize("font_size", "HScrollBar", DebugUiStyle.FontLegend);
+        theme.SetFontSize("font_size", "VScrollBar", DebugUiStyle.FontLegend);
+        theme.SetConstant("separation", "VBoxContainer", DebugUiStyle.SectionSeparation);
+        theme.SetConstant("h_separation", "HBoxContainer", DebugUiStyle.RowSeparation);
+        Theme = theme;
     }
 
     private void BindPanel()
@@ -76,9 +117,18 @@ public partial class DungeonMap2DDebugScene : Godot.Control
         int sliders = CountNodes<HSlider>(_panel);
         int spinBoxes = CountNodes<SpinBox>(_panel);
 
+        // 图例必须站在地图右侧、并且整列落在可视区里。
+        // 没有这个断言，「图例搬到右侧」这种改动完全可能是「画到视口外去了」——画面空白、日志全绿。
+        Godot.Control? scroll = _view.GetParent() as Godot.Control;
+        float legendLeft = _view.LegendColumnX();
+        float legendRight = legendLeft + _view.LegendColumnWidth();
+        float mapRight = _view.MapWidth * _view.CellPixels;
+        bool legendVisible = scroll is not null && legendRight <= scroll.Size.X + 1f;
+        bool legendRightOfMap = legendLeft >= mapRight;
+
         string summary = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
-            "hasMap={0} size={1}x{2} artLength={3} props(B={4} R={5} b={6} o={7}) sliders={8} spinBoxes={9}",
+            "hasMap={0} size={1}x{2} artLength={3} props(B={4} R={5} b={6} o={7}) sliders={8} spinBoxes={9} cell={10:0.00}px legend[rightOfMap={11} inside={12} x={13:0}-{14:0} of {15:0}] legendFont={16}",
             _view.HasMap,
             _view.MapWidth,
             _view.MapHeight,
@@ -88,11 +138,23 @@ public partial class DungeonMap2DDebugScene : Godot.Control
             breakables,
             solids,
             sliders,
-            spinBoxes);
+            spinBoxes,
+            _view.CellPixels,
+            legendRightOfMap,
+            legendVisible,
+            legendLeft,
+            legendRight,
+            scroll is null ? 0f : scroll.Size.X,
+            DebugUiStyle.FontLegend);
         GD.Print("[DungeonMap2D 自检] " + summary);
         if (!ok)
         {
             GD.PushWarning("[DungeonMap2D 自检] 没拿到地图，字符画为空");
+        }
+        if (!legendRightOfMap || !legendVisible)
+        {
+            GD.PushWarning("[DungeonMap2D 自检] 图例不在可视区内的地图右侧（" + legendLeft.ToString("0.0")
+                + " / " + legendRight.ToString("0.0") + "）");
         }
         if (spinBoxes > 0)
         {

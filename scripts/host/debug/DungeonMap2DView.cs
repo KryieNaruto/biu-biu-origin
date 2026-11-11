@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using Game.Host.Ui;
 using Game.Spawn.Rooms;
 
 namespace Game.Host.Debug;
@@ -41,7 +42,13 @@ public partial class DungeonMap2DView : Node2D
     [Export]
     public DungeonRoomStyleSet? Styles { get; set; }
 
-    /// <summary>是否画左上角的图例条。</summary>
+    /// <summary>
+    /// 是否画图例。
+    /// <para>
+    /// 图例画在**地图右侧**的空白列里（竖排一列、一项一行）。上一版铺在地图下方：
+    /// 把地图整体抬高、被挤成三行横排小字（字号 11），用户反馈「标注字太小」。
+    /// </para>
+    /// </summary>
     [Export]
     public bool ShowLegend { get; set; } = true;
 
@@ -52,8 +59,50 @@ public partial class DungeonMap2DView : Node2D
     /// <summary>奖励菱形相对一格的半径比例（纯视觉）。</summary>
     private const float RewardDiamondScale = 0.26f; // arch-ok: 图元大小比例（纯视觉排版）
 
-    /// <summary>图例左边距（像素）。</summary>
-    private const float LegendMargin = 2f; // arch-ok: 图例边距（纯视觉排版）
+    /// <summary>图例左/上留白（图例列内部）。</summary>
+    private const float LegendMargin = DebugUiStyle.LegendMargin; // arch-ok: 图例边距（纯视觉排版）
+
+    /// <summary>
+    /// 图例文字字号。**与面板正文同口径但更大一档**：图例站在地图右侧的空地上、离眼睛更远，
+    /// 与面板同号时在 1080p 上要凑近才认得出（用户反馈「标注字太小」）。
+    /// 字号只从 <see cref="DebugUiStyle"/> 取，本文件不另写数字——以前这里写死 11，和占位高度分家。
+    /// </summary>
+    private const int LegendFontSize = DebugUiStyle.FontLegend;
+
+    /// <summary>图例标题比条目大几号。只表达层级差异，绝对字号仍由 <see cref="DebugUiStyle"/> 决定。</summary>
+    private const int LegendTitleExtra = 3; // arch-ok: 字号层级差（UI 排版）
+
+    /// <summary>图例分隔线的粗细（像素）。</summary>
+    private const float LegendRuleWidth = 1f; // arch-ok: 图元粗细（纯视觉排版）
+
+    /// <summary>图例标题（只此一处：测量列宽与绘制用同一个来源）。</summary>
+    private const string LegendTitleText = "图例";
+
+    /// <summary>房型组的小标题。</summary>
+    private const string RoomLegendTitle = "房型 / 格子";
+
+    /// <summary>物件组的小标题。</summary>
+    private const string PropLegendTitle = "物件";
+
+    /// <summary>图例末尾统计行的条数。</summary>
+    private const int StatLineCount = 4; // arch-ok: 图例统计行数（纯视觉排版）
+
+    /// <summary>
+    /// 图例里**全部**文字。只用来给 <see cref="MeasureLegendColumnWidth"/> 量最宽一行——
+    /// 列宽必须按真实字宽算，放大字号后写死的列宽会把「不可破坏 / 秘密通道」裁掉半截且不报错。
+    /// </summary>
+    private static readonly string[] LegendTexts =
+    {
+        "起始房", "战斗房", "特殊房", "隐藏房", "Boss房", "墙", "门", "秘密通道",
+        "建筑", "奖励", "可破坏", "不可破坏", "障碍", RoomLegendTitle, PropLegendTitle, "网格 99×99",
+    };
+
+    /// <summary>
+    /// 图例底板底色。**不透明**：半透明底板会和窗口底色（#4C4C4C）混成一片灰，
+    /// 深色文字压在上面几乎看不见——实测半透明版图例区平均亮度只有 51/255。
+    /// </summary>
+    private static readonly Color LegendPanelColor =
+        new(DebugUiStyle.PanelBackground.R, DebugUiStyle.PanelBackground.G, DebugUiStyle.PanelBackground.B, 1f); // arch-ok: 图例底板（纯视觉排版）
 
     /// <summary>自动铺满时不许缩得比这更小（再小就只剩噪点，看不清格子）。</summary>
     private const float MinCellPixels = 2f; // arch-ok: 缩放下限（纯显示层）
@@ -65,12 +114,19 @@ public partial class DungeonMap2DView : Node2D
     private const float ScrollbarReserve = 16f; // arch-ok: 滚动条占位（UI 布局尺寸）
 
     /// <summary>图例区占掉的高度（像素），配合 <see cref="ShowLegend"/> 使用。</summary>
-    private const float LegendReservedHeight = 24f; // arch-ok: 图例占位（UI 布局尺寸）
+    /// <summary>
+    /// 图例区占掉的**高度**。图例搬到地图右侧后不占地图下方高度，故为 0；
+    /// 保留这个常量是因为「可用高度 = 可视区高 − 图例高度」的算式语义仍然成立。
+    /// </summary>
+    private const float LegendReservedHeight = DebugUiStyle.LegendReservedHeight; // arch-ok: 图例占位（UI 布局尺寸）
 
     private DungeonMap _map;
     private bool _hasMap;
     private GridOffset[] _route = Array.Empty<GridOffset>();
     private DungeonRoomStyleSet _stylesResolved = DungeonRoomStyleSet.CreateDefault();
+
+    /// <summary>图例列宽度缓存：在 <see cref="FitToViewport"/> 里按字体实测，避免每帧量字体。</summary>
+    private float legendColumnWidth = DebugUiStyle.LegendMinColumnWidth;
 
     // 非房间格的表现色（墙/门/通道/障碍）—— 这些是「格子类型」而不是「房型」，
     // 所以不走配色表；同时登记为资源默认值，可被场景覆盖。
@@ -177,9 +233,12 @@ public partial class DungeonMap2DView : Node2D
             return false;
         }
 
-        // 留出图例与滚动条占的高度，否则最右一列与最底一行会被滚动条压住。
+        legendColumnWidth = MeasureLegendColumnWidth();
+
+        // 图例站在地图右侧，横向占一列；否则图例列会伸出可视区被 ScrollContainer 裁掉，
+        // 还会逼出横向滚动条。下方只再留滚动条的位置。
         float usable = Mathf.Min(
-            (available.X - ScrollbarReserve) / _map.Width,
+            (available.X - ScrollbarReserve - ReservedViewportWidth()) / _map.Width,
             (available.Y - ScrollbarReserve - ReservedViewportHeight()) / _map.Height);
         float fitted = Mathf.Clamp(usable, MinCellPixels, MaxCellPixels);
         if (Mathf.Abs(fitted - CellPixels) < CellPixelsEpsilon)
@@ -195,6 +254,94 @@ public partial class DungeonMap2DView : Node2D
     private float ReservedViewportHeight()
     {
         return ShowLegend ? LegendReservedHeight : 0f;
+    }
+
+    /// <summary>图例区占掉的宽度（像素）：图例关闭时为 0。</summary>
+    private float ReservedViewportWidth()
+    {
+        return ShowLegend ? legendColumnWidth : 0f;
+    }
+
+    /// <summary>
+    /// 按当前配色表重画图例（面板在运行时换配色后调用）。
+    /// <para>
+    /// 图例画在<b>视图里</b>（地图右侧那一列），色块取自 <c>_stylesResolved</c>；
+    /// 面板 <c>Bind</c> 时通过 <c>SetStyles</c> 换过配色，这里顺带让图例列重新测宽并重画，
+    /// 否则图例会停在旧配色 / 旧列宽上，而「颜色对不上地图」不会报任何错。
+    /// </para>
+    /// </summary>
+    public void RefreshLegend()
+    {
+        legendColumnWidth = MeasureLegendColumnWidth();
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// 图例列的原点 X（地图右边界 + 间距）。
+    /// <para>
+    /// 对外开一个方法而不是只在本文件里用：场景自检要拿「地图宽 + 图例宽」
+    /// 去和可视区宽度比对，两处必须算同一个数，否则自检报的「通过」没有意义。
+    /// </para>
+    /// </summary>
+    /// <returns>图例列左边界（像素，视图本地坐标）。没有地图时为 0。</returns>
+    public float LegendColumnX()
+    {
+        return _hasMap ? (_map.Width * CellPixels) + DebugUiStyle.LegendTopGap : 0f;
+    }
+
+    /// <summary>图例列的宽度（像素）：图例关闭时为 0。</summary>
+    public float LegendColumnWidth()
+    {
+        return ReservedViewportWidth();
+    }
+
+    /// <summary>图例当前使用的字号（像素），供自检/探针核对「字真的变大了」。</summary>
+    public int LegendFontPixelSize()
+    {
+        return LegendFontSize;
+    }
+
+    /// <summary>
+    /// 按<b>当前</b>格子像素，判断「地图 + 右侧图例列」是否还装得进 <paramref name="available"/>。
+    /// <para>
+    /// 面板用它决定要不要收回手动缩放的控制权：装得下就别动（用户手动定的比例要保住），
+    /// 装不下（窗口被拉小 / 手动像素超过可视区）才重新铺满，避免图被裁掉一截而没人发现。
+    /// </para>
+    /// </summary>
+    /// <param name="available">可视区尺寸（像素）。</param>
+    /// <returns>装得下为 true；没有地图或拿不到尺寸时也返回 false（让调用方走一次铺满）。</returns>
+    public bool FitsWithin(Vector2 available)
+    {
+        if (!_hasMap || available.X <= 0f || available.Y <= 0f)
+        {
+            return false;
+        }
+        float needWidth = (_map.Width * CellPixels) + ReservedViewportWidth() + ScrollbarReserve;
+        float needHeight = (_map.Height * CellPixels) + ReservedViewportHeight() + ScrollbarReserve;
+        return needWidth <= available.X && needHeight <= available.Y;
+    }
+
+    /// <summary>
+    /// 图例列实际需要的宽度：取 <see cref="DebugUiStyle.LegendMinColumnWidth"/> 与「最长一条图例」的较大者。
+    /// <para>
+    /// 按字体实测宽度算而不是猜一个数：字号一旦放大，写死的列宽会把「不可破坏 / 秘密通道」裁掉半截，
+    /// 而裁掉不会报错、日志也看不出来。
+    /// </para>
+    /// </summary>
+    private float MeasureLegendColumnWidth()
+    {
+        Font font = ThemeDB.FallbackFont;
+        float longest = 0f;
+        foreach (string label in LegendTexts)
+        {
+            float width = font.GetStringSize(label, HorizontalAlignment.Left, -1f, LegendFontSize).X;
+            longest = Mathf.Max(longest, width);
+        }
+        float title = font.GetStringSize(LegendTitleText, HorizontalAlignment.Left, -1f, LegendFontSize + LegendTitleExtra).X;
+        longest = Mathf.Max(longest, title);
+        return Mathf.Max(
+            DebugUiStyle.LegendMinColumnWidth,
+            (LegendMargin * 2f) + DebugUiStyle.LegendSwatch + DebugUiStyle.LegendSwatchGap + longest);
     }
 
     /// <inheritdoc />
@@ -366,73 +513,145 @@ public partial class DungeonMap2DView : Node2D
     }
 
     /// <summary>
-    /// 图例：**每一项都画出真实的色块**，后面跟文字说明。
+    /// 图例：**每一项都画出真实的色块**，后面跟名字；画在**地图右侧**的空白列里。
     /// <para>
-    /// 上一版图例是一行纯文字（「■起始 □战斗 …」），用户反馈「注释没有颜色，看不出来什么颜色对应什么房间」——
-    /// 文字里的方块和地图上的方块毫无关系，等于没写。所以这里改为「先画一块真颜色，再写名字」，
-    /// 色块直接取自当前配色表，换 .tres 配色时图例自动跟着变，不会再对不上。
+    /// 历史：上一版是地图下方的三行横排小字（字号 11）。原因不只是字号——
+    /// 横排为了塞进一行，行距与留白都被压到最小；地图右侧这一列本来就空着大片，
+    /// 竖排后每项独占一行，字号可以放到 <see cref="DebugUiStyle.FontLegend"/> 而不会被挤成一坨。
+    /// </para>
+    /// <para>
+    /// 色块颜色一律取自当前配色表 / 导出色（与地图完全同源），换配色时图例自动跟着变；
+    /// 再上一版纯文字图例「看不出来什么颜色对应什么房间」，正是在这里修掉的。
     /// </para>
     /// </summary>
     private void DrawLegend()
     {
-        float cell = CellPixels;
-        float y = (_map.Height * cell) + 18f; // arch-ok: 图例与地图像素间距（UI 排版）
-        float swatch = 10f; // arch-ok: 图例色块边长（UI 排版）
-        float gap = 6f; // arch-ok: 图例色块与文字间距（UI 排版）
-        float itemGap = 18f; // arch-ok: 图例项之间的间距（UI 排版）
-        float x = LegendMargin;
+        float swatch = DebugUiStyle.LegendSwatch;
+        float gap = DebugUiStyle.LegendSwatchGap;
+        float rowHeight = DebugUiStyle.LegendRowHeight;
+        float itemGap = DebugUiStyle.LegendItemGap;
+        int fontPx = LegendFontSize;
+        int titlePx = fontPx + LegendTitleExtra;
         Font font = ThemeDB.FallbackFont;
 
-        // 第一行：房型（颜色来自配色表，与地图完全同源）。
-        x = LegendMargin;
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "起始房", _stylesResolved.Get(RoomCategory.Start).FloorColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "战斗房", _stylesResolved.Get(RoomCategory.Combat).FloorColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "特殊房", _stylesResolved.Get(RoomCategory.Special).FloorColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "隐藏房", _stylesResolved.Get(RoomCategory.Hidden).FloorColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "Boss房", _stylesResolved.Get(RoomCategory.Boss).FloorColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "墙", WallColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "门", DoorColor, font);
-        AddLegendSwatch(x, y, swatch, gap, ref x, itemGap, "秘密通道", SecretColor, font);
+        // Node2D 原点在地图左上角，所以「地图右侧」就是 +X 方向；以地图顶部为基准往下竖排。
+        float x0 = LegendColumnX();
+        float x1 = x0 + Mathf.Max(legendColumnWidth, DebugUiStyle.LegendMinColumnWidth);
 
-        // 第二行：四类物件。
-        float y2 = y + 16f; // arch-ok: 图例行高（UI 排版）
-        x = LegendMargin;
-        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "建筑", BuildingColor, font);
-        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "奖励", RewardColor, font);
-        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "可破坏", BreakableColor, font);
-        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "不可破坏", SolidColor, font);
-        AddLegendSwatch(x, y2, swatch, gap, ref x, itemGap, "障碍", ObstacleColor, font);
+        // 底板：右边这列在地图外，给它一块自己的底，看起来才像「一块说明区」而不是浮在空里的字。
+        DrawRect(new Rect2(x0, 0f, x1 - x0, _map.Height * CellPixels), LegendPanelColor);
 
-        // 第三行：统计。
-        string sub = string.Format(
-            System.Globalization.CultureInfo.InvariantCulture,
-            "seed {0}   网格 {1}×{2}   房间 {3}   物件 {4}",
-            _map.Seed,
-            _map.Width,
-            _map.Height,
-            _map.Layout.RoomCount,
-            _map.PropCount);
-        DrawString(font, new Vector2(LegendMargin, y2 + 16f), sub, HorizontalAlignment.Left, -1f, 11); // arch-ok: 图例行高（UI 排版）
+        // 图例**不吃控件的 Theme**（Node2D 不在 Control 树里），字号只能从 DebugUiStyle 取，
+        // 这样面板字与图例字同一口径 —— 以前两边各写一个数字，改一处另一处就不跟。
+        float y = LegendMargin + titlePx;
+        DrawString(font, new Vector2(x0 + LegendMargin, y), LegendTitleText, HorizontalAlignment.Left, -1f, titlePx);
+        y += DrawLegendRule(y, itemGap);
+
+        // 各组竖排：每组先一行小标题，再一行一项。
+        y = DrawLegendGroup(font, x0, y, RoomLegendTitle, RoomLegendItems(), swatch, gap, rowHeight, itemGap, fontPx);
+        y = DrawLegendGroup(font, x0, y, PropLegendTitle, PropLegendItems(), swatch, gap, rowHeight, itemGap, fontPx);
+        y += DrawLegendRule(y, itemGap);
+
+        // 末尾：统计行。以前是一整行「seed · 网格 · 房间 · 物件」横排，
+        // 在竖列里那行比别的行宽一倍、会顶出图片边界，所以拆成一条一项。
+        for (int i = 0; i < StatLineCount; i++)
+        {
+            y += rowHeight;
+            DrawString(font, new Vector2(x0 + LegendMargin, y), StatLine(i), HorizontalAlignment.Left, -1f, fontPx);
+        }
     }
 
-    /// <summary>画「一块真颜色 + 文字」的图例项，并推进游标。颜色取自当前配色表/导出色，不会与地图脱节。</summary>
-    private void AddLegendSwatch(
-        float x,
+    /// <summary>房型与格子类型图例（颜色来自配色表，与地图完全同源）。</summary>
+    private (string Label, Color Color)[] RoomLegendItems()
+    {
+        return new (string, Color)[]
+        {
+            ("起始房", _stylesResolved.Get(RoomCategory.Start).FloorColor),
+            ("战斗房", _stylesResolved.Get(RoomCategory.Combat).FloorColor),
+            ("特殊房", _stylesResolved.Get(RoomCategory.Special).FloorColor),
+            ("隐藏房", _stylesResolved.Get(RoomCategory.Hidden).FloorColor),
+            ("Boss房", _stylesResolved.Get(RoomCategory.Boss).FloorColor),
+            ("墙", WallColor),
+            ("门", DoorColor),
+            ("秘密通道", SecretColor),
+        };
+    }
+
+    /// <summary>四类物件 + 障碍的图例。</summary>
+    private (string Label, Color Color)[] PropLegendItems()
+    {
+        return new (string, Color)[]
+        {
+            ("建筑", BuildingColor),
+            ("奖励", RewardColor),
+            ("可破坏", BreakableColor),
+            ("不可破坏", SolidColor),
+            ("障碍", ObstacleColor),
+        };
+    }
+
+    /// <summary>图例末尾的统计行（按行号取，便于「测宽」与「画」用同一份文本）。</summary>
+    private string StatLine(int index)
+    {
+        return index switch
+        {
+            0 => string.Format(System.Globalization.CultureInfo.InvariantCulture, "seed {0}", _map.Seed),
+            1 => string.Format(System.Globalization.CultureInfo.InvariantCulture, "网格 {0}×{1}", _map.Width, _map.Height),
+            2 => string.Format(System.Globalization.CultureInfo.InvariantCulture, "房间 {0}", _map.Layout.RoomCount),
+            _ => string.Format(System.Globalization.CultureInfo.InvariantCulture, "物件 {0}", _map.PropCount),
+        };
+    }
+
+    /// <summary>画一条图例分隔线，返回它占掉的高度（含上下空隙）。</summary>
+    private float DrawLegendRule(float y, float itemGap)
+    {
+        float x0 = LegendColumnX();
+        float x1 = x0 + Mathf.Max(legendColumnWidth, DebugUiStyle.LegendMinColumnWidth);
+        float lineY = y + itemGap;
+        DrawLine(
+            new Vector2(x0 + LegendMargin, lineY),
+            new Vector2(x1 - LegendMargin, lineY),
+            DebugUiStyle.PanelBorder,
+            LegendRuleWidth);
+        return itemGap * 2f;
+    }
+
+    /// <summary>画一组「小标题 + 竖排色块项」，返回下一组应该从哪个 y（文字基线）开始。</summary>
+    private float DrawLegendGroup(
+        Font font,
+        float x0,
         float y,
+        string groupTitle,
+        (string Label, Color Color)[] items,
         float swatch,
         float gap,
-        ref float cursor,
+        float rowHeight,
         float itemGap,
-        string label,
-        Color color,
-        Font font)
+        int fontPx)
     {
-        DrawRect(new Rect2(cursor, y - swatch, swatch, swatch), color);
-        DrawRect(new Rect2(cursor, y - swatch, swatch, swatch), new Color(0f, 0f, 0f, 0.5f), false, 1f);
-        cursor += swatch + gap;
-        DrawString(font, new Vector2(cursor, y), label, HorizontalAlignment.Left, -1f, 11);
-        // 文字宽度按「一个汉字 ≈ 字号」估算即可，图例是排版辅助，不需要精确字宽测量。
-        cursor += (label.Length * 11f) + itemGap; // arch-ok: 图例文字宽度估算（UI 排版）
+        y += fontPx + itemGap;
+        DrawString(font, new Vector2(x0 + LegendMargin, y), groupTitle, HorizontalAlignment.Left, -1f, fontPx);
+        foreach ((string label, Color color) in items)
+        {
+            y += rowHeight;
+            AddLegendSwatch(x0 + LegendMargin, y, swatch, gap, label, color, font, fontPx);
+        }
+        return y;
+    }
+
+    /// <summary>
+    /// 画一项「一块真颜色 + 名字」。颜色取自当前配色表 / 导出色，不会与地图脱节。
+    /// <para>
+    /// 色块底边贴着文字基线：中文在绘制坐标里是从基线往上长的，
+    /// 若按色块**顶边**对齐基线，色块会整体压到文字下方，看起来像被切掉一半。
+    /// </para>
+    /// </summary>
+    private void AddLegendSwatch(float x, float baseline, float swatch, float gap, string label, Color color, Font font, int fontPx)
+    {
+        Rect2 box = new(x, baseline - swatch, swatch, swatch);
+        DrawRect(box, color);
+        DrawRect(box, new Color(0f, 0f, 0f, 0.5f), false, 1f);
+        DrawString(font, new Vector2(x + swatch + gap, baseline), label, HorizontalAlignment.Left, -1f, fontPx);
     }
 
     private Color ColorFor(DungeonCellKind kind, int x, int z)
