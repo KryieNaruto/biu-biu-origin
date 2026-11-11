@@ -46,6 +46,9 @@ public sealed class ViewRegistry : IDisposable
 
         /// <summary>上一步的逻辑旋转（插值用）。</summary>
         public Quaternion PreviousRotation;
+
+        /// <summary>当前是否由宿主设为可见（与 <see cref="InUse"/> 分开：租出 ≠ 可见，剔除会隐藏但仍在租）。</summary>
+        public bool Wanted;
     }
 
     private readonly Node3D _root;
@@ -83,12 +86,15 @@ public sealed class ViewRegistry : IDisposable
         _slotCount = 0;
 
         // 预热：一次性 Instantiate，之后全部走复用。
+        // 空闲节点必须立刻隐藏：新节点默认 Visible = true，预热的空壳会全留在场景里
+        // （空壳没有网格，肉眼看不出来，但「池里哪个被租出去了」就再也无法靠可见性判断）。Rent 时会重新点亮。
         for (int i = 0; i < prewarm; i++)
         {
             int id = _slotCount;
             EnsureCapacity(id + 1);
             Node3D node = InstantiateNode();
-            _slots[id] = new Slot { Node = node, InUse = false };
+            node.Visible = false;
+            _slots[id] = new Slot { Node = node, InUse = false, Wanted = false };
             _freeStack[_freeCount++] = id;
             _slotCount++;
             _instantiateCount++;
@@ -132,6 +138,7 @@ public sealed class ViewRegistry : IDisposable
         Slot slot = _slots[id];
         Node3D? node = slot.Node;
         slot.InUse = true;
+        slot.Wanted = true;
         slot.PreviousPosition = position;
         slot.PreviousRotation = rotation;
         _slots[id] = slot;
@@ -164,6 +171,7 @@ public sealed class ViewRegistry : IDisposable
         }
 
         slot.InUse = false;
+        slot.Wanted = false;
         _slots[viewId] = slot;
 
         if (slot.Node is not null)
@@ -237,10 +245,42 @@ public sealed class ViewRegistry : IDisposable
         {
             return;
         }
-        if (slot.Node.Visible != visible)
+
+        // ★ 只记「宿主想要什么」，真正写 Visible 推迟到帧末 ApplyVisibility。
+        //   为什么：视图池是所有实体共用的，而每帧写 Visible 的地方不止一个（VisualBridge、
+        //   TransformBridge 的剔除、ActorViewDirector 的朝向占位）。谁最后写谁生效，
+        //   结果就是「被剔除的实体因为租出时置了一次 true 而永远可见」。
+        //   改成同帧内累加意图、帧末按「租用 × 宿主想要的可见性」统一落盘，顺序就不再影响结果。
+        slot.Wanted = visible;
+        _slots[viewId] = slot;
+    }
+
+    /// <summary>
+    /// 把本帧累计的可见性意图落盘（帧末调一次，O(已分配的槽位数)）。
+    /// <para>
+    /// 规则只有一条：<b>可见 = 在租用 且 宿主想要可见</b>。池外的节点一律隐藏，
+    /// 这样「谁的节点漏隐藏」这类 bug 不会以「幽灵节点」的形式潜伏在场景里。
+    /// </para>
+    /// </summary>
+    /// <returns>本帧真正改变了可见性的槽位数（稳态下应为 0；诊断用）。</returns>
+    public int ApplyVisibility()
+    {
+        int changed = 0;
+        for (int i = 0; i < _slotCount; i++)
         {
-            slot.Node.Visible = visible;
+            Node3D? node = _slots[i].Node;
+            if (node is null || !GodotObject.IsInstanceValid(node))
+            {
+                continue;
+            }
+            bool visible = _slots[i].InUse && _slots[i].Wanted;
+            if (node.Visible != visible)
+            {
+                node.Visible = visible;
+                changed++;
+            }
         }
+        return changed;
     }
 
     private Node3D InstantiateNode()

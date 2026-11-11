@@ -135,6 +135,10 @@ public sealed class ActorViewDirector
         ApplyTo(viewSlot, root, style, appearance);
         _applied[viewSlot] = new AppliedView { Key = styleKey };
         LastAppliedCount++;
+
+        // 视图节点是池里的公共资源：刚归还的节点可能被别人藏着，被新主人租到的那一刻必须点亮
+        // （可见性最终在帧末由 ViewRegistry.ApplyVisibility 统一落盘，这里只登记意图）。
+        _views.SetVisible(viewSlot, true);
         _ = entity;
     }
 
@@ -219,6 +223,9 @@ public sealed class ActorViewDirector
         // ④ 整体缩放：组件的 Scale 优先（> 0），否则外观包的 ModelScale。
         float scale = ResolveScale(style, appearance);
         root.Scale = new Vector3(scale, scale, scale);
+
+        // （朝向指示「鼻子」是 BuildPrimitive 里挂在 root 上的另一个直接子节点；它与身体同生同灭，
+        //   下一次 ApplyTo 的 ① 会把两者一起清掉 —— 视图池归还再租给别人时不会带走旧主人的鼻子。）
         _ = viewSlot;
     }
 

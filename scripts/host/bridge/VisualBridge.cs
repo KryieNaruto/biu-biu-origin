@@ -33,7 +33,6 @@ public sealed class VisualBridge : ISpanAction<View>
     private readonly ISpanAction<View> _action;
 
     /// <summary>回收回调的接口视图（自身），与 <see cref="_action"/> 同理单独缓存。</summary>
-    private readonly SpanAction<View> _reaper;
 
     /// <summary>回收时用的世界引用（<see cref="ReapDead"/> 每次调用前设置）。</summary>
     private World? _reapWorld;
@@ -64,7 +63,7 @@ public sealed class VisualBridge : ISpanAction<View>
         _scale = scale;
         _pendingRelease = new int[Math.Max(releaseCapacity, 1)];
         _action = this;
-        _reaper = ReapSpan;    }
+    }
 
     /// <summary>
     /// 为「有 View 但还没分配槽位」的实体租视图。在视图桥阶段调用（TransformBridge 之前）。
@@ -135,19 +134,53 @@ public sealed class VisualBridge : ISpanAction<View>
     {
         _reapWorld = world;
         LastReapedCount = 0;
-        // 用委托重载而不是第二个 ISpanAction：一个类型只能实现一次 ISpanAction<View>.Execute，
-        // 而租（RentMissing）和还（ReapDead）是两种不同的遍历语义，不能共用一个方法体。
-        views.ForEach<View>(ReapSpan);
+        // 用<b>接口版</b> ForEach（零委托分配），回调是一个值类型探针（见 <see cref="ReapProbe"/>）：
+        // 一个类型只能实现一次 ISpanAction<View>（租用它做 RentMissing），所以「还」走包装结构体。
+        // 计数从探针带回来 —— 结构体过了 `in` 参数后桥自己的字段不会被改。
+        ReapProbe probe = new ReapProbe(this);
+        ISpanAction<View> iface = probe;
+        views.ForEach<View>(in iface);
+        LastReapedCount = probe.LastReaped;
+    }
+
+    /// <summary>
+    /// 回收探针：值类型回调（交给接口版 <c>ForEach</c>，可去虚化、零分配）。
+    /// <para>
+    /// <b>为什么是一层包装而不是直接让 <see cref="VisualBridge"/> 自己实现</b>：一个类型只能实现一次
+    /// <c>ISpanAction&lt;View&gt;</c>，而租（RentMissing）和还（ReapDead）是两种不同的遍历语义，
+    /// 不能共用一个方法体。探针把计数带回给桥。
+    /// </para>
+    /// </summary>
+    private struct ReapProbe : ISpanAction<View>
+    {
+        private readonly VisualBridge _bridge;
+
+        /// <summary>本次遍历归还的视图数（探针构造时 0；<see cref="Execute"/> 累加）。</summary>
+        public int LastReaped;
+
+        public ReapProbe(VisualBridge bridge)
+        {
+            _bridge = bridge;
+            LastReaped = 0;
+        }
+
+        /// <inheritdoc />
+        public void Execute(Span<View> items, int count)
+        {
+            LastReaped += _bridge.ReapSpan(items);
+        }
     }
 
     /// <summary>回调：落在死实体上的视图归还池子。</summary>
     /// <param name="views">View 列的 span（已是本 chunk 的有效范围）。</param>
-    private void ReapSpan(Span<View> views)
+    /// <returns>本 chunk 里归还的视图数。</returns>
+    private int ReapSpan(Span<View> views)
     {
         if (_reapWorld is null)
         {
-            return;
+            return 0;
         }
+        int reaped = 0;
         for (int i = 0; i < views.Length; i++)
         {
             View view = views[i];
@@ -162,8 +195,9 @@ public sealed class VisualBridge : ISpanAction<View>
             QueueRelease(view.Slot);
             view.Slot = 0;
             views[i] = view;
-            LastReapedCount++;
+            reaped++;
         }
+        return reaped;
     }
 
     /// <summary>
