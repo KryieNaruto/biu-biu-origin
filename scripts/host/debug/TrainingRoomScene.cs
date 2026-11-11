@@ -493,7 +493,10 @@ public partial class TrainingRoomScene : Node3D
         _lastShotSeen = shots;
         _shotsHitDummy = Math.Max(_shotsHitDummy, hits);
 
-        if (_drive is null || !_drive.Finished || _walkEndFrames != 0)
+        // ★ 用「结算倒计时是否已被排上」判断，不要用 != 0：_walkEndFrames 的初值就是 -1，!= 0 恒真，eturn 永远不执行。
+        //   症状是时间轴早已 finished=True、子弹不停往外出（输入停在'按住开火'那一帧），结算永远排不上 —— 无头跑不出来。
+        bool settling = _walkEndFrames > 0;
+        if (_drive is null || !_drive.Finished || settling)
         {
             return;
         }
