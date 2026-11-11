@@ -54,7 +54,7 @@ SCHEMA_VERSIONS = {
 #   这正是「同一套解析器」的落点：两文件各有一张 VisualPacks，列集合必须一模一样。
 VISUAL_PACK_COLUMNS: "list[tuple[str, str, str, str]]" = [
     ("Id", "string", "外观包id", "表现层选模型/材质；本表唯一"),
-    ("ModelPath", "string", "模型路径", "res://素材/... ；★ 构建期校验磁盘真实存在"),
+    ("ModelPath", "string", "模型路径", "项目资源路径（如 res://art/...）；★ 空 = 暂用白模，构建期校验磁盘真实存在"),
     ("Scale", "float", "缩放", "1.0 = 原始大小，必须 > 0"),
     ("TintHex", "string", "染色", "#RRGGBB；空 = 不染色"),
     ("AnimClips", "string", "动画剪辑", "逗号分隔的剪辑名；空 = 模型自带动画全保留"),
@@ -962,10 +962,15 @@ def validate_visual_packs(report: Report, vt: "Table | None") -> "set[str]":
     这是本轮最关键的一条检查：正是因为「模型路径存在性」从未被校验过，
     `res://素材/Characters/TestHero.glb` 这个根本不存在的路径才能一路潜伏到运行时，
     加载失败后再静默退回白模胶囊，没有任何人发现。
+
+    **ModelPath 可空**：空 = 「这个包有意没有模型」（如 `vp_none`）。见函数内注释。
+
+    返回 `(所有包 id, 其中没有模型的包 id)`——后者给 `check_object_visuals` 用。
     """
     ids: "set[str]" = set()
+    no_model: "set[str]" = set()
     if vt is None:
-        return ids
+        return ids, no_model
 
     seen: "dict[str, int]" = {}
     for row, cells in vt.rows:
@@ -979,9 +984,12 @@ def validate_visual_packs(report: Report, vt: "Table | None") -> "set[str]":
             report.ok()
         ids.add(key)
 
-        # ── 模型路径：★ 磁盘存在性 ──
-        model_path = as_string(report, vt, row, "ModelPath", key, t_cell(vt, cells, "ModelPath"),
-                               required=True)
+        # ── 模型路径：★ 磁盘存在性（可空 = 「这个包有意没有模型」）──
+        #
+        # 空 ModelPath 是**一等公民**，不是漏填：`vp_none` 就是靠它表达
+        # 「这个物件有意没有模型」（特效/纯逻辑物件）。配合 `Objects.VisualPack` 必填，
+        # 「有意为空」与「忘了填」在数据上永远可区分 —— 前者写 vp_none，后者根本不过检查。
+        model_path = as_string(report, vt, row, "ModelPath", key, t_cell(vt, cells, "ModelPath"))
         if model_path:
             resolved = _resolve_asset_path(model_path)
             if resolved is None:
@@ -999,6 +1007,15 @@ def validate_visual_packs(report: Report, vt: "Table | None") -> "set[str]":
                            f"{hint}")
             else:
                 report.ok()
+        else:
+            # 无模型的包，Scale/TintHex/AnimClips 全是死字段，填了纯属误解
+            report.ok()
+            no_model.add(key)
+            for dead in ("TintHex", "AnimClips"):
+                if as_string(report, vt, row, dead, key, t_cell(vt, cells, dead)):
+                    report.cell(vt.file, vt.name, row, vt.col(dead), key, dead,
+                                f"这个外观包没有 ModelPath（有意无模型），"
+                                f"「{dead}」无从生效 —— 请清空，或给包补上模型")
 
         # ── 缩放必须 > 0 ──
         scale = as_float(report, vt, row, "Scale", key, t_cell(vt, cells, "Scale"), required=True)
@@ -1043,7 +1060,7 @@ def validate_visual_packs(report: Report, vt: "Table | None") -> "set[str]":
         else:
             sig.setdefault(s, key)
         report.ok()
-    return ids
+    return ids, no_model
 
 
 def _suggest_similar_asset(model_path: str) -> str:
@@ -1643,61 +1660,80 @@ def check_clusters(report: Report, obj_t: Table) -> None:
 
 
 def check_object_visuals(report: Report, obj_t: Table, combat_vp: "set[str]",
-                         chars_vp: "set[str]") -> None:
-    """Objects 的三个外观列：VisualPack 外键闭合 + AssetPath 磁盘存在 + AssetAnim 非空即合法。
+                         chars_vp: "set[str]", packs_with_model: "set[str] | None" = None) -> None:
+    """Objects 的外观列：**每个物件必须恰好有一个外观包**，且外键闭合。
 
     `VisualPack` 可以指向 **两个文件里任意一张** VisualPacks（两张表同名同构），
     所以外键闭合要把 combat.xlsx 与 characters.xlsx 的 Id 合起来查。
+
+    设计口径（2026-11-09 收敛）：外观只走「外观包」这一条路。
+    曾经并存过 `AssetPath`（直连模型路径）与 `AssetAnim`（默认动画名）两个旁路列，
+    结果同一概念出现三种写法、`Objects` 表里必然长出「有的有、有的没有」——
+    已删除这两列，模型路径/缩放/色调/动画全部收进 `VisualPacks`。
+
+    「这个物件没有模型」不再用留空表达，而是引用 `vp_none`（包里 ModelPath 留空）：
+    **有意为空** 与 **忘了填** 因此在数据上永远可区分，下面这条必填检查才有意义。
     """
     if obj_t.at("VisualPack") < 0:
         return
     all_packs = combat_vp | chars_vp
+    no_model_packs = packs_with_model if packs_with_model is not None else set()
 
     for row, cells in obj_t.rows:
         key = _s(cells[0])
 
-        # ── VisualPack → VisualPacks.Id（可空）──
+        # ── VisualPack → VisualPacks.Id（必填）──
         pack = as_string(report, obj_t, row, "VisualPack", key, t_cell(obj_t, cells, "VisualPack"))
-        if pack:
-            if pack not in all_packs:
-                hint = ""
-                lowered = pack.lower()
-                near = sorted(p for p in all_packs if lowered in p.lower() or p.lower() in lowered)[:3]
-                if near:
-                    hint = f"（是否想写：{' / '.join(near)}）"
-                report.cell(obj_t.file, obj_t.name, row, obj_t.col("VisualPack"), key, "VisualPack",
-                            f"引用的外观包「{pack}」在 combat.xlsx 与 characters.xlsx 的 "
-                            f"VisualPacks 里都不存在{hint}")
-            else:
-                report.ok()
+        if not pack:
+            report.cell(obj_t.file, obj_t.name, row, obj_t.col("VisualPack"), key, "VisualPack",
+                        "没有配外观包。每个物件都必须恰好指向一个外观包："
+                        "有模型的指向真包，特效/纯逻辑物件指向 vp_none")
+            continue
+        if pack not in all_packs:
+            hint = ""
+            lowered = pack.lower()
+            near = sorted(p for p in all_packs if lowered in p.lower() or p.lower() in lowered)[:3]
+            if near:
+                hint = f"（是否想写：{' / '.join(near)}）"
+            report.cell(obj_t.file, obj_t.name, row, obj_t.col("VisualPack"), key, "VisualPack",
+                        f"引用的外观包「{pack}」在 combat.xlsx 与 characters.xlsx 的 "
+                        f"VisualPacks 里都不存在{hint}")
+            continue
 
-        # ── AssetPath：res:// 路径必须真实存在（可空）──
-        asset = as_string(report, obj_t, row, "AssetPath", key, t_cell(obj_t, cells, "AssetPath"))
-        if asset:
-            resolved = _resolve_asset_path(asset)
-            if resolved is None:
-                report.cell(obj_t.file, obj_t.name, row, obj_t.col("AssetPath"), key, "AssetPath",
-                            f"无法解析为磁盘路径：「{asset}」（必须 res://素材/... 形式）")
-            elif not resolved.is_file():
-                report.cell(obj_t.file, obj_t.name, row, obj_t.col("AssetPath"), key, "AssetPath",
-                            f"模型文件在磁盘上不存在：「{asset}」"
-                            f"（已解析为「{resolved}」）{_suggest_similar_asset(asset)}")
-            else:
-                report.ok()
+        report.ok()
+
+        # ── 指到「没有模型」的包时，这个物件能不能真的没模型 ──
+        #
+        # 反向兜底：没有模型的人物/武器/子弹，玩家将永远看不见它 ——
+        # 而这类错配**不会**在任何别的地方报错，是纯静默失效。
+        # 判据用能力位：有 Actor/Weapon/Projectile 位的物件最终必须在 3D 里出现。
+        #
+        # ★ 2026-11-09 口径调整：这条从 `err` 降为 `warn`。
+        #   原因：用户决定「先全部用白模，占位不要用 res://素材/ 路径，后续挑好资产再填」。
+        #   若仍报错，26 个物件会全红、整个校验直接失败，等于谁也干不了活；
+        #   而彻底删掉这条又会丢掉「谁还在等资产」的追踪——正是这次踩过的坑。
+        #   降级后：白模能跑，同时每个待配模型的物件留一条 [提醒]，回填 ModelPath 后自动消失。
+        if pack in no_model_packs and _object_needs_visible_body(obj_t, cells):
+            report.warn(f"{obj_t.file}/{obj_t.name} 第{row}行（{key}.VisualPack）",
+                        f"这个物件有能力位（Actor/Weapon/Projectile 之一），需要在 3D 中可见，"
+                        f"但外观包「{pack}」没有 ModelPath —— 当前回退白模。"
+                        f"挑好资产后把路径填进该包的 ModelPath 列即可")
         else:
             report.ok()
 
-        # ── AssetAnim：有动画名就必须有地方放这个模型 ──
-        anim = as_string(report, obj_t, row, "AssetAnim", key, t_cell(obj_t, cells, "AssetAnim"))
-        if anim:
-            if not pack and not asset:
-                report.cell(obj_t.file, obj_t.name, row, obj_t.col("AssetAnim"), key, "AssetAnim",
-                            f"填了默认动画「{anim}」，但 VisualPack 与 AssetPath 都空 —— "
-                            f"没有模型可播这段动画（应留空或先配模型）")
-            else:
-                report.ok()
-        else:
-            report.ok()
+
+def _object_needs_visible_body(obj_t: Table, cells) -> bool:
+    """这个物件是否**必须在 3D 里出现**（人物 / 武器 / 子弹）。
+
+    只用能力位判断，不看 Id 命名——命名是给人看的，能力位才是运行期真相。
+    能力列缺失（老表）时保守返回 False，不制造假错。
+    """
+    for column in ("Actor", "Weapon", "Projectile"):
+        if obj_t.at(column) < 0:
+            continue
+        if _s(t_cell(obj_t, cells, column)):
+            return True
+    return False
 
 
 def check_reference_cycles(report: Report, obj_t: Table) -> None:
@@ -2056,8 +2092,8 @@ def main(argv: "list[str]") -> int:
                 validate_structure_only(report, v4_t)
 
     # ── 外观包（两张同名同构表共用同一套校验器，含 ★ 模型路径磁盘存在性）──
-    combat_vp_ids = validate_visual_packs(report, cvp_t)
-    chars_vp_ids = validate_visual_packs(report, chars_vp_t)
+    combat_vp_ids, combat_no_model = validate_visual_packs(report, cvp_t)
+    chars_vp_ids, chars_no_model = validate_visual_packs(report, chars_vp_t)
 
     if any(t is None for t in (tags_t, obj_t, w_t, p_t, csp_t, ct_t, chsp_t, sl_t)):
         return _finish(report)
@@ -2088,7 +2124,8 @@ def main(argv: "list[str]") -> int:
     check_capabilities(report, obj_t, weapon_obj, projectile_obj)
     check_tag_axes_per_object(report, obj_t, tag_family)
     check_clusters(report, obj_t)
-    check_object_visuals(report, obj_t, combat_vp_ids, chars_vp_ids)
+    check_object_visuals(report, obj_t, combat_vp_ids, chars_vp_ids,
+                         combat_no_model | chars_no_model)
     check_reference_cycles(report, obj_t)
     check_object_statpacks(report, obj_t, char_packs, combat_packs)
     check_weapon_has_base_pack(report, w_t, obj_t, char_packs, combat_packs)

@@ -35,7 +35,7 @@ from openpyxl.utils import get_column_letter
 ROOT = Path(__file__).resolve().parents[2] / "data" / "excel"
 OUT = ROOT / "combat.xlsx"
 
-# v2（2026-11-09）：新增 VisualPacks 表；Objects 追加 VisualPack / AssetPath / AssetAnim 三列。
+# v2（2026-11-09）：新增 VisualPacks 表；Objects 追加 VisualPack 列（外观唯一入口）。
 SCHEMA_VERSION = 2
 
 HEADER_FILL = PatternFill("solid", fgColor="1F4E78")
@@ -74,16 +74,15 @@ COLUMNS: "dict[str, list[tuple[str, str, str, str]]]" = {
         ("Actor", "string", "角色契约", "指向 Objects.Id；★ 子弹也能引用怪物（从弹体里喷出怪物）"),
         ("Effect", "string", "特效契约", "指向 Objects.Id；空 = 无"),
         ("RenderId", "string", "表现id", "表现层选模型/材质的 key，逻辑层不解释"),
-        ("VisualPack", "string", "外观包", "指向 VisualPacks.Id；空 = 无外观包，回落 AssetPath"),
-        ("AssetPath", "string", "模型路径", "res:// 路径；外观包缺失时的兜底；空 = 无模型（白模胶囊）"),
-        ("AssetAnim", "string", "默认动画", "动画剪辑名（如 …|Idle）；空 = 无默认动画"),
+        ("VisualPack", "string", "外观包", "★ 必填，指向 VisualPacks.Id；模型/缩放/染色/动画全在包里。"
+                                          "有意不要模型（特效/纯逻辑物件）写 vp_none，不要留空"),
         ("Radius", "float", "半径", "米，碰撞/贴地用"),
         ("Height", "float", "高度", "米"),
         ("Note", "string", "备注", "人读说明"),
     ],
     "VisualPacks": [
         ("Id", "string", "外观包id", "表现层选模型/材质；本表唯一"),
-        ("ModelPath", "string", "模型路径", "res://素材/... ；★ 构建期校验磁盘真实存在"),
+        ("ModelPath", "string", "模型路径", "项目资源路径（如 res://art/...）；★ 空 = 暂用白模，构建期校验磁盘真实存在"),
         ("Scale", "float", "缩放", "1.0 = 原始大小，必须 > 0"),
         ("TintHex", "string", "染色", "#RRGGBB；空 = 不染色"),
         ("AnimClips", "string", "动画剪辑", "逗号分隔的剪辑名；空 = 模型自带动画全保留"),
@@ -248,7 +247,7 @@ TAGS: list[list] = [
 ]
 
 # 每行：Id, DisplayKey, Tags, Cluster, ClusterWeight, StatPacks, Weapon, Projectile, Actor, Effect,
-#       RenderId, VisualPack, AssetPath, AssetAnim, Radius, Height, Note
+#       RenderId, VisualPack, Radius, Height, Note
 #
 # ★ 簇设计原则（熔炉按簇加权随机）：
 #   1. 同簇的物件必须**能力位一致** —— 能被互换，至少都带同一个 ObjectKind 标签
@@ -256,11 +255,13 @@ TAGS: list[list] = [
 #   2. 同簇至少 3 个候选、权重各不相同，回归测试才能断言「改 ClusterWeight → 选中的候选变化」。
 #   3. 权重体现稀有度：越常见越大，稀有物件给小值（王弹 0.1 vs 手枪弹 3.0）。
 #
-# ★ 模型列（VisualPack / AssetPath / AssetAnim）：
-#   · VisualPack 指向 VisualPacks 表；AssetPath 是外观包缺失时的兜底 res:// 路径。
-#   · 两者都空 = 白模胶囊（视图层尚未接模型渲染，故本轮只补字段与绑定）。
+# ★ 模型列（VisualPack）—— 外观只有这一条路：
+#   · 模型路径 / 缩放 / 染色 / 动画剪辑全部收在 VisualPacks 表里，Objects 只存一个 id。
+#   · **必填**。曾经并存过 `AssetPath`（直连路径）与 `AssetAnim`（默认动画名）两个旁路列，
+#     结果是同一概念有三种写法、表里必然长出「有的有、有的没有」—— 已删除。
+#   · 「有意没有模型」（特效/纯逻辑物件）写 `vp_none`（包里 ModelPath 留空），
+#     于是「有意为空」与「忘了填」在数据上永远可区分。
 #   · 所有模型路径都经 Test-Path 实测存在，且构建期由 validate_content_xlsx.py 再验一遍。
-#   · 特效物件（fx_*）刻意留空：特效走 shader/粒子，不挂 glb。
 _IDLE = "CharacterArmature|CharacterArmature|CharacterArmature|Idle"
 OBJECTS: list[list] = [
     # ── 人物 / 怪物（簇 actor_goblin：三个哥布林，能力位都是 actor）──
@@ -269,115 +270,123 @@ OBJECTS: list[list] = [
     #   Ability 轴允许叠（pierce + bounce + split 可以同时在同一个弹上）。
     ["player_hero", "actor.player",
      "tag.actor,tag.hero,tag.humanoid,tag.common,tag.projectile_fired", "actor_player", 1.0, "player_base;;;;", "pistol_101", "", "", "",
-     "capsule_player", "vp_hero_humanoid", "", _IDLE, 0.45, 1.8, "玩家本体；Weapon 指向默认武器（单候选簇，独立不参与熔炉）"],
+     "capsule_player", "vp_hero_humanoid", 0.45, 1.8, "玩家本体；Weapon 指向默认武器（单候选簇，独立不参与熔炉）"],
     ["goblin_grunt", "actor.goblin_grunt",
      "tag.actor,tag.goblin,tag.humanoid,tag.common,tag.grunt,tag.short_range", "actor_goblin", 5.0, "goblin_base;;;;", "", "", "", "",
-     "capsule_goblin", "vp_goblin_humanoid", "", _IDLE, 0.40, 1.20, "普通哥布林（近战，无远程武器）——最常见"],
+     "capsule_goblin", "vp_goblin_humanoid", 0.40, 1.20, "普通哥布林（近战，无远程武器）——最常见"],
     ["goblin_archer", "actor.goblin_archer",
      "tag.actor,tag.bow,tag.goblin,tag.humanoid,tag.uncommon,tag.ranged,tag.projectile_fired", "actor_goblin", 2.0, "goblin_archer_base;;;;", "bow_201", "bullet_201", "", "",
-     "capsule_archer", "vp_goblin_humanoid", "", _IDLE, 0.40, 1.20, "哥布林弓手：Weapon/Projectile 都有，同源拼装"],
+     "capsule_archer", "vp_goblin_humanoid", 0.40, 1.20, "哥布林弓手：Weapon/Projectile 都有，同源拼装"],
     ["goblin_shaman", "actor.goblin_shaman",
      "tag.actor,tag.energy,tag.goblin,tag.humanoid,tag.rare,tag.caster", "actor_goblin", 0.8, "goblin_shaman_base;;;;", "", "", "", "",
-     "capsule_shaman", "vp_goblin_humanoid", "", _IDLE, 0.40, 1.30, "哥布林萨满：稀有精英怪（权重小）"],
+     "capsule_shaman", "vp_goblin_humanoid", 0.40, 1.30, "哥布林萨满：稀有精英怪（权重小）"],
     ["ogre_brute", "actor.ogre_brute",
      "tag.actor,tag.melee,tag.ogre,tag.uncommon,tag.elite,tag.short_range,tag.high_damage", "actor_ogre", 1.0, "ogre_base;;;;", "club_401", "", "", "",
-     "capsule_ogre", "vp_ogre_turret", "", "", 0.90, 2.60, "食人魔精英：近战武器（单候选簇）"],
+     "capsule_ogre", "vp_ogre_turret", 0.90, 2.60, "食人魔精英：近战武器（单候选簇）"],
     ["slime_401", "actor.slime_401",
      "tag.actor,tag.split,tag.slime,tag.common,tag.grunt", "actor_slime", 3.0, "slime_401_base;;;;", "", "", "", "",
-     "blob_slime", "", "res://素材/海盗场景带动画/Skull.glb", "", 0.35, 0.70, "分裂史莱姆（可被子弹喷出来 → 弹体里出怪）"],
+     "blob_slime", "vp_slime_skull", 0.35, 0.70, "分裂史莱姆（可被子弹喷出来 → 弹体里出怪）"],
     ["slime_402", "actor.slime_402",
      "tag.actor,tag.split,tag.explosive,tag.slime,tag.rare,tag.grunt", "actor_slime", 1.0, "slime_402_base;;;;", "", "", "", "",
-     "blob_slime_fire", "", "res://素材/海盗场景带动画/Bomb.glb", "", 0.40, 0.80, "爆炸史莱姆：稀有变种"],
+     "blob_slime_fire", "vp_slime_bomb", 0.40, 0.80, "爆炸史莱姆：稀有变种"],
     ["slime_403", "actor.slime_403",
      "tag.actor,tag.split,tag.volatile,tag.slime,tag.legendary,tag.assassin", "actor_slime", 0.4, "slime_403_base;;;;", "", "", "", "",
-     "blob_slime_wild", "", "res://素材/海盗场景带动画/Skull.glb", "", 0.30, 0.60, "不稳定史莱姆：极稀有"],
+     "blob_slime_wild", "vp_slime_skull", 0.30, 0.60, "不稳定史莱姆：极稀有"],
     # ── 武器（簇 weapon_gun：三把手枪类；簇 weapon_rifle：三把长枪类）──
     ["pistol_101", "item.pistol_101",
      "tag.weapon,tag.pistol,tag.kinetic,tag.common,tag.projectile_fired", "weapon_gun", 3.0, "wpn_pistol_101;;;;", "", "bullet_101", "", "",
-     "gun_pistol", "vp_weapon_pistol", "", "", 0.10, 0.10, "玩家左键手枪——最常见"],
+     "gun_pistol", "vp_weapon_pistol", 0.10, 0.10, "玩家左键手枪——最常见"],
     ["smg_102", "item.smg_102",
      "tag.weapon,tag.pistol,tag.kinetic,tag.pierce,tag.uncommon,tag.multi_shot,tag.projectile_fired", "weapon_gun", 1.5, "wpn_smg_102;;;;", "", "bullet_102", "", "",
-     "gun_smg", "vp_weapon_smg", "", "", 0.10, 0.10, "冲锋枪：高速散射 + 分裂"],
+     "gun_smg", "vp_weapon_smg", 0.10, 0.10, "冲锋枪：高速散射 + 分裂"],
     ["revolver_103", "item.revolver_103",
      "tag.weapon,tag.pistol,tag.kinetic,tag.rare,tag.high_damage,tag.projectile_fired", "weapon_gun", 0.6, "wpn_revolver_103;;;;", "", "bullet_103", "", "",
-     "gun_revolver", "vp_weapon_revolver", "", "", 0.10, 0.10, "左轮：稀有高伤"],
+     "gun_revolver", "vp_weapon_revolver", 0.10, 0.10, "左轮：稀有高伤"],
     ["bow_201", "item.bow_201",
      "tag.weapon,tag.bow,tag.kinetic,tag.homing,tag.uncommon,tag.charge,tag.projectile_fired", "weapon_rifle", 1.0, "wpn_bow_201;;;;", "", "bullet_201", "", "",
-     "bow_basic", "vp_weapon_bow", "", "", 0.10, 0.10, "弓：蓄力 + 追踪，子弹继承弓的数值"],
+     "bow_basic", "vp_weapon_bow", 0.10, 0.10, "弓：蓄力 + 追踪，子弹继承弓的数值"],
     ["rifle_202", "item.rifle_202",
      "tag.weapon,tag.rifle,tag.kinetic,tag.common,tag.multi_shot,tag.projectile_fired", "weapon_rifle", 2.5, "wpn_rifle_202;;;;", "", "bullet_102", "", "",
-     "gun_rifle", "vp_weapon_rifle", "", "", 0.10, 0.10, "突击步枪：常见长枪"],
+     "gun_rifle", "vp_weapon_rifle", 0.10, 0.10, "突击步枪：常见长枪"],
     ["sniper_203", "item.sniper_203",
      "tag.weapon,tag.rifle,tag.kinetic,tag.pierce,tag.rare,tag.charge,tag.high_damage,tag.projectile_fired", "weapon_rifle", 0.5, "wpn_sniper_203;;;;", "", "bullet_103", "", "",
-     "gun_sniper", "vp_weapon_sniper", "", "", 0.10, 0.10, "狙击枪：低射速高穿透"],
+     "gun_sniper", "vp_weapon_sniper", 0.10, 0.10, "狙击枪：低射速高穿透"],
     ["club_401", "item.club_401",
      "tag.weapon,tag.melee,tag.kinetic,tag.uncommon,tag.short_range,tag.high_damage", "weapon_melee", 1.0, "wpn_club_401;;;;", "", "", "", "",
-     "club_basic", "vp_weapon_club", "", "", 0.30, 0.30, "食人魔大棒：Melee 投送，不发射子弹（单候选簇）"],
+     "club_basic", "vp_weapon_club", 0.30, 0.30, "食人魔大棒：Melee 投送，不发射子弹（单候选簇）"],
     ["orb_501", "item.orb_501",
      "tag.weapon,tag.energy,tag.summon,tag.legendary", "weapon_staff", 1.0, "wpn_orb_501;;;;", "", "bullet_501", "", "",
-     "orb_staff", "vp_weapon_orb", "", "", 0.15, 0.15, "能量法球：SpawnActor 投送（打出史莱姆）（单候选簇）"],
+     "orb_staff", "vp_weapon_orb", 0.15, 0.15, "能量法球：SpawnActor 投送（打出史莱姆）（单候选簇）"],
     # ── 子弹（簇 proj_kinetic：四种动能弹，权重差别明显）──
     ["bullet_101", "proj.bullet_101",
      "tag.projectile,tag.kinetic,tag.common", "proj_kinetic", 5.0, "bullet_101_base;;;;", "", "", "", "",
-     "orb_small", "vp_proj_bullet_small", "", "", 0.05, 0.05, "手枪弹——最常见"],
+     "orb_small", "vp_proj_bullet_small", 0.05, 0.05, "手枪弹——最常见"],
     ["bullet_102", "proj.bullet_102",
      "tag.projectile,tag.kinetic,tag.pierce,tag.bounce,tag.uncommon", "proj_kinetic", 2.0, "bullet_102_base;;;;", "", "", "", "",
-     "orb_small", "vp_proj_bullet_small", "", "", 0.05, 0.05, "冲锋枪弹"],
+     "orb_small", "vp_proj_bullet_small", 0.05, 0.05, "冲锋枪弹"],
     ["bullet_103", "proj.bullet_103",
      "tag.projectile,tag.kinetic,tag.pierce,tag.rare,tag.high_damage", "proj_kinetic", 0.5, "bullet_103_base;;;;", "", "", "", "",
-     "orb_heavy", "vp_proj_bullet_heavy", "", "", 0.06, 0.06, "重弹：稀有"],
+     "orb_heavy", "vp_proj_bullet_heavy", 0.06, 0.06, "重弹：稀有"],
     ["arrow_202", "proj.arrow_202",
      "tag.projectile,tag.kinetic,tag.pierce,tag.legendary", "proj_kinetic", 0.2, "arrow_202_base;;;;", "bow_201", "", "", "",
-     "arrow_pierce", "vp_proj_arrow", "", "", 0.06, 0.06, "★ 具有武器属性的子弹：Weapon=bow_201，落地后再射一发（极稀有）"],
+     "arrow_pierce", "vp_proj_arrow", 0.06, 0.06, "★ 具有武器属性的子弹：Weapon=bow_201，落地后再射一发（极稀有）"],
     ["bullet_201", "proj.bullet_201",
      "tag.projectile,tag.homing,tag.kinetic,tag.uncommon", "proj_homing", 1.0, "bullet_201_base;;;;", "", "", "", "",
-     "orb_homing", "vp_proj_arrow", "", "", 0.07, 0.07, "追踪箭（被弓发射）（单候选簇）"],
+     "orb_homing", "vp_proj_arrow", 0.07, 0.07, "追踪箭（被弓发射）（单候选簇）"],
     ["bullet_301", "proj.bullet_301",
      "tag.projectile,tag.explosive,tag.summon,tag.split,tag.rare", "proj_explosive", 1.0, "bullet_301_base;;;;", "", "", "slime_401", "",
-     "orb_bomb", "vp_proj_bomb", "", "", 0.12, 0.12, "★ 分裂炸弹：消散时喷出史莱姆（子弹 → 怪物）（单候选簇）"],
+     "orb_bomb", "vp_proj_bomb", 0.12, 0.12, "★ 分裂炸弹：消散时喷出史莱姆（子弹 → 怪物）（单候选簇）"],
     ["bullet_501", "proj.bullet_501",
      "tag.projectile,tag.energy,tag.ricochet,tag.uncommon", "proj_energy", 1.0, "bullet_501_base;;;;", "", "", "", "",
-     "orb_energy", "vp_proj_energy", "", "", 0.08, 0.08, "能量弹（被法球发射）（单候选簇）"],
+     "orb_energy", "vp_proj_energy", 0.08, 0.08, "能量弹（被法球发射）（单候选簇）"],
     # ── 特效（也是物体：Effect 引用谁都可以指向这里；无 Kind 标签 → Capability = None，不进熔炉）──
     # ★ 特效不挂模型：视觉由 shader/粒子负责，三个 fx_* 的三列模型列全部留空（有意为之，非遗漏）。
     ["fx_muzzle_small", "fx.muzzle_small",
      "tag.muzzle,tag.kinetic,tag.common", "", 1.0, ";;;;", "", "", "", "",
-     "fx_muzzle_small", "", "", "", 0.10, 0.10, "枪口火花（无 Kind 标签 → Capability = None）"],
+     "fx_muzzle_small", "vp_none", 0.10, 0.10, "枪口火花（无 Kind 标签 → Capability = None）"],
     ["fx_hit_spark", "fx.hit_spark",
      "tag.hit,tag.kinetic,tag.common", "", 1.0, ";;;;", "", "", "", "",
-     "fx_hit_spark", "", "", "", 0.10, 0.10, "命中火花"],
+     "fx_hit_spark", "vp_none", 0.10, 0.10, "命中火花"],
     ["fx_bomb_burst", "fx.bomb_burst",
      "tag.burst,tag.kinetic,tag.uncommon", "", 1.0, ";;;;", "", "", "", "",
-     "fx_bomb_burst", "", "", "", 0.60, 0.60, "爆炸爆散"],
+     "fx_bomb_burst", "vp_none", 0.60, 0.60, "爆炸爆散"],
 ]
 
 # 每行：Id, ModelPath, Scale, TintHex, AnimClips, Note
-# ★ 所有 ModelPath 都经 PowerShell Test-Path 实测存在；构建期再校验一次（剥 res:// 后在项目根下查）。
-# ★ TintHex 用在「同一 glb 复用给多个物件」的场合：靠染色区分哥布林三兄弟 / 史莱姆三变种。
+# ★★ 2026-11-09 决定：**全部先跑白模，ModelPath 一律留空**。
+#    用户原话：「先全部用白模即可，占位不要使用"素材"的路径，后续需要挑选让如项目资源文件夹中。」
+#    所以这里不再引用 `res://素材/...`——素材库是美术的原料区，不是项目运行时资源。
+#    等挑好资产、拷进项目资源目录之后，再逐条回填 ModelPath（**只改这一格，其它列不动**）。
+# ★ 包壳全部保留（20 个），只为当「桶键」用：`Objects.VisualPack` 的引用一条都不用改，
+#    每个包仍然表达「这一类的物件将来该长什么样」（手枪/箭矢/哥布林各是各的桶）。
+#    ★ 不要把这些包合并成一个 vp_none：合并会丢掉「手枪≠子弹≠哥布林」的分类信息，
+#      以后挑资产时得重新分类一遍。
+# ★ TintHex / AnimClips 依赖模型才生效，模型为空时必须一并留空
+#    ——校验器有「无模型包不许有死字段」的检查，填了会报错。
+# ★ ModelPath 为空 = 「这个包暂时没有模型」，运行期回退白模。
+#    这与「忘了填」的区别在于：`Objects.VisualPack` 必填，谁没配包根本过不了检查。
 VISUAL_PACKS: list[list] = [
-    ["vp_hero_humanoid", "res://素材/卡通人物带全套动画/史蒂夫.glb", 1.0, "#7FB2D8",
-     "CharacterArmature|CharacterArmature|CharacterArmature|Idle,CharacterArmature|CharacterArmature|CharacterArmature|Run",
-     "玩家：史蒂夫（含全套骨骼动画 18 个剪辑）"],
-    ["vp_goblin_humanoid", "res://素材/卡通人物带全套动画/金发白男.glb", 0.85, "#7FB26B",
-     "CharacterArmature|CharacterArmature|CharacterArmature|Idle,CharacterArmature|CharacterArmature|CharacterArmature|Run",
-     "哥布林三兄弟共用：靠 Objects 覆盖染色区分（绿）"],
-    ["vp_npc_merchant", "res://素材/卡通人物带全套动画/商人无动画.glb", 1.0, "#C8A165",
-     "", "商人 NPC：无骨骼动画，仅静态模型"],
-    ["vp_ogre_turret", "res://素材/炮台/Gun Cannon Turret.glb", 1.6, "#8C7B63",
-     "", "食人魔：素材库无大型人形怪物，用重炮台枪塔代替（诚实配型，见 Note）"],
-    ["vp_weapon_pistol", "res://素材/枪械/Pistol.glb", 1.0, "", "", "手枪"],
-    ["vp_weapon_smg", "res://素材/枪械/Submachine Gun.glb", 1.0, "", "", "冲锋枪"],
-    ["vp_weapon_revolver", "res://素材/枪械/Revolver.glb", 1.0, "", "", "左轮"],
-    ["vp_weapon_bow", "res://素材/RPG武器/Wooden Bow.glb", 1.0, "", "", "木弓"],
-    ["vp_weapon_rifle", "res://素材/枪械/Assault Rifle.glb", 1.0, "", "", "突击步枪"],
-    ["vp_weapon_sniper", "res://素材/枪械/Sniper Rifle.glb", 1.0, "", "", "狙击步枪"],
-    ["vp_weapon_club", "res://素材/RPG武器/Doublesided Hammer.glb", 1.0, "", "", "大棒 → 双面锤（最接近的近战钝器）"],
-    ["vp_weapon_orb", "res://素材/RPG武器/Potion Bottle.glb", 1.2, "#8FD8FF", "", "能量法球：素材库无法球模型，用药水瓶代替 + 蓝色染色"],
-    ["vp_proj_bullet_small", "res://素材/RPG武器/Mineral.glb", 0.4, "#FFD966", "", "小子弹：用小矿石当弹体（素材库无子弹模型）"],
-    ["vp_proj_bullet_heavy", "res://素材/RPG武器/Coin.glb", 0.5, "#C0C0C0", "", "大子弹：用金币当弹体"],
-    ["vp_proj_arrow", "res://素材/RPG武器/Arrow.glb", 1.0, "", "", "箭矢（弓的弹药 + 追踪箭）"],
-    ["vp_proj_bomb", "res://素材/海盗场景带动画/Bomb.glb", 1.0, "", "", "炸弹"],
-    ["vp_proj_energy", "res://素材/海盗场景带动画/Gem Blue.glb", 0.6, "#7FE0FF", "", "能量弹：用蓝宝石当弹体"],
+    ["vp_hero_humanoid", "", 1.0, "", "", "玩家：待选资产（当前白模）"],
+    ["vp_goblin_humanoid", "", 0.85, "", "", "哥布林三兄弟共用：待选资产（当前白模）"],
+    ["vp_npc_merchant", "", 1.0, "", "", "商人 NPC：待选资产（当前白模）"],
+    ["vp_ogre_turret", "", 1.6, "", "", "食人魔：待选资产（当前白模）"],
+    ["vp_slime_skull", "", 0.9, "", "", "史莱姆（骷髅型）：待选资产（当前白模）"],
+    ["vp_slime_bomb", "", 0.8, "", "", "史莱姆（炸弹型）：待选资产（当前白模）"],
+    ["vp_none", "", 1.0, "", "",
+     "★ 永远不要模型：特效/纯逻辑物件指这里。与「暂时没模型」的区别是它显式声明、且校验器认它"],
+    ["vp_weapon_pistol", "", 1.0, "", "", "手枪：待选资产（当前白模）"],
+    ["vp_weapon_smg", "", 1.0, "", "", "冲锋枪：待选资产（当前白模）"],
+    ["vp_weapon_revolver", "", 1.0, "", "", "左轮：待选资产（当前白模）"],
+    ["vp_weapon_bow", "", 1.0, "", "", "木弓：待选资产（当前白模）"],
+    ["vp_weapon_rifle", "", 1.0, "", "", "突击步枪：待选资产（当前白模）"],
+    ["vp_weapon_sniper", "", 1.0, "", "", "狙击步枪：待选资产（当前白模）"],
+    ["vp_weapon_club", "", 1.0, "", "", "大棒：待选资产（当前白模）"],
+    ["vp_weapon_orb", "", 1.2, "", "", "能量法球：待选资产（当前白模）"],
+    ["vp_proj_bullet_small", "", 0.4, "", "", "小子弹：待选资产（当前白模）"],
+    ["vp_proj_bullet_heavy", "", 0.5, "", "", "大子弹：待选资产（当前白模）"],
+    ["vp_proj_arrow", "", 1.0, "", "", "箭矢（弓的弹药 + 追踪箭）：待选资产（当前白模）"],
+    ["vp_proj_bomb", "", 1.0, "", "", "炸弹：待选资产（当前白模）"],
+    ["vp_proj_energy", "", 0.6, "", "", "能量弹：待选资产（当前白模）"],
 ]
 
 # 每行：Id, ObjectId, Trigger, Delivery, Aim, FireInterval, BaseDamage, ProjectileSpeed, Range,
