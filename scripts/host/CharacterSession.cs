@@ -75,8 +75,19 @@ public sealed class CharacterSession : IDisposable
     private AimAtCursorSystem? _aimAtCursor;
     private FixedFramePipeline? _fixed;
     private TransformBridge? _transformBridge;
+    /// <summary>本会话的视图池（与 <see cref="VisualBridge"/> / <see cref="ActorViewDirector"/> 同一个实例）。</summary>
+    private ViewRegistry? _views;
     private VisualBridge? _visualBridge;
     private Query _viewQuery = null!;
+    /// <summary>
+    /// 「<c>View</c> + <c>ViewAppearance</c>」的自有查询（与 <see cref="_viewQuery"/> 分开）。
+    /// <para>
+    /// <c>ActorViewDirector.ApplyAll</c> 内部走的是 <c>ForEach&lt;View, ViewAppearance&gt;</c>，而 <c>ForEach</c>
+    /// 只在**本查询匹配的 archetype** 里找这两列。拿 <c>Transform3 + View</c> 的查询去调，逐个 archetype
+    /// 都被跳过 —— 实体明明有外观组件，视图节点却永远是个空壳（症状：人物看不见，屏幕上只剩 HUD 准星）。
+    /// </para>
+    /// </summary>
+    private Query _appearanceQuery = null!;
     private WarningEventSink? _eventSink;
     private TopDownCameraRig? _cameraRig;
     /// <summary>下一帧把相机硬贴到玩家身上（一次性；见 <see cref="SnapCameraToPlayer"/>）。</summary>
@@ -107,6 +118,11 @@ public sealed class CharacterSession : IDisposable
     /// <param name="worldOptions">ECS 宿主参数（固定步长/视图池/剔除距离）。</param>
     /// <param name="viewOptions">表现参数（可从 Inspector 覆盖）。</param>
     /// <param name="enableHud">是否创建 HUD（headless 冒烟可关）。</param>
+    /// <param name="enableCamera">
+    /// 是否新建俯视相机装置。默认 <c>true</c>（现有调用方行为不变）；
+    /// 训练房这类「相机由场景自己摆在 .tscn 里」的场景传 <c>false</c>，否则相机会被装置接管、
+    /// 场景里那把相机形同虚设（且视角突然变成跟随视角）。
+    /// </param>
     public CharacterSession(
         Node3D owner,
         World world,
@@ -117,7 +133,8 @@ public sealed class CharacterSession : IDisposable
         Camera3D? camera,
         WorldHostOptions? worldOptions = null,
         GameViewOptions? viewOptions = null,
-        bool enableHud = true)
+        bool enableHud = true,
+        bool enableCamera = true)
     {
         _owner = owner ?? throw new ArgumentNullException(nameof(owner));
         _world = world ?? throw new ArgumentNullException(nameof(world));
@@ -158,11 +175,13 @@ public sealed class CharacterSession : IDisposable
         _intentSystem = new ActorIntentSystem(_cursorAim, NullIntentSource.Instance, NullIntentSource.Instance);
 
         // ④ ECS 系统：按变体声明的模块拼进管线（本方法结束时管线已经 Build 过）。
-        Install(world, pipeline, worldOptions ?? new WorldHostOptions());
+        //    世界 / 管线 / 意图源 / 装配队列是**注入**的：同一份内容集上新开的人物（例如训练房的假人）
+        //    把这些原样传进来即可，自己不必再拼第二套系统 —— 一个世界一帧只跑一条管线。
+        Install(world, pipeline, worldOptions ?? new WorldHostOptions(), enableCamera);
 
         // ⑤ 表现：相机 / 准星 / HUD。headless 下它们同样被创建（代价很小），
         //    这样"表现层有没有崩"在 CI 里也能跑到。
-        BuildPresentation(camera, enableHud);
+        BuildPresentation(camera, enableHud, enableCamera);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -196,6 +215,58 @@ public sealed class CharacterSession : IDisposable
     /// <summary>已装配的模块名（日志用：证明"系统是按模块拼上去的"）。</summary>
     public IReadOnlyList<string> ModuleNames => _pipeline?.ModuleNames ?? (IReadOnlyList<string>)Array.Empty<string>();
 
+    /// <summary>
+    /// 给某个实体接上「WASD / 方向键 → 移动」：意图源读移动轴，这里把屏幕基方向按<b>当前相机</b>旋成世界方向，
+    /// 写进它的 <see cref="MoveIntent"/>。
+    /// <para>
+    /// <b>为什么在宿主</b>：输入语义（右/前）→ 世界向量要相机基，相机在宿主层（J4）。系统层只认得世界向量。
+    /// </para>
+    /// <para>
+    /// <b>为什么每帧覆盖而不是只在有输入时写</b>：没输入时必须写零，否则会「松手后一直往原方向滑到底」。
+    /// 没调过本方法的实体完全不受影响（它的 <c>MoveIntent</c> 由别的来源负责）。
+    /// </para>
+    /// <para>
+    /// <b>与 <see cref="PlayerInputIntentSource"/> 的分工</b>：玩家实体的移动由它自己按 WASD 拼出屏幕基方向，
+    /// 再走 <c>ActorIntentSystem → MoveAimSystem</c>；本方法是「同一个实体的意图已经在 <c>ActorIntent</c> 里，
+    /// 只差世界方向」的补位，供小范围脚本驱动（训练房）使用。
+    /// </para>
+    /// </summary>
+    /// <param name="entity">要驱动的角色实体（不在世界里 = 空操作）。</param>
+    public void DriveMove(Entity entity)
+    {
+        if (entity.Equals(Entity.None) || !_world.Has<ActorIntent>(entity))
+        {
+            return;
+        }
+
+        ActorIntent intent = _world.Get<ActorIntent>(entity);
+        // Q16 → float。1/65536 是定点表示的还原系数（不是玩法数值）。
+        const float FixedToFloat = 1f / 65536f; // arch-ok: Q16 定点还原系数
+        float x = intent.MoveX * FixedToFloat;
+        float y = intent.MoveY * FixedToFloat;
+
+        System.Numerics.Vector3 world = System.Numerics.Vector3.Zero;
+        if (x * x + y * y > 0f)
+        {
+            // 屏幕基：右 = 相机右向量，前 = 相机「前」在地面上的投影（俯视下就是屏幕上方）。
+            Godot.Vector3 right = _cameraProvider.GetCamera()?.GlobalBasis.X ?? Godot.Vector3.Right;
+            Godot.Vector3 forward = _cameraProvider.GetCamera()?.GlobalBasis.Z ?? Godot.Vector3.Back;
+            forward.Y = 0f;
+            right.Y = 0f;
+            forward = forward.Normalized();
+            right = right.Normalized();
+            Godot.Vector3 dir = (right * x) + (forward * y);
+            System.Numerics.Vector3 d = new(dir.X, 0f, dir.Z);
+            float len = d.Length();
+            world = len > 0f ? d / len : System.Numerics.Vector3.Zero;
+        }
+
+        MoveIntent move = _world.Get<MoveIntent>(entity);
+        move.Velocity = world;
+        move.Magnitude = world.Length();
+        _world.Set(entity, move);
+    }
+
     /// <summary>本变体的模块集合（日志/验收用）。</summary>
     public CharacterModuleSet Modules => _assembly.Modules;
 
@@ -222,7 +293,38 @@ public sealed class CharacterSession : IDisposable
     // 装配
     // ─────────────────────────────────────────────────────────────
 
-    private void Install(World world, SystemPipeline pipeline, WorldHostOptions worldOptions)
+    /// <summary>
+    /// 把一个角色生成请求放进本会话所属世界的装配队列（本会话下一次 <see cref="Tick"/> 时出生）。
+    /// <para>
+    /// 给「往同一个世界再放一个角色」用（训练房的假人）：调用方<b>不</b>碰 <c>World.Create</c>（J5），
+    /// 也不新拼一条管线 —— 生成仍然走 <c>ActorSpawnQueue → ActorAssemblySystem</c>，
+    /// 与玩家出生是同一条代码路径（等价性），差异只在数据行。
+    /// </para>
+    /// </summary>
+    /// <param name="spawn">生成请求（定义槽位 + 位置 + 可选阵营覆盖）。</param>
+    public void EnqueueSpawn(in ActorSpawnRequest spawn) => _spawnQueue.Enqueue(spawn);
+
+    /// <summary>
+    /// 一个实体当前的视图号（<c>View.Slot</c>；还没租到视图时为 0 / <c>View</c> 组件不存在）。
+    /// <para>诊断与自检用：宿主世界里的「没分到视图的活实体」正是「看不见」的机器可读证据。</para>
+    /// </summary>
+    public int ViewSlotOf(Entity entity)
+    {
+        if (entity.Equals(Entity.None) || !_world.Has<View>(entity))
+        {
+            return 0;
+        }
+        return _world.Get<View>(entity).Slot;
+    }
+
+    /// <summary>视图节点（诊断用；<c>null</c> = 该视图号没有节点）。</summary>
+    public Node3D? ViewNodeOf(Entity entity)
+    {
+        int slot = ViewSlotOf(entity);
+        return slot > 0 ? _views?.GetNode(slot) : null;
+    }
+
+    private void Install(World world, SystemPipeline pipeline, WorldHostOptions worldOptions, bool enableCamera)
     {
         _pipeline = pipeline;
         CharacterModuleSet modules = _assembly.Modules;
@@ -297,6 +399,7 @@ public sealed class CharacterSession : IDisposable
         // ⑦ 视图池与桥：实体 → 节点。视图池的预制体是一个空壳，外观由 ActorViewDirector 往里塞。
         Node3D viewsRoot = EnsureViewsRoot();
         ViewRegistry views = new ViewRegistry(viewsRoot, BuildViewShellPrefab(), worldOptions.ViewPrewarm);
+        _views = views;
         _visualBridge = new VisualBridge(views, worldOptions.ProjectileScale);
         _transformBridge = new TransformBridge(
             world,
@@ -306,7 +409,9 @@ public sealed class CharacterSession : IDisposable
             worldOptions.EnableInterpolation);
         _viewDirector = new ActorViewDirector(views, _viewOptions);
         _viewDirector.Register(_assembly.Visual.VisualSlot, BuildViewStyle(_assembly.Visual));
+
         _viewQuery = world.Query<Transform3, View>();
+        _appearanceQuery = world.Query<View, ViewAppearance>();
 
         CommandFlushSystem flush = new CommandFlushSystem(world);
         _fixed = new FixedFramePipeline(
@@ -331,6 +436,26 @@ public sealed class CharacterSession : IDisposable
         return root;
     }
 
+    /// <summary>移动驱动对象（见 <see cref="DriveMove"/>；空 = 没人要求本会话补世界方向）。</summary>
+    private readonly System.Collections.Generic.List<Entity> _moveDriven = new(4); // arch-ok: 容量提示，不是玩法数值
+
+    /// <summary>要求本会话每帧把某实体的移动输入旋成世界向量（训练房驱动玩家用；见 <see cref="DriveMove"/>）。</summary>
+    public void EnableMoveDriving(Entity entity)
+    {
+        if (!entity.Equals(Entity.None) && !_moveDriven.Contains(entity))
+        {
+            _moveDriven.Add(entity);
+        }
+    }
+
+    private void DriveMoves()
+    {
+        for (int i = 0; i < _moveDriven.Count; i++)
+        {
+            DriveMove(_moveDriven[i]);
+        }
+    }
+
     /// <summary>帧末派发：把本帧攒下的玩法事件交给订阅方（v1 只清队列，表现层按需扩展）。</summary>
     private void DispatchEvents()
     {
@@ -342,8 +467,16 @@ public sealed class CharacterSession : IDisposable
     {
         _visualBridge?.ReapDead(_world, _viewQuery);
         _visualBridge?.RentMissing(_viewQuery);
+        // 外观必须在本帧「租出之后、推变换之前」套：新实体的 View.Slot 此刻才分配好，
+        // 晚一帧才套外观的话，第一帧会看到一个空壳（没有网格 = 看不见）。
+        _viewDirector?.ApplyAll(_world, _appearanceQuery);
         _transformBridge?.Push(alpha);
         _visualBridge?.FlushReleases();
+
+        // ★ 可见性最后统一落盘：上面每个环节都只登记「我想要它可见/隐藏」，这里才真正写 Visible。
+        //   顺序无关后，「被剔除的实体因为别处置了一次 true 而永远可见」这类幽灵节点就不会再出现。
+        _views?.ApplyVisibility();
+
     }
 
     /// <summary>第一次 <see cref="Tick"/> 时投出玩家生成请求。</summary>
@@ -401,6 +534,10 @@ public sealed class CharacterSession : IDisposable
         {
             _cursorAim.SetPlayerContext(PlayerPositionGodot());
         }
+
+        // ②b 移动驱动：把 ActorIntent 里本会话该管的屏幕基方向按相机旋成世界向量，写回 MoveIntent。
+        //     必须是意图源（PreUpdate）写完之后、管线读之前；本帧才出生的实体用出生帧意图（装配系统已补过一次）。
+        DriveMoves();
 
         // ③ ECS 一帧（PreUpdate → FixedUpdate×N → Update → LateUpdate → 命令提交 → 事件派发 → 视图桥）。
         _fixed.Tick(deltaSeconds, timeScale);
@@ -535,10 +672,21 @@ public sealed class CharacterSession : IDisposable
         _player = owner;
         BindStats(owner);
         System.Numerics.Vector3 pos = PlayerPosition();
+        // 出生时玩家有没有 View 组件 + 视图池租了几次 —— 「人物隐形」的唯一机器证据就在这两项（应为 True / > 0）。
         GD.Print("[Hero] 出生 entity=", owner.Index, ":", owner.Generation,
+            " hasView=", _world.Has<View>(owner),
+            " rentedViews=", _visualBridge?.LastRentedCount ?? -1,
             " pos=", pos.X.ToString("F2"), ",", pos.Y.ToString("F2"), ",", pos.Z.ToString("F2"),
             " 血量上限=", _stats.ViewOf(owner)?.Get(StatId.HpMax).ToString("F0"));
+        PlayerBorn?.Invoke(owner);
     }
+
+    /// <summary>
+    /// 玩家实体刚出生（绑定属性表之后立刻触发一次）。
+    /// <para>宿主场景用它做「出生后才可能做的事」（例如把无头走查的时间轴交给这个实体），
+    /// 这样调用方不必轮询「出生了没有」，也不会拿到一个出生前的占位号。</para>
+    /// </summary>
+    public event Action<Entity>? PlayerBorn;
 
     /// <summary>把实体的属性快照登记进表（装配期已经折叠过，这里只是取视图，不做结算）。</summary>
     private void BindStats(Entity owner)
@@ -555,7 +703,11 @@ public sealed class CharacterSession : IDisposable
         _stats.Bind(owner, definition.StatPackageIds, _assembly.DefinitionSlot);
     }
 
-    private System.Numerics.Vector3 PlayerPosition()
+    /// <summary>
+    /// 玩家当前位置（世界坐标，米）；还没出生时返回出生点。
+    /// <para>公开是给宿主场景（走查/截图）用的只读读数 —— 表现层不反写玩法状态。</para>
+    /// </summary>
+    public System.Numerics.Vector3 PlayerPosition()
     {
         if (_player != Entity.None && _world.TryGet(_player, out Game.Core.Ecs.Transform3 t))
         {
@@ -735,31 +887,36 @@ public sealed class CharacterSession : IDisposable
     // 内部：表现
     // ─────────────────────────────────────────────────────────────
 
-    private void BuildPresentation(Camera3D? camera, bool enableHud)
+    private void BuildPresentation(Camera3D? camera, bool enableHud, bool enableCamera = true)
     {
-        // 相机：.tscn 里没有就现建一个（headless 与最小场景都能跑）。
-        if (_cameraProvider.GetCamera() is null)
+        // 相机装置：默认接管（跟人走）。训练房这类「相机由 .tscn 摆好」的场景关掉它 ——
+        // 但下面 HUD / 准星照建，它们只读世界，不依赖是谁在推相机。
+        if (enableCamera)
         {
-            Camera3D created = new Camera3D { Name = "HeroCamera", Current = true };
-            _owner.AddChild(created);
-            _cameraProvider.Adopt(created);
-        }
+            // 相机：.tscn 里没有就现建一个（headless 与最小场景都能跑）。
+            if (_cameraProvider.GetCamera() is null)
+            {
+                Camera3D created = new Camera3D { Name = "HeroCamera", Current = true };
+                _owner.AddChild(created);
+                _cameraProvider.Adopt(created);
+            }
 
-        Camera3D cam = _cameraProvider.GetCamera()!;
-        // ★ 七个值一个都不能少：FollowRatePerSecond 是「每秒收敛速率」，表现层再换算成平滑时间；
-        //   LookAhead* 是「鼠标方向偏移」的幅度与上限 —— 漏传画面照样跑，但策划在 Excel
-        //   改这两格就永远不生效（v11「配置了但没接」的同一个坑）。
-        CameraPackSettings pack = new CameraPackSettings(
-            _assembly.Camera.Distance,
-            _assembly.Camera.PitchDeg,
-            _assembly.Camera.YawDeg,
-            _assembly.Camera.FollowRatePerSecond,
-            _assembly.Camera.CursorScreenHeightRatio,
-            _assembly.Camera.LookAheadRatio,
-            _assembly.Camera.LookAheadMaxMeters);
-        CameraRigSettings rig = _viewOptions.BuildCameraSettings(pack, float.NaN);
-        _cameraRig = new TopDownCameraRig(cam, rig);
-        _cameraRig.SnapTo(ToGodot(SpawnPosition), Godot.Vector3.Forward);
+            Camera3D cam = _cameraProvider.GetCamera()!;
+            // ★ 七个值一个都不能少：FollowRatePerSecond 是「每秒收敛速率」，表现层再换算成平滑时间；
+            //   LookAhead* 是「鼠标方向偏移」的幅度与上限 —— 漏传画面照样跑，但策划在 Excel
+            //   改这两格就永远不生效（v11「配置了但没接」的同一个坑）。
+            CameraPackSettings pack = new CameraPackSettings(
+                _assembly.Camera.Distance,
+                _assembly.Camera.PitchDeg,
+                _assembly.Camera.YawDeg,
+                _assembly.Camera.FollowRatePerSecond,
+                _assembly.Camera.CursorScreenHeightRatio,
+                _assembly.Camera.LookAheadRatio,
+                _assembly.Camera.LookAheadMaxMeters);
+            CameraRigSettings rig = _viewOptions.BuildCameraSettings(pack, float.NaN);
+            _cameraRig = new TopDownCameraRig(cam, rig);
+            _cameraRig.SnapTo(ToGodot(SpawnPosition), Godot.Vector3.Forward);
+        }
 
         // 准星：默认关闭 —— UI 层的 Drawer 已经画了屏幕中心的准星，
         // 两个准星同时存在会重影。需要"子弹落点环"时把 CrosshairVisible 打开即可。
@@ -801,7 +958,15 @@ public sealed class CharacterSession : IDisposable
         return ResourceLoader.Load<CharacterHudSkin>(HudSkinPath);
     }
 
-    private static ActorViewStyle BuildViewStyle(in CharacterVisualPack visual)
+    /// <summary>
+    /// 一行变体的**纯值外观描述**（数据行 → 视图层的翻译，放在这里是因为它俩只在这里相遇）。
+    /// <para>
+    /// 同一个世界里的每个角色都要注册它自己的外观包；第二个角色（训练房假人）照抄调用即可，
+    /// 不必知道 <see cref="CharacterVisualPack"/> 有哪些列。白模阶段 <c>ModelPath</c> 为空 = 不加载任何 glb，
+    /// 由 <c>ActorViewDirector</c> 回落到几何体白模。
+    /// </para>
+    /// </summary>
+    public static ActorViewStyle BuildViewStyle(in CharacterVisualPack visual)
     {
         // 没配颜色文本时用配色档位兜底（TryParseColor 失败 → HasColor=false）。
         ActorViewStyle.TryParseColor(visual.ColorHex, out Color color);

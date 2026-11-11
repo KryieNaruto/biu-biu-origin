@@ -27,6 +27,9 @@ public sealed class PlayerInputIntentSource : IIntentSource
     /// <summary>瞄准轴 action 名（鼠标相对屏幕中心或手柄右摇杆）。</summary>
     private readonly string _aimAxisAction;
 
+    /// <summary>移动轴动作名（空 = 用四个 WASD 方向动作拼）。</summary>
+    private readonly string _moveAxisAction;
+
     /// <summary>
     /// 构造并绑定默认按键方案：Shift=冲刺、左键=攻击、Q=切换武器、R=独有技能、F=交互。
     /// </summary>
@@ -41,16 +44,24 @@ public sealed class PlayerInputIntentSource : IIntentSource
     {
     }
 
-    /// <summary>可替换 action 名的构造（手柄方案、测试、改键插件用）。</summary>
+    /// <summary>
+    /// 可替换 action 名的构造（手柄方案、测试、改键插件用）。
+    /// <para>
+    /// <paramref name="move"/> 是<b>方向向量</b>式的移动轴（与 WASD 的四个 <c>actor_move_*</c> 动作二选一）：
+    /// 非空时优先用它，空串时退回四键拼装。训练房正是用「WASD → 方向向量」的脚本输入源，所以这里必须能选。
+    /// </para>
+    /// </summary>
     public PlayerInputIntentSource(
         string aimAxisAction,
         string dash,
         string primaryAttack,
         string weaponSwap,
         string signature,
-        string interact)
+        string interact,
+        string move = "")
     {
         _aimAxisAction = aimAxisAction ?? string.Empty;
+        _moveAxisAction = move ?? string.Empty;
         _actionOfSlot[(int)SkillSlot.Dash] = dash;
         _actionOfSlot[(int)SkillSlot.PrimaryAttack] = primaryAttack;
         _actionOfSlot[(int)SkillSlot.WeaponSwap] = weaponSwap;
@@ -117,14 +128,64 @@ public sealed class PlayerInputIntentSource : IIntentSource
         _previousPressed = held;
 
         Vector3 aim = ReadAim();
+
+        // 移动方向同样进意图（Q16 定点）：有移动轴时用轴，否则用四个 WASD 动作拼；
+        // 两者都空 = 不想动（0 向量）。俯视角下「屏幕 → 世界」的换算由消费方（MoveAimSystem）拿着相机做。
+        Vector2 move = ReadMove();
         // 方向用定点整数表达（Q16：±65536 = ±1.0），与 ECS 组件的 int 约定一致，避免 float 进组件。
         return new InputIntent(
             pressed,
             held,
             ToFixed(aim.X),
             ToFixed(aim.Y),
-            ToFixed(aim.Z));
+            ToFixed(aim.Z),
+            ToFixed(move.X),
+            ToFixed(move.Y));
     }
+
+    /// <summary>
+    /// 读移动输入（x = 右, y = 前，长度 ≤ 1）。
+    /// <para>
+    /// 有 <see cref="_moveAxisAction"/> 时用它（<c>actor_move</c> 的左右/上下四个轴动作），
+    /// 否则逐个查 <c>actor_move_left/right/forward/back</c> —— 后者是 WASD 的原生映射。
+    /// </para>
+    /// </summary>
+    private Vector2 ReadMove()
+    {
+        if (!string.IsNullOrEmpty(_moveAxisAction))
+        {
+            Vector2 axis = ReadAxis(_moveAxisAction);
+            return axis.LengthSquared() > 1f ? axis.Normalized() : axis;
+        }
+
+        float x = Axis(ActorMoveLeftAction, ActorMoveRightAction);
+        float y = Axis(ActorMoveForwardAction, ActorMoveBackAction);
+        Vector2 comb = new Vector2(x, y);
+        return comb.LengthSquared() > 1f ? comb.Normalized() : comb;
+    }
+
+    private static float Axis(string negative, string positive)
+    {
+        float v = 0f;
+        if (IsActionHeld(positive))
+        {
+            v += 1f;
+        }
+        if (IsActionHeld(negative))
+        {
+            v -= 1f;
+        }
+        return v;
+    }
+
+    /// <summary>WASD 的四个方向动作名（<c>project.godot</c> 的输入映射）。</summary>
+    private const string ActorMoveLeftAction = "actor_move_left";
+
+    private const string ActorMoveRightAction = "actor_move_right";
+
+    private const string ActorMoveForwardAction = "actor_move_forward";
+
+    private const string ActorMoveBackAction = "actor_move_back";
 
     /// <summary>方向分量 → Q16 定点。</summary>
     private static int ToFixed(float value) => (int)MathF.Round(value * FixedOne);
