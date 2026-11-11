@@ -311,12 +311,23 @@ public sealed class CharacterContentSet
             ActorKind.Player, TeamId.Player, ControlScheme.PlayerInput,
             new StatPackageIds("chosen_base"), "chosen_kit", 0.5f, 2.0f, 5));
 
+        // ── 补到 5 种怪物：分裂史莱姆 / 爆炸史莱姆 ──
+        Definitions.Register(new ActorDefinition("slime_401", "actor.slime_401",
+            ActorKind.Monster, TeamId.Enemy, ControlScheme.Ai,
+            new StatPackageIds("slime_base"), "slime_kit", 0.5f, 1.0f, 7));
+
+        Definitions.Register(new ActorDefinition("slime_403", "actor.slime_403",
+            ActorKind.Monster, TeamId.Enemy, ControlScheme.Ai,
+            new StatPackageIds("slime_bomb_base"), "slime_bomb_kit", 0.6f, 1.2f, 8));
+
         // ══════════════════════════════════════════════════════════════════════════
         // v1 测试人物（hero-1 需求）：一个装配（hero）+ 4 个变体（标准/重甲/敏捷/幸运）。
         // 关键性质：变体之间的差异**全部来自数据行**，系统代码 0 行改动（规则7）。
         // 上面那些旧角色（player_hero / 怪物）保留不动，避免破坏已有测试；
         // 下面新造的数值包/武器/技能包/外观/镜头/输入全部登记进 CharacterAssemblyRepository。
         // ══════════════════════════════════════════════════════════════════════════
+        BuildMonsterKits();
+        BuildMonsterArsenal();
         BuildHeroV1();
 
         IsBuilt = true;
@@ -392,6 +403,38 @@ public sealed class CharacterContentSet
             (StatId.CritChance, 0.15f), (StatId.CritMultiplier, 2.0f), (StatId.HurtInvulnTime, 0.6f),
             (StatId.DashSpeedMul, 2.4f), (StatId.DashDuration, 0.18f),
         });
+        // 元素法师：蓝量与回蓝最高、瞄准距离最远，但血量最低、移速慢 —— 靠技能输出
+        RegisterPack("test_hero_elemental_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 70f), (StatId.HpMax, 70f),
+            (StatId.Mana, 180f), (StatId.ManaMax, 180f), (StatId.ManaRegenPerSec, 14f),
+            (StatId.Stamina, 90f), (StatId.StaminaMax, 90f), (StatId.StaminaRegenPerSec, 10f),
+            (StatId.Armor, 3f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 4.4f),
+            (StatId.MoveAccelTime, 0.14f), (StatId.TurnResponseTime, 0.12f), (StatId.AimRange, 26f),
+            (StatId.Strength, 2f), (StatId.Dexterity, 5f), (StatId.Luck, 6f),
+            (StatId.CritChance, 0.08f), (StatId.CritMultiplier, 1.9f), (StatId.HurtInvulnTime, 0.5f),
+            (StatId.DashSpeedMul, 2.0f), (StatId.DashDuration, 0.20f),
+        });
+
+        // ── 新增怪物：两种史莱姆（把怪物补齐到 5 种） ──
+        // 分裂史莱姆：血薄、慢、零甲，靠数量压制
+        RegisterPack("slime_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 30f), (StatId.HpMax, 30f),
+            (StatId.Mana, 0f), (StatId.ManaMax, 0f),
+            (StatId.Armor, 0f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 2.6f),
+            (StatId.Strength, 2f), (StatId.Dexterity, 2f), (StatId.Luck, 1f),
+            (StatId.HurtInvulnTime, 0.15f),
+        });
+        // 爆炸史莱姆：血稍厚、更慢，死亡爆散
+        RegisterPack("slime_bomb_base", StatLayer.Base, new (StatId, float)[]
+        {
+            (StatId.Hp, 55f), (StatId.HpMax, 55f),
+            (StatId.Mana, 0f), (StatId.ManaMax, 0f),
+            (StatId.Armor, 4f), (StatId.ArmorK, 100f), (StatId.MoveSpeed, 2.2f),
+            (StatId.Strength, 6f), (StatId.Dexterity, 1f), (StatId.Luck, 0f),
+            (StatId.HurtInvulnTime, 0.2f),
+        });
 
         // ── 武器行（WeaponStats 的数据来源） ──
         // 先建武器行：技能包的**左键冷却直接取武器行的 ShotCooldown**（单一真源）。
@@ -401,10 +444,12 @@ public sealed class CharacterContentSet
         var cannon = new CharacterWeaponSpec("cannon_heavy", 2002, 55f, 14f, 26f, 5.0f, 0.00f, 1.00f, 0.22f, 0.42f, 1); // arch-ok: 镜像 Weapons 表
         var smg = new CharacterWeaponSpec("smg_light", 2003, 8f, 26f, 18f, 4.0f, 0.03f, 1.00f, 0.07f, 0.08f, 1); // arch-ok: 镜像 Weapons 表
         var ricochet = new CharacterWeaponSpec("ricochet_lucky", 2004, 16f, 20f, 22f, 2.5f, 0.52f, 2.25f, 0.11f, 0.18f, 1); // arch-ok: 镜像 Weapons 表
+        var orbElemental = new CharacterWeaponSpec("orb_elemental", 2005, 12f, 16f, 30f, 3.0f, 0.08f, 1.90f, 0.14f, 0.22f, 1); // arch-ok: 镜像 Weapons 表
         Assemblies.RegisterWeapon(pistol);
         Assemblies.RegisterWeapon(cannon);
         Assemblies.RegisterWeapon(smg);
         Assemblies.RegisterWeapon(ricochet);
+        Assemblies.RegisterWeapon(orbElemental);
 
         // ── 技能包：4 个（左键槽 = FireProjectileSkill，真开火） ──
         // 技能 id 号段（与 Excel SkillLoads 表一致，全项目唯一）：
@@ -417,12 +462,14 @@ public sealed class CharacterContentSet
         RegisterHeroKit("test_hero_tank_kit", 1106, cannon, 1001, 2.0f, 10f, 1305, 16f, 35f);
         RegisterHeroKit("test_hero_agile_kit", 1107, smg, 1001, 0.8f, 6f, 1306, 10f, 25f);
         RegisterHeroKit("test_hero_lucky_kit", 1108, ricochet, 1001, 1.2f, 8f, 1307, 14f, 30f);
+        RegisterHeroKit("test_hero_elemental_kit", 1109, orbElemental, 1001, 1.4f, 12f, 1308, 18f, 60f);
 
         // ── 外观包 ──
         Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_default", string.Empty, 1.00f, 1, 0, "#4FA3D9"));
         Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_tank", string.Empty, 1.25f, 2, 1, "#D97A3F"));
         Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_agile", string.Empty, 0.90f, 3, 2, "#5DD97A"));
         Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_lucky", string.Empty, 1.00f, 4, 3, "#D9C64F"));
+        Assemblies.RegisterVisualPack(new CharacterVisualPack("hero_elemental", string.Empty, 1.00f, 6, 6, "#9B6FD9"));
 
         // ── 镜头包（俯视角正交相机；两台：标准 / 宽景） ──
         // arch-ok: 这里是 Excel 的运行时镜像，数值与 data/excel/characters.xlsx 的 CameraPacks 表逐项一致；
@@ -462,6 +509,8 @@ public sealed class CharacterContentSet
                 new CharacterModuleSet(new[] { "fire_primary_rapid" }), 0.40f, 1.7f, 3),
             new HeroRow("test_hero_lucky", "测试人物", "变体 · 幸运", "test_hero_lucky_base", "test_hero_lucky_kit",
                 ricochet, "hero_lucky", camStandard, kbmAlt, CharacterModuleSet.Empty, 0.45f, 1.8f, 4),
+            new HeroRow("test_hero_elemental", "测试人物", "变体 · 元素", "test_hero_elemental_base", "test_hero_elemental_kit",
+                orbElemental, "hero_elemental", camWide, kbmStandard, CharacterModuleSet.Empty, 0.45f, 1.9f, 6),
         };
 
         // ── 装配（hero）：4 个变体共用的一批模块 ──
@@ -683,6 +732,161 @@ public sealed class CharacterContentSet
         Loadouts.Register(SkillLoadout.FromSkills(loadoutId, skills));
     }
 
+    /// <summary>
+    /// 两种史莱姆的技能包：只有左键一槽（怪物没有冲刺/切武器/交互）。
+    /// <para>
+    /// 与人物技能包同构 —— 怪物和玩家用的是同一套技能行结构，
+    /// 差异只在**填了几个槽**。这是"玩家怪物同源"的又一处体现。
+    /// </para>
+    /// </summary>
+    private void BuildMonsterKits()
+    {
+        RegisterLoadout("slime_kit", new[]
+        {
+            (SkillSlot.PrimaryAttack, 1102, 1.6f, 0f),
+        });
+        RegisterLoadout("slime_bomb_kit", new[]
+        {
+            (SkillSlot.PrimaryAttack, 1104, 2.2f, 0f),
+        });
+    }
+
+    /// <summary>
+    /// 给 5 只怪物配齐「默认技能 + 默认武器 + 默认子弹」，让它们真正能开枪。
+    /// <para>
+    /// <b>为什么单独一个方法</b>：<see cref="BuildMonsterKits"/> 出的是"技能包骨架"（早期只有
+    /// 一个 <see cref="CharacterSkillSpec.KindData"/> 占位槽，怪物实质上永远不开火）；本方法把
+    /// 其中"会开火"的那几只补成与人物<u>完全同构</u>的形状 —— 同样走
+    /// <see cref="RegisterMonsterKit"/> → <see cref="CharacterSkillSpec.KindFireProjectile"/>
+    /// → 宿主 <c>ContentSkillFactory</c> 实例化 <c>FireProjectileSkill</c> 这一条路。
+    /// </para>
+    /// <para>
+    /// <b>近战怪为什么没有子弹</b>：<c>goblin_grunt</c> 与 <c>ogre_brute</c> 的武器行
+    /// <c>ProjectileId</c> 为空是**刻意的**（近战不发射抛射物，靠碰撞体结算）。它们仍然登记了
+    /// 武器行，所以"左键 → 武器 → 伤害数值"这条链是通的，只是末端不出子弹。
+    /// 这正是"武器→子弹可空"与"武器→子弹缺失"的区别，回归用例会分别断言。
+    /// </para>
+    /// </summary>
+    private void BuildMonsterArsenal()
+    {
+        // ── 怪物武器行（号段 30xx，与人物 2001..2005 分开，避免查表串味） ──
+        // 数值刻意比人物低一档：小怪是消耗品，不该和玩家同一火力基线。
+        var gruntClub = new CharacterWeaponSpec("club_goblin", 3001,
+            damage: 6f, bulletSpeed: 0f, rangeMeters: 1.6f, spreadDegrees: 0f,
+            criticalChance: 0f, criticalMultiplier: 1f, projectileRadius: 0.16f,
+            shotCooldown: 0.9f);                                              // arch-ok: 镜像 characters.xlsx/Weapons
+        var archerBow = new CharacterWeaponSpec("bow_goblin", 3002,
+            damage: 9f, bulletSpeed: 16f, rangeMeters: 14f, spreadDegrees: 3f,
+            criticalChance: 0.05f, criticalMultiplier: 1.5f, projectileRadius: 0.09f,
+            shotCooldown: 1.4f);                                              // arch-ok: 镜像 characters.xlsx/Weapons
+        var ogreMaul = new CharacterWeaponSpec("maul_ogre", 3003,
+            damage: 22f, bulletSpeed: 0f, rangeMeters: 2.2f, spreadDegrees: 0f,
+            criticalChance: 0f, criticalMultiplier: 1f, projectileRadius: 0.4f,
+            shotCooldown: 1.8f);                                              // arch-ok: 镜像 characters.xlsx/Weapons
+        var slimeSpit = new CharacterWeaponSpec("spit_slime", 3004,
+            damage: 5f, bulletSpeed: 11f, rangeMeters: 9f, spreadDegrees: 6f,
+            criticalChance: 0f, criticalMultiplier: 1f, projectileRadius: 0.13f,
+            shotCooldown: 1.6f);                                              // arch-ok: 镜像 characters.xlsx/Weapons
+        var slimeBomb = new CharacterWeaponSpec("bomb_slime", 3005,
+            damage: 14f, bulletSpeed: 9f, rangeMeters: 8f, spreadDegrees: 0f,
+            criticalChance: 0f, criticalMultiplier: 1f, projectileRadius: 0.22f,
+            shotCooldown: 2.2f);                                              // arch-ok: 镜像 characters.xlsx/Weapons
+
+        Assemblies.RegisterWeapon(gruntClub);
+        Assemblies.RegisterWeapon(archerBow);
+        Assemblies.RegisterWeapon(ogreMaul);
+        Assemblies.RegisterWeapon(slimeSpit);
+        Assemblies.RegisterWeapon(slimeBomb);
+
+        // ── 技能包：怪物同样"左键 = 开火" ──
+        // skill id 复用既有号段（1102 近战 / 1103 弓射 / 1104 重砸 / 1105 法弹），
+        // 所以这里不能用 RegisterMonsterKit 的默认 projectileId 推导，必须显式传。
+        RegisterMonsterKit("goblin_kit", 1102, gruntClub, string.Empty);          // 近战：无抛射物
+        RegisterMonsterKit("goblin_archer_kit", 1103, archerBow, "proj_arrow_goblin");
+        RegisterMonsterKit("ogre_kit", 1104, ogreMaul, string.Empty);             // 近战：无抛射物
+        RegisterMonsterKit("slime_kit", 1102, slimeSpit, "proj_spit_slime");
+        RegisterMonsterKit("slime_bomb_kit", 1104, slimeBomb, "proj_bomb_slime");
+
+        // ── 定义 id → 武器行 ──
+        // 怪物没有 VariantAssembly 行（那是人物专用的"装配清单"），所以与武器的关联在这里显式登记。
+        // 统一喂进 _actorWeapons，让「定义 → 武器」对人物和怪物只留一条查询路径
+        // （WeaponOfActor），否则宿主得为两类角色各写一套分支。
+        _actorWeapons["goblin_grunt"] = gruntClub;
+        _actorWeapons["goblin_archer"] = archerBow;
+        _actorWeapons["ogre_brute"] = ogreMaul;
+        _actorWeapons["slime_401"] = slimeSpit;
+        _actorWeapons["slime_403"] = slimeBomb;
+    }
+
+    /// <summary>
+    /// 「角色定义 id → 武器行」的唯一查询入口（人物查变体清单、怪物查显式登记表）。
+    /// <para>
+    /// <b>为什么要有它</b>：宿主的 <c>IWeaponStatsSource</c> 早先只认
+    /// <c>Assemblies.Find(variantId).Weapon</c>，而怪物没有变体行 —— 于是怪物装配时
+    /// <c>Get()</c> 直接抛异常（或静默没枪）。把两条来源收进一个方法后，
+    /// 宿主只需调用它一次，新增一类怪物只改数据（规则7）。
+    /// </para>
+    /// </summary>
+    /// <param name="definitionId">角色定义 id，如 <c>goblin_archer</c> / <c>test_hero</c>。</param>
+    /// <returns>武器行；该角色没配武器（或不认识这个 id）返回 <c>null</c>。</returns>
+    public CharacterWeaponSpec? WeaponOfActor(string definitionId)
+    {
+        if (string.IsNullOrEmpty(definitionId))
+        {
+            return null;
+        }
+
+        // ① 人物/变体：装配清单是权威（WeaponRowId 已在解析期校验过存在性）。
+        CharacterAssemblyOf<SkillLoadout>? assembly = Assemblies.Find(definitionId);
+        if (assembly?.Weapon is not null)
+        {
+            return assembly.Weapon;
+        }
+
+        // ② 怪物等无变体的角色：查显式登记表。
+        return _actorWeapons.TryGetValue(definitionId, out CharacterWeaponSpec? weapon) ? weapon : null;
+    }
+
+    /// <summary>
+    /// 登记一个"怪物会开火"的技能包：左键槽 = <see cref="CharacterSkillSpec.KindFireProjectile"/>。
+    /// <para>
+    /// 与 <see cref="RegisterHeroKit"/> 的差别只有两点：① 怪物不占冲刺/独有技槽，
+    /// 只出左键一槽；② 冷却直接取武器行（同一"单一真源"约定），不再另填。
+    /// 其余完全同构 —— 这就是"玩家怪物同源"在技能层的落点。
+    /// </para>
+    /// </summary>
+    /// <param name="loadoutId">技能包 id（= 角色定义的 <c>SkillLoadoutId</c>）。</param>
+    /// <param name="attackSkillId">左键技能 id。</param>
+    /// <param name="weapon">武器行（决定伤害/冷却/射程）。</param>
+    /// <param name="projectileId">子弹外观 id；空串 = 近战，不发射抛射物。</param>
+    private void RegisterMonsterKit(
+        string loadoutId, int attackSkillId, CharacterWeaponSpec weapon, string projectileId)
+    {
+        var row = new CharacterSkillSpec(attackSkillId, CharacterSkillSpec.KindFireProjectile,
+            weapon.Id, projectileId,
+            weapon.ShotCooldown, 0f, CharacterSkillSpecs.ToSlotNumber(SkillSlot.PrimaryAttack));
+
+        // ① 技能行进字典 —— 覆盖 BuildMonsterKits 里那条 KindData 占位行。
+        _skillRows[attackSkillId] = row;
+        RecordLoadoutSlot(loadoutId, row.Slot, attackSkillId);
+
+        if (row.SuspectsWeaponProjectileConflated)
+        {
+            _warnings.Add(string.Concat(
+                "技能包 '", loadoutId, "' 的 WeaponId 与 ProjectileId 相同（都是 '",
+                row.WeaponId, "'）：武器 id 不应兼作子弹外观 id。"));
+        }
+
+        // ② 技能包重建：用真行原地替换掉 RegisterLoadout 建的 KindData 占位包
+        //    （Replace 而非重注册 —— 槽位号不变，已生成角色的 LoadoutSlot 继续有效）。
+        var skills = new ISkill[]
+        {
+            new DataSkill(row.SkillId, row.ProjectileId, SkillSlot.PrimaryAttack,
+                row.CooldownSeconds, row.ManaCost),
+        };
+        Loadouts.Replace(loadoutId, SkillLoadout.FromSkills(loadoutId, skills));
+    }
+
     /// <summary>记录「技能包 + 槽位号 → SkillId」（Register* 系列统一从这里维护索引）。</summary>
     private void RecordLoadoutSlot(string loadoutId, int slotNumber, int skillId)
     {
@@ -745,6 +949,9 @@ public sealed class CharacterContentSet
 
     /// <summary>技能包 id → 5 个槽位的 SkillId（索引 = 槽位号 - 1；0 = 该槽留空）。</summary>
     private readonly Dictionary<string, int[]> _loadoutSlots = new(StringComparer.Ordinal);
+
+    /// <summary>角色定义 id → 武器行（只收「没有变体行」的角色，如怪物；人物的武器在装配清单里）。</summary>
+    private readonly Dictionary<string, CharacterWeaponSpec> _actorWeapons = new(StringComparer.Ordinal);
 }
 
 /// <summary>
