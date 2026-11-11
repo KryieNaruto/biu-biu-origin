@@ -1,6 +1,6 @@
 # BiuBiuOrigin 架构大纲
 
-> 状态: v17  最后更新: 2026-11-11（§15.8 相机跟随手感：临界阻尼弹簧 + 鼠标方向可调偏移；§14.10 训练房 3D 测试场景；§17.11 「抽象没贯彻到底」全面体检 + 契约硬规则；§17.10.1 全部先跑白模：`ModelPath` 一律留空、占位路径清零；§17.10 模型属性收敛为唯一入口 `VisualPack`；§7.5.2 2D 自绘图随窗口缩放；§24 素材查看器 UI 改 DockSpace 停靠布局；§23 本地化中文名真源 `l10n.xlsx`；§14.8 调参面板 SpinBox→可左右拖动滑块；§14.9 物件随机生成 + 2D 图例带色；§4.3.1 数值包跨层约束 + §7.5.1 窗口视口配置）  维护规则: 每个任务完成后**就地覆盖更新**本文件（SOP 见 `docs/rules/07-definition-of-done.md`），禁止另建 `ARCHITECTURE_v2.md`
+> 状态: v18  最后更新: 2026-11-11（P1~P4 文档/数据一致性修复：§15.5「代码 0 行」的真实前提 + §15.6 数量订正；§4.1 `data/generated/` 不存在、禁令属将来规则的现状口径；§14.5 `progression.xlsx` 不存在、地牢真源今天就是 `DungeonOptions`；`characters.xlsx` 补齐 3 个镜像独有角色使双向 parity 归零）
 > 读取顺序: 本文件 → 相关章节 → `docs/rules/01~07` → 如有代码再读对应源文件
 
 > **给第一个读到这里的人（人或 AI agent）：** 这是本工程的**唯一**架构真源。工程已从「空壳」进入 **ECS 骨架落地**阶段：`scripts/core/`（基础件 + ECS 内核）、`scripts/host/`（引擎边界）、`scripts/actor|spawn/`（首批系统族）、`tests/`（63 用例）、`native/`（GDExtension 骨架）均已建立；`data/`（Excel 数据层）仍待落地。各节仍按**四段式**写：`现状 / 目标 / 约束 / 下一步`。看到「待落地」不代表没想清楚，而是**已定好形状、只等第一个任务去填**。
@@ -410,6 +410,13 @@ UI / Skill / Spawn ──(只向下)──▶ Actor / Combat / Data / Core
 `tools/data_pipeline/` 下已有 `validate_content_xlsx.py`（构建期校验器，2217 项检查）与两个表生成器。
 
 **仍缺**：`data/generated/` 及 xlsx → 生成物的转换器。也就是说 **Excel 已经是真源，但还没有派生物**。
+
+> ⚠️ **现状口径（2026-11-11 订正，见 `docs/MODULE_MAP.md` P3）**：`data/generated/` 目录**当前并不存在**。
+> 因此本文其它章节里「禁止手改 `data/generated/`」「运行期只读生成物」属于**目标形态的规则**，
+> 不是今天的事实。今天的真实链路是：
+> **运行期直接读 `CharacterContentSet` / `ContentBinder` 的内置副本，xlsx 只被校验器与测试读取**
+> （`validate_content_xlsx.py` + `CharacterXlsxParityTests` + `ContentBinderTests`）。
+> 这条「表 ↔ 镜像」的一致性由双向回归用例钉住，改表不同步镜像会直接红。
 
 #### 4.1.1 「表 = 运行时」的证据链（2026-11-05 补强）
 
@@ -1446,6 +1453,10 @@ PreUpdate → FixedUpdate×N → Update → LateUpdate → CommandFlush → 事�
 - **节点不反写**。`DungeonSceneBuilder` 只读 `DungeonLayout`，`World → Node` 单向（ECS.md §7.1）。
 - **数值进 Host 的两个入口**：`DungeonOptions : Resource`（可在 Inspector / `.tres` 调，规则4 的「可视化修改」路径）
   → `ToConfig()` → 纯 C# `DungeonConfig`。Excel 落地后，`ToConfig()` 改从 `progression.xlsx` 的 `Dungeon` Sheet 读，**规划器一行不改**。
+  > ⚠️ **现状口径（2026-11-11 订正，见 `docs/MODULE_MAP.md` P4）**：`data/excel/progression.xlsx` **当前不存在**
+  > （`data/excel/` 下只有 `characters.xlsx` / `combat.xlsx` / `l10n.xlsx`）。所以**今天地牢参数的唯一真源就是
+  > `DungeonOptions`**，`progression.xlsx` 是**目标形态**、不是已存在的事实。本文 §14 中一切「从 progression.xlsx 读」
+  > 的表述都应按「将来」理解；在那之前改地牢参数请改 `DungeonOptions` 默认值或其 `.tres`。
 
 ### 14.6 扩展点登记（新增 §3.2 之外的房间域接口）
 
@@ -1730,21 +1741,35 @@ data/excel/characters.xlsx
 ```
 
 - 表头是**四行**（字段名 / 类型 / 中文名 / 备注），由 `tools/data_pipeline/gen_characters_xlsx.py` 生成，保证第一次就合规；
-- 生成后 **xlsx 即唯一真源**，不要改 `data/generated/`；
+- 生成后 **xlsx 即唯一真源**；`data/generated/` 目前**尚不存在**（见 §4.1 的现状口径），不要凭空手建；
 - v1 的 xlsx→生成物 pipeline 尚未落地，`CharacterContentSet.BuildBuiltinV1()` 是与之**逐项一致**的兜底副本；
   `CharacterContentRegressionTests` 用 9 条用例钉住两边（每个角色都能真装配出来、玩家五槽齐全、怪物不含冲刺）。
   **pipeline 落地时只替换 `BuildBuiltinV1` 的填充方式，其余代码与断言不动**（规则 7：0 文件扩展）。
-- 想验证「改了数值游戏真变了」：改 xlsx 里 `player_base.HpMax` → 重跑 `GenCharacters` → 端到端用例会立刻告诉你期望值。
+- 想验证「改了数值游戏真变了」：改 xlsx 里 `player_base.HpMax` → 重跑 `gen_characters_xlsx.py` → 端到端用例会立刻告诉你期望值。
+
+> ⚠️ **「代码 0 行」的真实前提（2026-11-11 订正，见 `docs/MODULE_MAP.md` P2）**
+>
+> 本工程常说的「加角色/改数值 = **系统代码 0 行**」是**准确的**——不需要改任何 `SystemBase`、不需要加分支。
+> 但它**不等于「只改 xlsx 一件事」**：因为 `CharacterContentSet.BuildBuiltinV1()` 里有一份 C# 镜像，
+> 且 `CharacterXlsxParityTests` 是**双向**比对（`EveryCharacter_FromXlsx_MatchesBuiltinFieldByField` 查「表有镜像无」，
+> `EveryBuiltinCharacter_ExistsInXlsx` 查「镜像有表无」），所以改表后**必须同步镜像**，否则回归必红。
+>
+> 正确口径：**改表 + 同步 C# 镜像 + 保留 `// arch-ok: 镜像 … 表` 注释 = 系统代码 0 行**。
+> 等 xlsx→生成物 pipeline 落地、`CharacterContentSet` 改为读生成物之后，这一条前提才会真正消失。
+> 每一步的同步动作见 `docs/modules/策划/README.md` §3~§4。
 
 ### 15.6 新增一个角色 / 一个技能要动几个文件
 
 | 我想做 | 要改的文件 | 数量 |
 |---|---|---|
-| 加一个怪物（换血换速换技能） | `characters.xlsx`（Characters + StatPacks + SkillLoads 各加行） | **1** |
-| 加一个玩家角色 | 同上（`chosen_hero` 就是现成例子：数值包 + 技能包不同，零代码） | **1** |
+| 加一个怪物（换血换速换技能） | `characters.xlsx`（Characters + StatPacks + SkillLoads 各加行）**+ `CharacterContentSet.cs` 镜像同步**（见 §15.5 的前提说明） | **2**（系统代码 0 行） |
+| 加一个玩家角色 | 同上（`chosen_hero` 就是现成例子：数值包 + 技能包不同，系统代码 0 行） | **2**（系统代码 0 行） |
 | 加一个新技能行为 | 1 个 `ISkill` 实现（`scripts/skill/`）+ xlsx 里引用它的 `SkillId` | **2** |
 | 让怪物会用技能（接 AI） | 1 个 `IIntentSource` 实现（宿主构造时传入） | **1** |
 | 夺舍怪物 | 0（生成/改造时传 `ControlOverride` + `TeamOverride`） | **0** |
+
+> 「数量」列统计的是**会失败/需要人改的文件数**。加角色/加怪物之所以是 2 而不是 1，就是上面 §15.5 那条前提：
+> 表改了而镜像没跟上，`CharacterXlsxParityTests` 会直接红。**系统代码（`SystemBase`）始终 0 行。**
 
 ### 15.7 约束与下一步
 
@@ -3189,5 +3214,59 @@ tools/asset_viewer2/
 **为什么 3D 视口是一个「真的 ImGui 窗口」而不是 `PassthruCentralNode` 的中央空节点**：`PassthruCentralNode` 要求中央节点为空，一旦用户把某个面板拖到中央，面板就会盖住 3D。现在中央停靠一个名为 `3D 视口` 的窗口（`NoBackground` / 无内边距 / 无边框 / 不滚动），它只做两件事——占住中央节点、上报自己的矩形。
 
 `DrawUi(..., ViewportRect* outViewport)` 把该矩形输出给 `app.cpp`，`vkCmdSetViewport` / `vkCmdSetScissor` 按它下刀；绘制 ImGui 前再恢复成全屏。这样 3D 渲染严格被裁剪在视口内，不会被左右面板遮住。菜单「重置布局」调 `RequestDockLayoutReset()` 重建默认布局。
+### 24.7 交互与资源回收（三个静默失效缺陷）
+
+这一节的三个缺陷**都不会报错、不会崩、日志也干净**，只有一个表现：界面「没反应」或「用一会儿就卡死」。
+
+#### 24.7.1 鼠标输入判据用错了 API（表现为「鼠标操作不了」）
+
+`App::HandleInput()` 原来用 `!io.WantCaptureMouse` 当「鼠标在 3D 视口里」的判据。但 24.6 把中央做成了**一个真正停靠的 ImGui 窗口**（`3D 视口`），鼠标一进这个窗口 `WantCaptureMouse` 就恒为 `true` —— 于是整个 `if` 永不进入，左键/右键/滚轮在视口里全部失灵。
+
+**正确判据**是「这个窗口是否被 hover」：`DrawUi` 在 `3D 视口` 窗口内、`ImGui::End()` 之前写 `outViewport->hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)`，`app.cpp` 读 `viewportRect_.hovered`。
+
+> **通用教训**：`WantCaptureMouse` 回答的是「鼠标归 ImGui 还是归应用」，**不是**「鼠标在我的哪块自绘区域里」。只要自绘区本身是一个 ImGui 窗口，这个问题永远问不出正确答案。
+
+#### 24.7.2 拖动用 `GetMouseDragDelta` 而不是 `io.MouseDelta`
+
+原实现用 `IsMouseDragging` + `GetMouseDragDelta` + `ResetMouseDragDelta`，有两个毛病：① 有拖动**阈值**，起步会「跳」一下；② 读右键拖动时取的是**中键**的增量。
+
+现在直接用 `io.MouseDelta` 做 1:1 增量，按下即生效：
+
+| 操作 | 行为 |
+|---|---|
+| 左键拖动 | 左右移动 → 绕 Y 轴 `yaw`；上下移动 → `pitch`（**用户明确要求的映射**） |
+| 右键 / 中键拖动 | 平移 |
+| 滚轮 | 缩放 |
+
+`OrbitCamera::Orbit` 里 `yaw_ -= dx*0.008f` / `pitch_ += dy*0.008f`。
+
+#### 24.7.3 描述符集只分配、从不归还（表现为「来回点两个模型就卡死」）
+
+`RenderPipeline::PrepareModel` 为每个贴图从 `descPool_` 分配一个描述符集，但 `GpuModel::Destroy` **从不归还**。池 `maxSets = 1024` 且从不 reset：
+
+- 缩略图对**每个**资产都要 `Upload` + `PrepareModel`（358 个资产）；
+- 主视口**每次切换模型**也漏一批。
+
+池耗尽后 `vkAllocateDescriptorSets` 失败、描述符集留成 `VK_NULL_HANDLE`，而 `DrawModel` 会照样绑定它 —— 提交一个无效描述符。用户看到的就是「来回点 Bomb / Bear Trap 后卡死」。
+
+**修复的关键前提**：池必须带 `VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT`。**不带这个标志时池不允许单独归还某个描述符集，`vkFreeDescriptorSets` 行为未定义** —— 本轮第一版修复就是漏了这个标志，结果每次切换模型直接 `0xC0000005` 访问违例崩溃，反而比原缺陷更严重。
+
+修好后由调用方在 `GpuModel::Destroy` **之前**显式调用 `RenderPipeline::ReleaseModelDescriptors`（`ThumbRenderer::RenderOne` 与 `App::UploadSelected` 各一处）。顺序不能反：先销毁贴图、后归还描述符集，会让池里留下指向已释放 `imageView` 的悬空描述符集。
+
+> **通用教训**：Vulkan 的可回收资源**默认不可单独回收**，标志位和资源是绑定在一起的。漏掉标志不会在编译期或运行期给出任何提示，只会在真正调用 `vkFree*` 的时候炸。
+
+### 24.8 无人值守自检（`--stress` / `--selftest-camera`）
+
+本查看器的三类缺陷（输入失灵、切换卡死、生命周期错乱）**都只能靠实际运行才能暴露**，而用截图点击去验证既慢又不可靠。因此内置两个自检开关，都走**和真人操作完全相同**的代码路径：
+
+| 参数 | 做什么 | 判定依据 |
+|---|---|---|
+| `--stress N` | 每帧切换一个资产，共 N 次，然后自动退出 | 退出码；正常应 `CODE=0` |
+| `--selftest-camera` | 伪造「在视口内按住左键拖 100×50 像素」，调真实的 `HandleInput()` | 日志 `camera self-test: dYaw=... dPitch=... -> OK/FAIL` |
+
+`--stress` 覆盖的是 `OnSelectAsset → UploadSelected` 这条切换路径，正好是 24.7.3 那个描述符泄漏的现场。基准值（本机）：马里奥目录 23 个资产，`--stress 1000` 约 3 秒完成；全库 358 个资产 `--stress 800` 约 3.7 秒完成 —— 耗时随次数线性增长才说明没有泄漏导致的性能退化。
+
+> 这两个开关是**永久诊断设施**，不是临时调试代码。删掉它们，下一轮同类缺陷就没有不依赖人眼的回归手段了。
+
 
 **ImGui 源码来源**：本机 `Mine/EasyPainter/vendor/imgui` 与 `ThirdLib/imgui` 都是 master 分支，**没有 DockSpace API**。现在把官方 `docking` 分支 vendored 进 `third_party/imgui/`（约 3.8 MB，含 `imgui_internal.h`——DockBuilder API 在内部头里）。
